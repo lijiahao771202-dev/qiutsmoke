@@ -1,10 +1,8 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Clock, Calendar as CalendarIcon, Trophy, Activity, Flame } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 
 interface StatsData {
     totalSessions: number;
@@ -27,7 +25,6 @@ const MONTH_NAMES = ["一月", "二月", "三月", "四月", "五月", "六月",
 export default function StatsPage() {
     const [stats, setStats] = useState<StatsData | null>(null);
     const [sessions, setSessions] = useState<Session[]>([]);
-    const [loading, setLoading] = useState(true);
 
     // Calendar State
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -49,18 +46,15 @@ export default function StatsPage() {
         const m = currentDate.getMonth() + 1;
         const monthStr = `${y}-${String(m).padStart(2, '0')}`;
 
-        setLoading(true);
         fetch(`/api/meditation/sessions?month=${monthStr}`)
             .then(res => res.json())
             .then(data => {
                 if (Array.isArray(data)) {
                     setSessions(data);
                 }
-                setLoading(false);
             })
             .catch(e => {
                 console.error(e);
-                setLoading(false);
             });
     }, [currentDate]);
 
@@ -144,10 +138,10 @@ export default function StatsPage() {
                                 {currentDate.getFullYear()}年 {MONTH_NAMES[currentDate.getMonth()]}
                             </h2>
                             <div className="flex gap-2">
-                                <button onClick={prevMonth} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/60 hover:text-white">
+                                <button aria-label="上个月" onClick={prevMonth} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/60 hover:text-white">
                                     <ChevronLeft className="w-5 h-5" />
                                 </button>
-                                <button onClick={nextMonth} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/60 hover:text-white">
+                                <button aria-label="下个月" onClick={nextMonth} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/60 hover:text-white">
                                     <ChevronRight className="w-5 h-5" />
                                 </button>
                             </div>
@@ -162,7 +156,7 @@ export default function StatsPage() {
                         <div className="grid grid-cols-7 gap-2">
                             {/* Empty slots for start of month */}
                             {Array.from({ length: firstDay }).map((_, i) => (
-                                <div key={`empty-${i}`} />
+                                <div key={`empty - ${i} `} />
                             ))}
 
                             {/* Days */}
@@ -183,16 +177,16 @@ export default function StatsPage() {
                                             setSelectedDate(newDate);
                                         }}
                                         className={`
-                                            aspect-square rounded-xl flex flex-col items-center justify-center relative transition-all
+aspect - square rounded - xl flex flex - col items - center justify - center relative transition - all
                                             ${isSelected ? 'bg-white/20 ring-1 ring-white/50 text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.2)]' : 'hover:bg-white/5 text-white/60'}
                                             ${isToday && !isSelected ? 'bg-white/5 ring-1 ring-white/10 text-white' : ''}
-                                        `}
+`}
                                     >
                                         <span className="text-sm font-light z-10">{day}</span>
                                         {sessionCount > 0 && (
                                             <div className="mt-1 flex gap-0.5">
-                                                <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-rose-300' : 'bg-rose-500/70'}`} />
-                                                {sessionCount > 1 && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-rose-300' : 'bg-rose-500/70'}`} />}
+                                                <div className={`w - 1 h - 1 rounded - full ${isSelected ? 'bg-rose-300' : 'bg-rose-500/70'} `} />
+                                                {sessionCount > 1 && <div className={`w - 1 h - 1 rounded - full ${isSelected ? 'bg-rose-300' : 'bg-rose-500/70'} `} />}
                                             </div>
                                         )}
                                     </motion.button>
@@ -242,7 +236,17 @@ export default function StatsPage() {
     );
 }
 
-function StatCard({ icon: Icon, label, value, unit, delay, color = "text-rose-400" }: any) {
+
+interface StatCardProps {
+    icon: React.ElementType;
+    label: string;
+    value: number;
+    unit: string;
+    delay: number;
+    color?: string;
+}
+
+function StatCard({ icon: Icon, label, value, unit, delay, color = "text-rose-400" }: StatCardProps) {
     return (
         <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
