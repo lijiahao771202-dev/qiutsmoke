@@ -39,8 +39,6 @@ function BackgroundLayer() {
                     </motion.div>
                 )}
             </AnimatePresence>
-            {/* Overlay gradient always present for text readability */}
-            <div className="absolute inset-0 bg-slate-900/50 mix-blend-overlay" />
         </div>
     );
 }
