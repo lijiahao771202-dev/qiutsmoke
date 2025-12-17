@@ -59,3 +59,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "保存失败" }, { status: 500 });
   }
 }
+
+export const runtime = 'edge';

@@ -22,4 +22,24 @@ export async function ensureTables() {
     updated_at timestamptz DEFAULT now(),
     PRIMARY KEY (user_id, topic_id)
   )`;
+
+  await sql`CREATE TABLE IF NOT EXISTS tts_cards (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    title text,
+    content text NOT NULL,
+    voice_id text NOT NULL,
+    rate text DEFAULT '0%',
+    created_at timestamptz DEFAULT now()
+  )`;
+
+  await sql`CREATE TABLE IF NOT EXISTS meditation_topics (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    title text NOT NULL,
+    prompt text NOT NULL,
+    icon_name text DEFAULT 'wind',
+    color_from text DEFAULT 'rose-400',
+    color_to text DEFAULT 'rose-600',
+    created_at timestamptz DEFAULT now()
+  )`;
+
 }

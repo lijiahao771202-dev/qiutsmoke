@@ -1,5 +1,20 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
+import NavBar from "@/components/NavBar";
+import UserProfile from "@/components/UserProfile";
+import { SWRProvider } from "@/components/SWRProvider";
+import AppWrapper from '@/components/AppWrapper';
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-geist-sans",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-geist-mono",
+});
 
 export const metadata: Metadata = {
   title: "Rain - Meditation App",
@@ -9,6 +24,11 @@ export const metadata: Metadata = {
 
 export const viewport = {
   themeColor: "#0f172a",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -19,6 +39,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Rain" />
@@ -26,8 +47,29 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body
-        className="antialiased font-sans"
+        className={`${inter.variable} ${jetbrainsMono.variable} antialiased min-h-screen relative overflow-x-hidden`}
       >
+        <SWRProvider>
+          <AppWrapper>
+            <NavBar />
+            <UserProfile />
+            {children}
+          </AppWrapper>
+        </SWRProvider>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                  document.documentElement.classList.add('dark')
+                } else {
+                  document.documentElement.classList.remove('dark')
+                }
+              } catch (_) {}
+            `,
+          }}
+        />
+
         {process.env.NODE_ENV === 'production' && (
           <script
             id="pwa-register"
@@ -36,7 +78,6 @@ export default function RootLayout({
             }}
           />
         )}
-        {children}
       </body>
     </html>
   );

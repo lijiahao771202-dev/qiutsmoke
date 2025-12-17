@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Droplets, Wind, RefreshCw, Check, Calendar } from "lucide-react";
+import { Droplets, Wind, RefreshCw, Check, Calendar, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -170,201 +170,183 @@ export default function Home() {
   const healthMetrics = getHealthStatus();
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6 flex flex-col relative overflow-hidden">
-      {/* Background Image */}
+    <main className="flex-1 flex flex-col items-center justify-center z-10 pt-20 pb-24 md:pb-0 px-4">
+      {/* Liquid Glass Container */}
       <div
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-80"
-        style={{ backgroundImage: 'url(/mountain-9472312.svg)' }}
-      />
-
-      {/* Top Navigation */}
-      <nav className="glass-panel rounded-full p-2 flex justify-center items-center gap-4 z-20 mb-6 w-fit mx-auto">
-        <Link href="/" className="p-3 rounded-full bg-white/10 text-white">
-          <Wind className="w-6 h-6" />
-        </Link>
-        <Link href="/meditate" className="p-3 rounded-full text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
-          <Droplets className="w-6 h-6" />
-        </Link>
-      </nav>
-
-      <main className="flex-1 flex flex-col items-center justify-center z-10">
-        {/* Liquid Glass Container */}
+        className="p-6 rounded-3xl relative overflow-hidden w-full max-w-md mx-auto"
+        style={{
+          background: 'rgba(255, 255, 255, 0.08)',
+          backdropFilter: 'blur(20px) saturate(180%) brightness(105%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(180%) brightness(105%)',
+          border: '1px solid rgba(255, 255, 255, 0.25)',
+          boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.37), inset 0 1px 1px 0 rgba(255, 255, 255, 0.3)',
+        }}
+      >
+        {/* Glass edge refraction effect */}
         <div
-          className="p-6 rounded-3xl relative overflow-hidden w-full max-w-md"
+          className="absolute inset-0 rounded-3xl pointer-events-none"
           style={{
-            background: 'rgba(255, 255, 255, 0.08)',
-            backdropFilter: 'blur(20px) saturate(180%) brightness(105%)',
-            WebkitBackdropFilter: 'blur(20px) saturate(180%) brightness(105%)',
-            border: '1px solid rgba(255, 255, 255, 0.25)',
-            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.37), inset 0 1px 1px 0 rgba(255, 255, 255, 0.3)',
+            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, 0.08) 100%)',
           }}
-        >
-          {/* Glass edge refraction effect */}
-          <div
-            className="absolute inset-0 rounded-3xl pointer-events-none"
-            style={{
-              background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, 0.08) 100%)',
-            }}
-          />
+        />
 
-          <div className="relative z-10 space-y-4">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-center space-y-1"
-            >
-              <h1 className="text-xl font-light text-slate-300 tracking-wide">戒烟</h1>
-              <div className="relative">
-                <div className="text-[6rem] font-bold leading-none text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50 drop-shadow-2xl">
-                  {days}
-                </div>
-                <div className="absolute -right-2 top-2 text-lg text-slate-400 font-light">天</div>
+        <div className="relative z-10 space-y-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center space-y-1"
+          >
+            <h1 className="text-xl font-light text-slate-300 tracking-wide">戒烟</h1>
+            <div className="relative">
+              <div className="text-[6rem] font-bold leading-none text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50 drop-shadow-2xl">
+                {days}
               </div>
-              {/* Quit Date Display */}
-              {startDate && (
-                <div className="text-xs text-slate-400">
-                  戒烟日：{new Date(startDate).toLocaleDateString('zh-CN', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </div>
+              <div className="absolute -right-2 top-2 text-lg text-slate-400 font-light">天</div>
+            </div>
+            {/* Quit Date Display */}
+            {startDate && (
+              <div className="text-xs text-slate-400">
+                戒烟日：{new Date(startDate).toLocaleDateString('zh-CN', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </div>
+            )}
+          </motion.div>
+
+          {/* Milestones Progress */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="space-y-4"
+          >
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-400">里程碑进度</span>
+              {nextMilestone && (
+                <span className="text-slate-300">
+                  还有 <span className="font-medium text-white">{nextMilestone.remaining}</span> 天到 {nextMilestone.target} 天
+                </span>
               )}
-            </motion.div>
+            </div>
 
-            {/* Milestones Progress */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.1 }}
-              className="space-y-4"
-            >
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-400">里程碑进度</span>
-                {nextMilestone && (
-                  <span className="text-slate-300">
-                    还有 <span className="font-medium text-white">{nextMilestone.remaining}</span> 天到 {nextMilestone.target} 天
-                  </span>
+            {/* Progress Bar Container */}
+            <div className="relative pt-8 pb-4">
+              {/* Background Line */}
+              <div className="absolute top-1/2 left-0 right-0 h-1 bg-white/10 rounded-full" />
+
+              {/* Progress Line */}
+              <div
+                className="absolute top-1/2 left-0 h-1 bg-gradient-to-r from-green-400 to-blue-400 rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min((days / MILESTONES[MILESTONES.length - 1]) * 100, 100)}%`
+                }}
+              />
+
+              {/* Milestone Markers */}
+              <div className="relative flex justify-between">
+                {MILESTONES.map((milestone, index) => {
+                  const isAchieved = days >= milestone;
+                  const isCurrent = !isAchieved && (index === 0 || days >= MILESTONES[index - 1]);
+
+                  return (
+                    <div key={milestone} className="flex flex-col items-center" style={{ flex: index === 0 ? '0 0 auto' : '1 1 0' }}>
+                      {/* Marker Dot */}
+                      <div
+                        className={cn(
+                          "w-3 h-3 rounded-full transition-all duration-300 relative z-10",
+                          isAchieved
+                            ? "bg-green-400 shadow-lg shadow-green-400/50"
+                            : isCurrent
+                              ? "bg-blue-400 shadow-lg shadow-blue-400/50 animate-pulse"
+                              : "bg-white/20"
+                        )}
+                      />
+
+                      {/* Milestone Label */}
+                      <span
+                        className={cn(
+                          "text-xs mt-2 transition-colors duration-300",
+                          isAchieved
+                            ? "text-green-400 font-medium"
+                            : isCurrent
+                              ? "text-blue-400 font-medium"
+                              : "text-slate-500"
+                        )}
+                      >
+                        {milestone}天
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Dynamic Health Metrics */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="grid grid-cols-2 gap-4"
+          >
+            {healthMetrics.map((metric, index) => (
+              <div
+                key={metric.label}
+                className="p-4 rounded-2xl flex flex-col items-center justify-center space-y-2 relative overflow-hidden"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                }}
+              >
+                {index === 0 ? (
+                  <Wind className="w-6 h-6 text-blue-400 relative z-10" />
+                ) : (
+                  <Droplets className="w-6 h-6 text-cyan-400 relative z-10" />
                 )}
-              </div>
-
-              {/* Progress Bar Container */}
-              <div className="relative pt-8 pb-4">
-                {/* Background Line */}
-                <div className="absolute top-1/2 left-0 right-0 h-1 bg-white/10 rounded-full" />
-
-                {/* Progress Line */}
-                <div
-                  className="absolute top-1/2 left-0 h-1 bg-gradient-to-r from-green-400 to-blue-400 rounded-full transition-all duration-500"
-                  style={{
-                    width: `${Math.min((days / MILESTONES[MILESTONES.length - 1]) * 100, 100)}%`
-                  }}
-                />
-
-                {/* Milestone Markers */}
-                <div className="relative flex justify-between">
-                  {MILESTONES.map((milestone, index) => {
-                    const isAchieved = days >= milestone;
-                    const isCurrent = !isAchieved && (index === 0 || days >= MILESTONES[index - 1]);
-
-                    return (
-                      <div key={milestone} className="flex flex-col items-center" style={{ flex: index === 0 ? '0 0 auto' : '1 1 0' }}>
-                        {/* Marker Dot */}
-                        <div
-                          className={cn(
-                            "w-3 h-3 rounded-full transition-all duration-300 relative z-10",
-                            isAchieved
-                              ? "bg-green-400 shadow-lg shadow-green-400/50"
-                              : isCurrent
-                                ? "bg-blue-400 shadow-lg shadow-blue-400/50 animate-pulse"
-                                : "bg-white/20"
-                          )}
-                        />
-
-                        {/* Milestone Label */}
-                        <span
-                          className={cn(
-                            "text-xs mt-2 transition-colors duration-300",
-                            isAchieved
-                              ? "text-green-400 font-medium"
-                              : isCurrent
-                                ? "text-blue-400 font-medium"
-                                : "text-slate-500"
-                          )}
-                        >
-                          {milestone}天
-                        </span>
-                      </div>
-                    );
-                  })}
+                <span className="text-sm text-slate-400 relative z-10">{metric.label}</span>
+                <span className={cn("text-lg font-medium relative z-10", metric.color)}>
+                  {metric.status}
+                </span>
+                {/* Progress Bar */}
+                <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden relative z-10">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-400 to-green-400 transition-all duration-500"
+                    style={{ width: `${metric.progress}%` }}
+                  />
                 </div>
+                <span className="text-xs text-slate-500 relative z-10">{Math.round(metric.progress)}%</span>
               </div>
-            </motion.div>
+            ))}
+          </motion.div>
 
-            {/* Dynamic Health Metrics */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
-              className="grid grid-cols-2 gap-4"
-            >
-              {healthMetrics.map((metric, index) => (
-                <div
-                  key={metric.label}
-                  className="p-4 rounded-2xl flex flex-col items-center justify-center space-y-2 relative overflow-hidden"
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                  }}
-                >
-                  {index === 0 ? (
-                    <Wind className="w-6 h-6 text-blue-400 relative z-10" />
-                  ) : (
-                    <Droplets className="w-6 h-6 text-cyan-400 relative z-10" />
-                  )}
-                  <span className="text-sm text-slate-400 relative z-10">{metric.label}</span>
-                  <span className={cn("text-lg font-medium relative z-10", metric.color)}>
-                    {metric.status}
-                  </span>
-                  {/* Progress Bar */}
-                  <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden relative z-10">
-                    <div
-                      className="h-full bg-gradient-to-r from-blue-400 to-green-400 transition-all duration-500"
-                      style={{ width: `${metric.progress}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-slate-500 relative z-10">{Math.round(metric.progress)}%</span>
-                </div>
-              ))}
-            </motion.div>
-
-            {/* Quit Date Picker */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.25 }}
-              className="space-y-3"
-            >
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-blue-400" />
-                  <span className="text-slate-400">戒烟起始日</span>
-                </div>
+          {/* Quit Date Picker */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.25 }}
+            className="space-y-3"
+          >
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-blue-400" />
+                <span className="text-slate-400">戒烟起始日</span>
               </div>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={startDate ? new Date(startDate).toISOString().split('T')[0] : ''}
-                  onChange={handleDateChange}
-                  className="w-full py-3 px-4 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-blue-500/50 transition-colors"
-                />
-              </div>
-            </motion.div>
-          </div>
+            </div>
+            <div className="relative">
+              <input
+                type="date"
+                value={startDate ? new Date(startDate).toISOString().split('T')[0] : ''}
+                onChange={handleDateChange}
+                className="w-full py-3 px-4 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+            </div>
+          </motion.div>
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
