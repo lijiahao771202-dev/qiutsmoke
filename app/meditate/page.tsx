@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, Wind, CloudRain, Zap, Moon, Droplets, Settings, X, Activity, Shield, Trash2, Plus, Network } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import AuthGuard from "@/components/AuthGuard";
 
 // IP Address from system check
 const LAN_IP = "10.173.165.189:3000";
@@ -755,440 +756,443 @@ export default function MeditatePage() {
         generateMeditation(promptToUse);
     };
 
+
     return (
-        <>
-            {/* Main Content */}
-            <main className="flex-1 w-full max-w-4xl mx-auto z-10 overflow-y-auto pb-32 px-4 scrollbar-hide pt-24">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-8">
-                    {/* Default Topics */}
-                    {DEFAULT_TOPICS.map((topic) => (
-                        <motion.button
-                            key={topic.id}
-                            layoutId={`card-${topic.id}`}
-                            onClick={() => handleCardClick(topic.id)}
-                            className={cn(
-                                "glass-card p-4 rounded-2xl flex flex-col items-start justify-between aspect-square text-left group relative overflow-hidden w-full transition-all hover:scale-[1.02]",
-                                activeCard === topic.id ? "opacity-0" : "opacity-100",
-                                "bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05] border-white/10"
-                            )}
-                        >
-                            <div className={cn("absolute inset-0 opacity-0 group-hover:opacity-30 transition-opacity bg-gradient-to-br from-rose-400 to-pink-400")} />
-                            <div className="absolute top-3 right-3 z-20">
-                                <div
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setEditingTopicId(topic.id);
-                                        const base = editedPrompts[topic.id] ?? topic.prompt ?? DEFAULT_PROMPT;
-                                        setDraftPrompt(base);
-                                        setShowPromptEdit(true);
-                                    }}
-                                    className="p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
-                                >
-                                    <Settings className="w-3.5 h-3.5 text-white" />
-                                </div>
-                            </div>
-                            <topic.icon className="w-6 h-6 mb-2 text-white/80" />
-                            <span className="text-sm md:text-base font-medium leading-tight">{topic.title}</span>
-                        </motion.button>
-                    ))}
-
-                    {/* Custom Topics */}
-                    {customTopics.map((topic) => (
-                        <motion.button
-                            key={topic.id}
-                            layoutId={`card-${topic.id}`}
-                            onClick={() => handleCardClick(topic.id)}
-                            className={cn(
-                                "glass-card p-4 rounded-2xl flex flex-col items-start justify-between aspect-square text-left group relative overflow-hidden w-full transition-all hover:scale-[1.02]",
-                                activeCard === topic.id ? "opacity-0" : "opacity-100",
-                                "bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05] border-white/10"
-                            )}
-                        >
-                            <div className={cn("absolute inset-0 opacity-0 group-hover:opacity-30 transition-opacity bg-gradient-to-br from-rose-400 to-pink-400")} />
-                            <div className="absolute top-3 right-3 z-20 flex gap-2">
-                                <div
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setEditingTopicId(topic.id);
-                                        const base = topic.prompt ?? DEFAULT_PROMPT;
-                                        setDraftPrompt(base);
-                                        setShowPromptEdit(true);
-                                    }}
-                                    className="p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
-                                >
-                                    <Settings className="w-3.5 h-3.5 text-white" />
-                                </div>
-                                <div
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        if (confirm("确定要删除这个卡片吗？")) {
-                                            try {
-                                                await fetch(`/api/meditation/cards?id=${topic.id}`, { method: 'DELETE' });
-                                                setCustomTopics(prev => prev.filter(t => t.id !== topic.id));
-                                            } catch (err) {
-                                                console.error("Failed to delete", err);
-                                            }
-                                        }
-                                    }}
-                                    className="p-1.5 bg-red-500/10 rounded-full hover:bg-red-500/20 transition-colors border border-red-500/20"
-                                >
-                                    <Trash2 className="w-3.5 h-3.5 text-red-300" />
-                                </div>
-                            </div>
-
-                            {topic.icon ? <topic.icon className="w-6 h-6 mb-2 text-white/80" /> : <Wind className="w-6 h-6 mb-2 text-white/80" />}
-                            <span className="text-sm md:text-base font-medium leading-tight">{topic.title}</span>
-                        </motion.button>
-                    ))}
-
-                    {/* Add New Card Button */}
-                    <motion.button
-                        layout
-                        onClick={() => {
-                            setNewCardTitle("");
-                            setNewCardPrompt("");
-                            setShowAddCard(true);
-                        }}
-                        className="glass-card p-4 rounded-2xl flex flex-col items-center justify-center aspect-square text-center group border-2 border-dashed border-white/10 hover:border-white/30 hover:bg-white/5 transition-all"
-                    >
-                        <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-2 group-hover:bg-white/10 transition-colors">
-                            <Plus className="w-5 h-5 text-white/50 group-hover:text-white/80" />
-                        </div>
-                        <span className="text-sm text-white/40 group-hover:text-white/70">添加冥想</span>
-                    </motion.button>
-                </div>
-            </main>
-            {/* Settings Modal (Prompt + Voice) */}
-            <AnimatePresence>
-                {
-                    showPromptEdit && (
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-                        >
-                            <motion.div
-                                initial={{ scale: 0.9, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ scale: 0.9, opacity: 0 }}
-                                className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto scrollbar-hide"
-                            >
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-lg font-medium">
-                                        {editingTopicId ? "编辑冥想卡片" : "全局设置"}
-                                    </h3>
-                                    <button onClick={() => setShowPromptEdit(false)} className="p-2 hover:bg-white/10 rounded-full">
-                                        <X className="w-5 h-5" />
-                                    </button>
-                                </div>
-
-                                {showAudioHint && (
-                                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-center justify-between">
-                                        <span className="text-xs text-amber-200">音频被系统暂停</span>
-                                        <button
-                                            onClick={async () => {
-                                                await ensureAudioContext();
-                                                setShowAudioHint(false);
-                                                if (currentAudio && currentAudio.paused && isPlaying) {
-                                                    try { await currentAudio.play(); } catch { }
-                                                }
-                                            }}
-                                            className="px-2 py-1 bg-amber-500/20 rounded text-xs text-amber-100 hover:bg-amber-500/30"
-                                        >
-                                            恢复播放
-                                        </button>
-                                    </div>
+        <AuthGuard>
+            <>
+                {/* Main Content */}
+                <main className="flex-1 w-full max-w-4xl mx-auto z-10 overflow-y-auto pb-32 px-4 scrollbar-hide pt-24">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-8">
+                        {/* Default Topics */}
+                        {DEFAULT_TOPICS.map((topic) => (
+                            <motion.button
+                                key={topic.id}
+                                layoutId={`card-${topic.id}`}
+                                onClick={() => handleCardClick(topic.id)}
+                                className={cn(
+                                    "glass-card p-4 rounded-2xl flex flex-col items-start justify-between aspect-square text-left group relative overflow-hidden w-full transition-all hover:scale-[1.02]",
+                                    activeCard === topic.id ? "opacity-0" : "opacity-100",
+                                    "bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05] border-white/10"
                                 )}
+                            >
+                                <div className={cn("absolute inset-0 opacity-0 group-hover:opacity-30 transition-opacity bg-gradient-to-br from-rose-400 to-pink-400")} />
+                                <div className="absolute top-3 right-3 z-20">
+                                    <div
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingTopicId(topic.id);
+                                            const base = editedPrompts[topic.id] ?? topic.prompt ?? DEFAULT_PROMPT;
+                                            setDraftPrompt(base);
+                                            setShowPromptEdit(true);
+                                        }}
+                                        className="p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
+                                    >
+                                        <Settings className="w-3.5 h-3.5 text-white" />
+                                    </div>
+                                </div>
+                                <topic.icon className="w-6 h-6 mb-2 text-white/80" />
+                                <span className="text-sm md:text-base font-medium leading-tight">{topic.title}</span>
+                            </motion.button>
+                        ))}
 
-                                {/* Voice Selection */}
-                                <div className="space-y-3">
-                                    <label className="text-xs text-slate-400 uppercase tracking-wider block">选择人声</label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {VOICES.map(voice => (
-                                            <button
-                                                key={voice.id}
-                                                onClick={() => setSelectedVoice(voice.id)}
-                                                className={cn(
-                                                    "px-3 py-2 rounded-xl text-sm text-left transition-all border",
-                                                    selectedVoice === voice.id
-                                                        ? "bg-blue-600/20 border-blue-500 text-white"
-                                                        : "bg-white/5 border-transparent text-slate-400 hover:bg-white/10"
-                                                )}
-                                            >
-                                                <div className="font-medium">{voice.name.split(" ")[0]}</div>
-                                                <div className="text-xs opacity-60">{voice.name.split(" ")[1]}</div>
-                                            </button>
-                                        ))}
+                        {/* Custom Topics */}
+                        {customTopics.map((topic) => (
+                            <motion.button
+                                key={topic.id}
+                                layoutId={`card-${topic.id}`}
+                                onClick={() => handleCardClick(topic.id)}
+                                className={cn(
+                                    "glass-card p-4 rounded-2xl flex flex-col items-start justify-between aspect-square text-left group relative overflow-hidden w-full transition-all hover:scale-[1.02]",
+                                    activeCard === topic.id ? "opacity-0" : "opacity-100",
+                                    "bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05] border-white/10"
+                                )}
+                            >
+                                <div className={cn("absolute inset-0 opacity-0 group-hover:opacity-30 transition-opacity bg-gradient-to-br from-rose-400 to-pink-400")} />
+                                <div className="absolute top-3 right-3 z-20 flex gap-2">
+                                    <div
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingTopicId(topic.id);
+                                            const base = topic.prompt ?? DEFAULT_PROMPT;
+                                            setDraftPrompt(base);
+                                            setShowPromptEdit(true);
+                                        }}
+                                        className="p-1.5 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
+                                    >
+                                        <Settings className="w-3.5 h-3.5 text-white" />
+                                    </div>
+                                    <div
+                                        onClick={async (e) => {
+                                            e.stopPropagation();
+                                            if (confirm("确定要删除这个卡片吗？")) {
+                                                try {
+                                                    await fetch(`/api/meditation/cards?id=${topic.id}`, { method: 'DELETE' });
+                                                    setCustomTopics(prev => prev.filter(t => t.id !== topic.id));
+                                                } catch (err) {
+                                                    console.error("Failed to delete", err);
+                                                }
+                                            }
+                                        }}
+                                        className="p-1.5 bg-red-500/10 rounded-full hover:bg-red-500/20 transition-colors border border-red-500/20"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5 text-red-300" />
                                     </div>
                                 </div>
 
-                                {/* API Key Setting */}
-                                <div className="space-y-3">
-                                    <label className="text-xs text-slate-400 uppercase tracking-wider block">DeepSeek API Key</label>
-                                    <input
-                                        type="password"
-                                        value={apiKey}
-                                        onChange={(e) => setApiKey(e.target.value)}
-                                        className="w-full bg-slate-800 rounded-xl p-4 text-sm text-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                                        placeholder="sk-..."
-                                    />
-                                </div>
+                                {topic.icon ? <topic.icon className="w-6 h-6 mb-2 text-white/80" /> : <Wind className="w-6 h-6 mb-2 text-white/80" />}
+                                <span className="text-sm md:text-base font-medium leading-tight">{topic.title}</span>
+                            </motion.button>
+                        ))}
 
-                                {/* Global System Prompt (Always Visible) */}
-                                <div className="space-y-3 pt-4 border-t border-white/5">
+                        {/* Add New Card Button */}
+                        <motion.button
+                            layout
+                            onClick={() => {
+                                setNewCardTitle("");
+                                setNewCardPrompt("");
+                                setShowAddCard(true);
+                            }}
+                            className="glass-card p-4 rounded-2xl flex flex-col items-center justify-center aspect-square text-center group border-2 border-dashed border-white/10 hover:border-white/30 hover:bg-white/5 transition-all"
+                        >
+                            <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-2 group-hover:bg-white/10 transition-colors">
+                                <Plus className="w-5 h-5 text-white/50 group-hover:text-white/80" />
+                            </div>
+                            <span className="text-sm text-white/40 group-hover:text-white/70">添加冥想</span>
+                        </motion.button>
+                    </div>
+                </main>
+                {/* Settings Modal (Prompt + Voice) */}
+                <AnimatePresence>
+                    {
+                        showPromptEdit && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                            >
+                                <motion.div
+                                    initial={{ scale: 0.9, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    exit={{ scale: 0.9, opacity: 0 }}
+                                    className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto scrollbar-hide"
+                                >
                                     <div className="flex justify-between items-center">
-                                        <label className="text-xs text-slate-400 uppercase tracking-wider block">
-                                            系统提示词 (System Prompt - Global)
-                                        </label>
-                                        <button
-                                            onClick={() => { try { localStorage.setItem("global_system_prompt", globalSystemPrompt); fetch('/api/system-prompt', { method: 'POST', body: globalSystemPrompt }); } catch { } }}
-                                            className="text-xs text-blue-400 hover:text-blue-300"
-                                        >
-                                            保存全局设置
+                                        <h3 className="text-lg font-medium">
+                                            {editingTopicId ? "编辑冥想卡片" : "全局设置"}
+                                        </h3>
+                                        <button onClick={() => setShowPromptEdit(false)} className="p-2 hover:bg-white/10 rounded-full">
+                                            <X className="w-5 h-5" />
                                         </button>
                                     </div>
-                                    <textarea
-                                        value={globalSystemPrompt}
-                                        onChange={(e) => setGlobalSystemPrompt(e.target.value)}
-                                        className="w-full h-32 bg-slate-800 rounded-xl p-4 text-sm text-slate-200 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                                        placeholder="例如：你是一位温柔的冥想导师..."
-                                    />
-                                    <p className="text-xs text-slate-500">
-                                        所有卡片的生成都会遵循此系统设定。
-                                    </p>
-                                </div>
 
-                                {/* Card Specific Prompt (Only when editing a card) */}
-                                {editingTopicId && (
+                                    {showAudioHint && (
+                                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-center justify-between">
+                                            <span className="text-xs text-amber-200">音频被系统暂停</span>
+                                            <button
+                                                onClick={async () => {
+                                                    await ensureAudioContext();
+                                                    setShowAudioHint(false);
+                                                    if (currentAudio && currentAudio.paused && isPlaying) {
+                                                        try { await currentAudio.play(); } catch { }
+                                                    }
+                                                }}
+                                                className="px-2 py-1 bg-amber-500/20 rounded text-xs text-amber-100 hover:bg-amber-500/30"
+                                            >
+                                                恢复播放
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* Voice Selection */}
+                                    <div className="space-y-3">
+                                        <label className="text-xs text-slate-400 uppercase tracking-wider block">选择人声</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {VOICES.map(voice => (
+                                                <button
+                                                    key={voice.id}
+                                                    onClick={() => setSelectedVoice(voice.id)}
+                                                    className={cn(
+                                                        "px-3 py-2 rounded-xl text-sm text-left transition-all border",
+                                                        selectedVoice === voice.id
+                                                            ? "bg-blue-600/20 border-blue-500 text-white"
+                                                            : "bg-white/5 border-transparent text-slate-400 hover:bg-white/10"
+                                                    )}
+                                                >
+                                                    <div className="font-medium">{voice.name.split(" ")[0]}</div>
+                                                    <div className="text-xs opacity-60">{voice.name.split(" ")[1]}</div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* API Key Setting */}
+                                    <div className="space-y-3">
+                                        <label className="text-xs text-slate-400 uppercase tracking-wider block">DeepSeek API Key</label>
+                                        <input
+                                            type="password"
+                                            value={apiKey}
+                                            onChange={(e) => setApiKey(e.target.value)}
+                                            className="w-full bg-slate-800 rounded-xl p-4 text-sm text-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                                            placeholder="sk-..."
+                                        />
+                                    </div>
+
+                                    {/* Global System Prompt (Always Visible) */}
                                     <div className="space-y-3 pt-4 border-t border-white/5">
-                                        <label className="text-xs text-emerald-400 uppercase tracking-wider block">
-                                            当前卡片提示词 (Card Prompt)
-                                        </label>
-                                        <div className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20 mb-2">
-                                            <p className="text-xs text-emerald-200">
-                                                最终发给 AI 的指令 = <b>系统提示词</b> + <b>卡片提示词</b>
-                                            </p>
+                                        <div className="flex justify-between items-center">
+                                            <label className="text-xs text-slate-400 uppercase tracking-wider block">
+                                                系统提示词 (System Prompt - Global)
+                                            </label>
+                                            <button
+                                                onClick={() => { try { localStorage.setItem("global_system_prompt", globalSystemPrompt); fetch('/api/system-prompt', { method: 'POST', body: globalSystemPrompt }); } catch { } }}
+                                                className="text-xs text-blue-400 hover:text-blue-300"
+                                            >
+                                                保存全局设置
+                                            </button>
                                         </div>
                                         <textarea
-                                            value={draftPrompt}
-                                            onChange={(e) => setDraftPrompt(e.target.value)}
-                                            className="w-full h-32 bg-slate-800 rounded-xl p-4 text-sm text-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
-                                            placeholder="输入当前卡片的冥想提示词..."
+                                            value={globalSystemPrompt}
+                                            onChange={(e) => setGlobalSystemPrompt(e.target.value)}
+                                            className="w-full h-32 bg-slate-800 rounded-xl p-4 text-sm text-slate-200 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                                            placeholder="例如：你是一位温柔的冥想导师..."
                                         />
-                                        <div className="flex justify-end pt-2">
-                                            <button
-                                                onClick={() => {
-                                                    setEditedPrompts(prev => ({ ...prev, [editingTopicId]: draftPrompt }));
-                                                    try { fetch('/api/prompts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingTopicId, prompt: draftPrompt }) }); } catch { }
-                                                    setShowPromptEdit(false);
-                                                    setEditingTopicId(null);
-                                                }}
-                                                className="px-4 py-2 bg-slate-700 rounded-full text-white hover:bg-slate-600 transition-colors font-medium text-xs"
-                                            >
-                                                仅保存
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    const id = editingTopicId;
-                                                    setEditedPrompts(prev => ({ ...prev, [id]: draftPrompt }));
-                                                    setShowPromptEdit(false);
-                                                    setEditingTopicId(null);
-                                                    try { fetch('/api/prompts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, prompt: draftPrompt }) }); } catch { }
-                                                    handleCardClick(id);
-                                                }}
-                                                className="ml-3 px-6 py-2 bg-emerald-600 rounded-full text-white hover:bg-emerald-700 transition-colors font-medium text-sm"
-                                            >
-                                                保存并生成
-                                            </button>
-                                        </div>
+                                        <p className="text-xs text-slate-500">
+                                            所有卡片的生成都会遵循此系统设定。
+                                        </p>
                                     </div>
-                                )}
 
-                                {/* LAN IP Display */}
-                                <div className="pt-4 border-t border-white/5">
-                                    <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl">
-                                        <div className="p-2 bg-blue-500/20 rounded-lg">
-                                            <Network className="w-4 h-4 text-blue-400" />
+                                    {/* Card Specific Prompt (Only when editing a card) */}
+                                    {editingTopicId && (
+                                        <div className="space-y-3 pt-4 border-t border-white/5">
+                                            <label className="text-xs text-emerald-400 uppercase tracking-wider block">
+                                                当前卡片提示词 (Card Prompt)
+                                            </label>
+                                            <div className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20 mb-2">
+                                                <p className="text-xs text-emerald-200">
+                                                    最终发给 AI 的指令 = <b>系统提示词</b> + <b>卡片提示词</b>
+                                                </p>
+                                            </div>
+                                            <textarea
+                                                value={draftPrompt}
+                                                onChange={(e) => setDraftPrompt(e.target.value)}
+                                                className="w-full h-32 bg-slate-800 rounded-xl p-4 text-sm text-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                                                placeholder="输入当前卡片的冥想提示词..."
+                                            />
+                                            <div className="flex justify-end pt-2">
+                                                <button
+                                                    onClick={() => {
+                                                        setEditedPrompts(prev => ({ ...prev, [editingTopicId]: draftPrompt }));
+                                                        try { fetch('/api/prompts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingTopicId, prompt: draftPrompt }) }); } catch { }
+                                                        setShowPromptEdit(false);
+                                                        setEditingTopicId(null);
+                                                    }}
+                                                    className="px-4 py-2 bg-slate-700 rounded-full text-white hover:bg-slate-600 transition-colors font-medium text-xs"
+                                                >
+                                                    仅保存
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        const id = editingTopicId;
+                                                        setEditedPrompts(prev => ({ ...prev, [id]: draftPrompt }));
+                                                        setShowPromptEdit(false);
+                                                        setEditingTopicId(null);
+                                                        try { fetch('/api/prompts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, prompt: draftPrompt }) }); } catch { }
+                                                        handleCardClick(id);
+                                                    }}
+                                                    className="ml-3 px-6 py-2 bg-emerald-600 rounded-full text-white hover:bg-emerald-700 transition-colors font-medium text-sm"
+                                                >
+                                                    保存并生成
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <div className="text-xs text-slate-400">局域网访问地址</div>
-                                            <div className="text-sm font-mono text-slate-200 select-all">
-                                                http://{LAN_IP}
+                                    )}
+
+                                    {/* LAN IP Display */}
+                                    <div className="pt-4 border-t border-white/5">
+                                        <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl">
+                                            <div className="p-2 bg-blue-500/20 rounded-lg">
+                                                <Network className="w-4 h-4 text-blue-400" />
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-slate-400">局域网访问地址</div>
+                                                <div className="text-sm font-mono text-slate-200 select-all">
+                                                    http://{LAN_IP}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
+                                </motion.div>
                             </motion.div>
-                        </motion.div>
-                    )
-                }
-            </AnimatePresence>
+                        )
+                    }
+                </AnimatePresence>
 
-            {/* Add Card Modal */}
-            <AnimatePresence>
-                {
-                    showAddCard && (
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-                        >
+                {/* Add Card Modal */}
+                <AnimatePresence>
+                    {
+                        showAddCard && (
                             <motion.div
-                                initial={{ scale: 0.9, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ scale: 0.9, opacity: 0 }}
-                                className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-6"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
                             >
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-lg font-medium">添加新冥想卡片</h3>
-                                    <button onClick={() => setShowAddCard(false)} className="p-2 hover:bg-white/10 rounded-full">
-                                        <X className="w-5 h-5" />
-                                    </button>
-                                </div>
+                                <motion.div
+                                    initial={{ scale: 0.9, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    exit={{ scale: 0.9, opacity: 0 }}
+                                    className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-6"
+                                >
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="text-lg font-medium">添加新冥想卡片</h3>
+                                        <button onClick={() => setShowAddCard(false)} className="p-2 hover:bg-white/10 rounded-full">
+                                            <X className="w-5 h-5" />
+                                        </button>
+                                    </div>
 
-                                <div className="space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs text-slate-400 uppercase tracking-wider">标题</label>
-                                        <input
-                                            value={newCardTitle}
-                                            onChange={(e) => setNewCardTitle(e.target.value)}
-                                            className="w-full bg-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-slate-600"
-                                            placeholder="例如：缓解焦虑"
-                                        />
+                                    <div className="space-y-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs text-slate-400 uppercase tracking-wider">标题</label>
+                                            <input
+                                                value={newCardTitle}
+                                                onChange={(e) => setNewCardTitle(e.target.value)}
+                                                className="w-full bg-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-slate-600"
+                                                placeholder="例如：缓解焦虑"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs text-slate-400 uppercase tracking-wider">引导提示词</label>
+                                            <textarea
+                                                value={newCardPrompt}
+                                                onChange={(e) => setNewCardPrompt(e.target.value)}
+                                                className="w-full h-32 bg-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-slate-600 resize-none"
+                                                placeholder="输入生成冥想词的 Prompt..."
+                                            />
+                                        </div>
+
+                                        <button
+                                            onClick={async () => {
+                                                if (!newCardTitle || !newCardPrompt) return;
+                                                try {
+                                                    const res = await fetch('/api/meditation/cards', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({
+                                                            title: newCardTitle,
+                                                            prompt: newCardPrompt,
+                                                            icon_name: 'wind', // Default icon for now
+                                                            color_from: 'rose-400',
+                                                            color_to: 'pink-600'
+                                                        })
+                                                    });
+                                                    if (res.ok) {
+                                                        const newCard = await res.json();
+                                                        setCustomTopics(prev => [{ ...newCard, icon: Wind }, ...prev]);
+                                                        setShowAddCard(false);
+                                                    }
+                                                } catch (e) {
+                                                    console.error("Failed to create", e);
+                                                }
+                                            }}
+                                            className="w-full py-3 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-colors"
+                                        >
+                                            创建卡片
+                                        </button>
                                     </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs text-slate-400 uppercase tracking-wider">引导提示词</label>
-                                        <textarea
-                                            value={newCardPrompt}
-                                            onChange={(e) => setNewCardPrompt(e.target.value)}
-                                            className="w-full h-32 bg-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-slate-600 resize-none"
-                                            placeholder="输入生成冥想词的 Prompt..."
-                                        />
-                                    </div>
+                                </motion.div>
+                            </motion.div>
+                        )
+                    }
+                </AnimatePresence>
+
+                {/* Active Card Overlay */}
+                <AnimatePresence>
+                    {
+                        activeCard && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+                                style={{ background: 'rgba(0, 0, 0, 0.3)' }}
+                            >
+                                <motion.div
+                                    layoutId={`card-${activeCard}`}
+                                    className="w-full max-w-md rounded-3xl p-8 shadow-2xl relative overflow-hidden flex flex-col h-[80vh]"
+                                    style={{
+                                        background: 'rgba(255, 255, 255, 0.25)',
+                                        backdropFilter: 'blur(20px) saturate(180%) brightness(120%)',
+                                        WebkitBackdropFilter: 'blur(20px) saturate(180%) brightness(120%)',
+                                        border: '1px solid rgba(255, 255, 255, 0.4)',
+                                        boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.2), inset 0 1px 1px 0 rgba(255, 255, 255, 0.5)',
+                                    }}
+                                >
+                                    {/* Glass edge refraction effect */}
+                                    <div
+                                        className="absolute inset-0 rounded-3xl pointer-events-none"
+                                        style={{
+                                            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, 0.15) 100%)',
+                                        }}
+                                    />
 
                                     <button
-                                        onClick={async () => {
-                                            if (!newCardTitle || !newCardPrompt) return;
-                                            try {
-                                                const res = await fetch('/api/meditation/cards', {
-                                                    method: 'POST',
+                                        onClick={() => {
+                                            setActiveCard(null);
+                                            // Stop audio when closing card
+                                            setIsPlaying(false);
+                                            setAudioQueue([]);
+                                            if (currentSourceRef.current) {
+                                                try { currentSourceRef.current.stop(); } catch { }
+                                            }
+                                            if (window.electron) {
+                                                window.electron.stopMeditation();
+                                            }
+
+                                            // Record Session End
+                                            if (currentSessionId) {
+                                                fetch('/api/meditation/sessions', {
+                                                    method: 'PATCH',
                                                     headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({
-                                                        title: newCardTitle,
-                                                        prompt: newCardPrompt,
-                                                        icon_name: 'wind', // Default icon for now
-                                                        color_from: 'rose-400',
-                                                        color_to: 'pink-600'
-                                                    })
-                                                });
-                                                if (res.ok) {
-                                                    const newCard = await res.json();
-                                                    setCustomTopics(prev => [{ ...newCard, icon: Wind }, ...prev]);
-                                                    setShowAddCard(false);
-                                                }
-                                            } catch (e) {
-                                                console.error("Failed to create", e);
+                                                    body: JSON.stringify({ id: currentSessionId })
+                                                }).catch(e => console.error("Failed to specific session end", e));
+                                                setCurrentSessionId(null);
                                             }
                                         }}
-                                        className="w-full py-3 bg-white text-black font-medium rounded-xl hover:bg-white/90 transition-colors"
-                                    >
-                                        创建卡片
+                                        className="absolute top-6 right-6 p-2 rounded-full text-slate-400 hover:bg-white/10 hover:text-white transition-colors z-50"
+                                        style={{
+                                            background: 'rgba(255, 255, 255, 0.1)',
+                                            backdropFilter: 'blur(10px)',
+                                            WebkitBackdropFilter: 'blur(10px)',
+                                        }}
+                                    >                                  <span className="sr-only">Close</span>
+                                        ✕
                                     </button>
-                                </div>
+
+                                    <div className="flex-1 overflow-y-auto space-y-4 mt-8 custom-scrollbar relative">
+                                        {text ? (
+                                            <p className="text-lg leading-relaxed text-slate-200 whitespace-pre-wrap">{text}</p>
+                                        ) : (
+                                            <div className="flex items-center justify-center h-full">
+                                                <div className="animate-pulse text-slate-500">吸气...</div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-6 flex justify-center">
+                                        <button
+                                            onClick={async () => { await ensureAudioContext(); await primeAudio(); setIsPlaying(!isPlaying); }}
+                                            className="p-4 bg-white text-slate-900 rounded-full hover:scale-105 transition-transform"
+                                        >
+                                            {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
+                                        </button>
+                                    </div>
+                                </motion.div>
                             </motion.div>
-                        </motion.div>
-                    )
-                }
-            </AnimatePresence>
-
-            {/* Active Card Overlay */}
-            <AnimatePresence>
-                {
-                    activeCard && (
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
-                            style={{ background: 'rgba(0, 0, 0, 0.3)' }}
-                        >
-                            <motion.div
-                                layoutId={`card-${activeCard}`}
-                                className="w-full max-w-md rounded-3xl p-8 shadow-2xl relative overflow-hidden flex flex-col h-[80vh]"
-                                style={{
-                                    background: 'rgba(255, 255, 255, 0.25)',
-                                    backdropFilter: 'blur(20px) saturate(180%) brightness(120%)',
-                                    WebkitBackdropFilter: 'blur(20px) saturate(180%) brightness(120%)',
-                                    border: '1px solid rgba(255, 255, 255, 0.4)',
-                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.2), inset 0 1px 1px 0 rgba(255, 255, 255, 0.5)',
-                                }}
-                            >
-                                {/* Glass edge refraction effect */}
-                                <div
-                                    className="absolute inset-0 rounded-3xl pointer-events-none"
-                                    style={{
-                                        background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, 0.15) 100%)',
-                                    }}
-                                />
-
-                                <button
-                                    onClick={() => {
-                                        setActiveCard(null);
-                                        // Stop audio when closing card
-                                        setIsPlaying(false);
-                                        setAudioQueue([]);
-                                        if (currentSourceRef.current) {
-                                            try { currentSourceRef.current.stop(); } catch { }
-                                        }
-                                        if (window.electron) {
-                                            window.electron.stopMeditation();
-                                        }
-
-                                        // Record Session End
-                                        if (currentSessionId) {
-                                            fetch('/api/meditation/sessions', {
-                                                method: 'PATCH',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ id: currentSessionId })
-                                            }).catch(e => console.error("Failed to specific session end", e));
-                                            setCurrentSessionId(null);
-                                        }
-                                    }}
-                                    className="absolute top-6 right-6 p-2 rounded-full text-slate-400 hover:bg-white/10 hover:text-white transition-colors z-50"
-                                    style={{
-                                        background: 'rgba(255, 255, 255, 0.1)',
-                                        backdropFilter: 'blur(10px)',
-                                        WebkitBackdropFilter: 'blur(10px)',
-                                    }}
-                                >                                  <span className="sr-only">Close</span>
-                                    ✕
-                                </button>
-
-                                <div className="flex-1 overflow-y-auto space-y-4 mt-8 custom-scrollbar relative">
-                                    {text ? (
-                                        <p className="text-lg leading-relaxed text-slate-200 whitespace-pre-wrap">{text}</p>
-                                    ) : (
-                                        <div className="flex items-center justify-center h-full">
-                                            <div className="animate-pulse text-slate-500">吸气...</div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="mt-6 flex justify-center">
-                                    <button
-                                        onClick={async () => { await ensureAudioContext(); await primeAudio(); setIsPlaying(!isPlaying); }}
-                                        className="p-4 bg-white text-slate-900 rounded-full hover:scale-105 transition-transform"
-                                    >
-                                        {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
-                                    </button>
-                                </div>
-                            </motion.div>
-                        </motion.div>
-                    )
-                }
-            </AnimatePresence >
-        </>
+                        )
+                    }
+                </AnimatePresence >
+            </>
+        </AuthGuard>
     );
 }

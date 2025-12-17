@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, Trash2, Plus, Sparkles, RotateCcw, Pencil, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import AuthGuard from "@/components/AuthGuard";
 // Removed Server Actions import
 // import { createCard, getCards, deleteCard, type TTSCard } from "./actions";
 
@@ -478,123 +479,125 @@ export default function TTSStudioPage() {
     };
 
     return (
-        <div className="min-h-screen text-white">
-            <main className="relative z-10 max-w-6xl mx-auto px-6 py-12 pt-24 pb-32">
-                <div className="text-center mb-8">
-                    <h1 className="text-2xl font-medium tracking-tight text-white/90">声波工坊</h1>
-                    <p className="text-rose-200/60 text-sm mt-1">Text to Speech Studio</p>
-                </div>
-                <GlassInput onAdd={fetchCards} />
-
-                <div className="mt-16">
-                    <div className="flex items-center gap-4 mb-8">
-                        <h3 className="text-xl font-medium text-white/90">我的语料库</h3>
-                        <span className="px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-200 text-xs border border-rose-500/10">
-                            {cards.length}
-                        </span>
+        <AuthGuard>
+            <div className="min-h-screen text-white">
+                <main className="relative z-10 max-w-6xl mx-auto px-6 py-12 pt-24 pb-32">
+                    <div className="text-center mb-8">
+                        <h1 className="text-2xl font-medium tracking-tight text-white/90">声波工坊</h1>
+                        <p className="text-rose-200/60 text-sm mt-1">Text to Speech Studio</p>
                     </div>
+                    <GlassInput onAdd={fetchCards} />
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        <AnimatePresence>
-                            {cards.length > 0 && cards.map(card => (
-                                <TTSCardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} />
-                            ))}
-                        </AnimatePresence>
-                        {cards.length === 0 && (
-                            <div className="col-span-full py-20 text-center text-rose-200/40 border border-dashed border-rose-200/10 rounded-3xl">
-                                <p>这里空空如也，试着创建一个新的语音卡片吧。</p>
-                            </div>
-                        )}
+                    <div className="mt-16">
+                        <div className="flex items-center gap-4 mb-8">
+                            <h3 className="text-xl font-medium text-white/90">我的语料库</h3>
+                            <span className="px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-200 text-xs border border-rose-500/10">
+                                {cards.length}
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <AnimatePresence>
+                                {cards.length > 0 && cards.map(card => (
+                                    <TTSCardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} />
+                                ))}
+                            </AnimatePresence>
+                            {cards.length === 0 && (
+                                <div className="col-span-full py-20 text-center text-rose-200/40 border border-dashed border-rose-200/10 rounded-3xl">
+                                    <p>这里空空如也，试着创建一个新的语音卡片吧。</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
-            </main>
+                </main>
 
-            {/* Edit Modal */}
-            <AnimatePresence>
-                {editingCard && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-                        onClick={() => setEditingCard(null)}
-                    >
+                {/* Edit Modal */}
+                <AnimatePresence>
+                    {editingCard && (
                         <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            className="relative w-full max-w-lg bg-zinc-900/95 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/10"
-                            onClick={(e) => e.stopPropagation()}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                            onClick={() => setEditingCard(null)}
                         >
-                            {/* Close Button */}
-                            <button
-                                onClick={() => setEditingCard(null)}
-                                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white transition-colors"
-                                title="关闭"
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                className="relative w-full max-w-lg bg-zinc-900/95 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/10"
+                                onClick={(e) => e.stopPropagation()}
                             >
-                                <X className="w-5 h-5" />
-                            </button>
+                                {/* Close Button */}
+                                <button
+                                    onClick={() => setEditingCard(null)}
+                                    className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white transition-colors"
+                                    title="关闭"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
 
-                            <h2 className="text-lg font-medium text-white mb-6">编辑卡片</h2>
+                                <h2 className="text-lg font-medium text-white mb-6">编辑卡片</h2>
 
-                            <div className="space-y-4">
-                                {/* Title */}
-                                <div className="space-y-2">
-                                    <label className="text-xs text-slate-400 uppercase tracking-wider">标题</label>
-                                    <input
-                                        value={editTitle}
-                                        onChange={(e) => setEditTitle(e.target.value)}
-                                        className="w-full bg-slate-800 rounded-xl p-3 text-white focus:ring-2 focus:ring-rose-500 outline-none"
-                                        placeholder="卡片标题..."
-                                    />
+                                <div className="space-y-4">
+                                    {/* Title */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs text-slate-400 uppercase tracking-wider">标题</label>
+                                        <input
+                                            value={editTitle}
+                                            onChange={(e) => setEditTitle(e.target.value)}
+                                            className="w-full bg-slate-800 rounded-xl p-3 text-white focus:ring-2 focus:ring-rose-500 outline-none"
+                                            placeholder="卡片标题..."
+                                        />
+                                    </div>
+
+                                    {/* Content */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs text-slate-400 uppercase tracking-wider">内容</label>
+                                        <textarea
+                                            value={editContent}
+                                            onChange={(e) => setEditContent(e.target.value)}
+                                            className="w-full h-40 bg-slate-800 rounded-xl p-3 text-white focus:ring-2 focus:ring-rose-500 outline-none resize-none"
+                                            placeholder="语料内容... (支持 [pause 1s] 和 [rate -10%])"
+                                        />
+                                    </div>
+
+                                    {/* Voice */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs text-slate-400 uppercase tracking-wider">语音</label>
+                                        <select
+                                            value={editVoiceId}
+                                            onChange={(e) => setEditVoiceId(e.target.value)}
+                                            className="w-full bg-slate-800 rounded-xl p-3 text-white focus:ring-2 focus:ring-rose-500 outline-none appearance-none cursor-pointer"
+                                        >
+                                            {VOICES.map(v => (
+                                                <option key={v.id} value={v.id} className="bg-zinc-900">{v.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="flex justify-end gap-3 pt-4">
+                                        <button
+                                            onClick={() => setEditingCard(null)}
+                                            className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
+                                        >
+                                            取消
+                                        </button>
+                                        <button
+                                            onClick={handleSaveEdit}
+                                            disabled={isSaving}
+                                            className="px-6 py-2 bg-rose-500 text-white rounded-xl hover:bg-rose-400 transition-colors disabled:opacity-50"
+                                        >
+                                            {isSaving ? "保存中..." : "保存"}
+                                        </button>
+                                    </div>
                                 </div>
-
-                                {/* Content */}
-                                <div className="space-y-2">
-                                    <label className="text-xs text-slate-400 uppercase tracking-wider">内容</label>
-                                    <textarea
-                                        value={editContent}
-                                        onChange={(e) => setEditContent(e.target.value)}
-                                        className="w-full h-40 bg-slate-800 rounded-xl p-3 text-white focus:ring-2 focus:ring-rose-500 outline-none resize-none"
-                                        placeholder="语料内容... (支持 [pause 1s] 和 [rate -10%])"
-                                    />
-                                </div>
-
-                                {/* Voice */}
-                                <div className="space-y-2">
-                                    <label className="text-xs text-slate-400 uppercase tracking-wider">语音</label>
-                                    <select
-                                        value={editVoiceId}
-                                        onChange={(e) => setEditVoiceId(e.target.value)}
-                                        className="w-full bg-slate-800 rounded-xl p-3 text-white focus:ring-2 focus:ring-rose-500 outline-none appearance-none cursor-pointer"
-                                    >
-                                        {VOICES.map(v => (
-                                            <option key={v.id} value={v.id} className="bg-zinc-900">{v.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {/* Actions */}
-                                <div className="flex justify-end gap-3 pt-4">
-                                    <button
-                                        onClick={() => setEditingCard(null)}
-                                        className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
-                                    >
-                                        取消
-                                    </button>
-                                    <button
-                                        onClick={handleSaveEdit}
-                                        disabled={isSaving}
-                                        className="px-6 py-2 bg-rose-500 text-white rounded-xl hover:bg-rose-400 transition-colors disabled:opacity-50"
-                                    >
-                                        {isSaving ? "保存中..." : "保存"}
-                                    </button>
-                                </div>
-                            </div>
+                            </motion.div>
                         </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
+                    )}
+                </AnimatePresence>
+            </div>
+        </AuthGuard>
     );
 }
