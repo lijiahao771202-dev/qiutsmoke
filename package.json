@@ -63,6 +63,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "cross-env": "^10.1.0",
     "edgeone-pages-mcp": "^0.0.15",
     "electron": "^39.2.3",
