@@ -268,33 +268,50 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     };
 
     // -------------------------------------------------------------------------
-    // Queue Processor
+    // Audio Queue Processing (Ref-Based Loop)
     // -------------------------------------------------------------------------
-    useEffect(() => {
-        // Conditions to run:
-        // 1. Must be 'isPlaying' (global switch)
-        // 2. Queue must have items
-        // 3. Not currently processing an item
-        // 4. Not in "User Paused" state (which sets isPlaying=false, so captured by #1)
-        if (!isPlaying || isPaused || audioQueue.length === 0 || processingRef.current) {
-            if (audioQueue.length === 0 && isPlaying && !processingRef.current) {
-                setIsPlaying(false); // Finished naturally
+
+    const stopSignalRef = useRef(false);
+
+    const processQueue = async (initialQueue: QueueItem[]) => {
+        // Stop any previous processing
+        stopSignalRef.current = false;
+        processingRef.current = true; // Mark global processing
+
+        // We use a local queue copy to iterate, handling the sequence without state updates interrupting
+        // However, we need to update UI to show progress. 
+        // Strategy: 
+        // 1. We keep the full queue in Ref for the loop. 
+        // 2. We update State just for "View", but the Loop uses the Ref.
+
+        const queue = [...initialQueue];
+
+        for (let i = 0; i < queue.length; i++) {
+            // Check stop signal (e.g. Pause or Stop clicked)
+            if (stopSignalRef.current) {
+                // Save remaining items back to state so we can resume later?
+                // For now, Pause simply stops playback. We can implement Resume logic 
+                // by slicing the queue from 'i' and saving to state.
+                const remaining = queue.slice(i);
+                setAudioQueue(remaining);
+                processingRef.current = false;
+                return;
             }
-            return;
-        }
 
-        const item = audioQueue[0];
-        processingRef.current = true;
-        setIsLoadingAudio(item.type === 'text' && !item.url); // Loading only if fetching
+            const item = queue[i];
 
-        const process = async () => {
+            // UI Update: Remove item from visible queue *as we start it* or *after*?
+            // Let's remove it from UI queue to show progress
+            setAudioQueue(prev => prev.length > 0 ? prev.slice(1) : []);
+
             try {
                 if (item.type === 'pause') {
                     const url = createSilenceWavURL(item.duration);
                     await playAudioElement(url);
                 } else if (item.type === 'text') {
+                    setIsLoadingAudio(true);
                     let url = item.url;
-                    // JIT Fetch
+
                     if (!url) {
                         try {
                             const res = await fetch("/api/tts", {
@@ -308,59 +325,53 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                             if (res.ok) {
                                 const blob = await res.blob();
                                 url = URL.createObjectURL(blob);
-                            } else {
-                                console.error("TTS Fetch Failed");
                             }
                         } catch (e) {
-                            console.error("Fetch error", e);
+                            console.error("Fetch failed", e);
                         }
                     }
+                    setIsLoadingAudio(false);
 
                     if (url) {
                         await playAudioElement(url);
-                    } else {
-                        // Skip if failed
-                        await new Promise(r => setTimeout(r, 500)); // Safety delay
                     }
                 }
             } catch (err) {
-                console.error("Process error", err);
-            } finally {
-                processingRef.current = false;
-                setIsLoadingAudio(false);
-                // Shift Queue
-                setAudioQueue(prev => prev.slice(1));
+                console.error("Item Error", err);
             }
-        };
+        }
 
-        process();
+        // Loop Finished
+        if (!stopSignalRef.current) {
+            setIsPlaying(false);
+            setIsPaused(false);
+            stopSignalRef.current = false;
+        }
+        processingRef.current = false;
+    };
 
-    }, [audioQueue, isPlaying, isPaused]);
-
-
-    // -------------------------------------------------------------------------
-    // Controls
-    // -------------------------------------------------------------------------
 
     const startNewPlayback = async () => {
-        // 1. Reset
         if (currentAudioRef.current) {
             currentAudioRef.current.pause();
             currentAudioRef.current = null;
         }
-        processingRef.current = false;
+        stopSignalRef.current = true; // Stop existing
+        await new Promise(r => setTimeout(r, 50)); // Tiny yield
 
-        // 2. Parse
         const segments: QueueItem[] = [];
         let currentRate = card.rate || "0%";
-        const regex = /(\[(?:pause\s+\d+s|rate\s+[+-]?\d+%)\])/g;
+        // Flexible Regex: Match [pause...] or [rate...] with any content inside brackets
+        const regex = /(\[(?:pause|rate)[^\]]+\])/g;
         const parts = card.content.split(regex);
 
         for (const part of parts) {
             if (!part.trim()) continue;
             if (part.startsWith("[")) {
+                // Flexible parsing
                 if (part.includes("pause")) {
-                    const match = part.match(/pause\s+(\d+)s/);
+                    // Match: pause 5s, pause:5s, pause=5s
+                    const match = part.match(/pause\s*[:=]?\s*(\d+)\s*s/i);
                     if (match) {
                         segments.push({
                             type: 'pause',
@@ -369,7 +380,8 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                         });
                     }
                 } else if (part.includes("rate")) {
-                    const match = part.match(/rate\s+([+-]?\d+%)/);
+                    // Match: rate 10%, rate:-10%
+                    const match = part.match(/rate\s*[:=]?\s*([+-]?\d+%)/i);
                     if (match) currentRate = match[1];
                 }
             } else {
@@ -383,34 +395,28 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             }
         }
 
-        // 3. Set Queue & Start
         setAudioQueue(segments);
         setIsPlaying(true);
         setIsPaused(false);
+
+        // Start the loop
+        processQueue(segments);
     };
 
     const togglePlay = () => {
         if (isPlaying) {
-            // Pause
+            // PAUSE
+            stopSignalRef.current = true; // Signal loop to stop
             if (currentAudioRef.current) currentAudioRef.current.pause();
             setIsPlaying(false);
             setIsPaused(true);
         } else {
-            // Resume or Start
+            // RESUME or START
             if (isPaused && audioQueue.length > 0) {
-                // Resume
+                // RESUME
                 setIsPlaying(true);
                 setIsPaused(false);
-                if (currentAudioRef.current) currentAudioRef.current.play();
-                // If it was in the middle of a "promise await", setting isPlaying=true
-                // won't automatically resume the promise if it's strictly waiting on "ended".
-                // But for <audio>, calling .play() resumes it, eventually firing 'ended'.
-                // If it was fetching (isLoadingAudio), the promise is running in background.
-                // When fetch finishes, it checks nothing??
-                // Actually, the `process` function in useEffect doesn't check isPlaying *during* execution usually.
-                // But fetching is just fetch.
-                // The `playAudioElement` attaches `onended`. If we pause, `onended` doesn't fire.
-                // So calling play() resumes it.
+                processQueue(audioQueue); // Resume with current state queue
             } else {
                 startNewPlayback();
             }

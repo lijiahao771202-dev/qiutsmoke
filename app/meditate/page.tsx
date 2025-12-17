@@ -591,7 +591,7 @@ export default function MeditatePage() {
 
         try {
             // Regex to find tags or sentence endings
-            // Matches: [pause 5s], [rate -10%], or sentence endings (.!?)
+            // Matches: [pause 5s], [pause:5s], [rate -10%], or sentence endings (.!?)
             const tokenRegex = /((?:\[(?:pause|rate)[^\]]*\])|(?:[.!?\n。！？，,]+))/;
 
             while (true) {
@@ -612,7 +612,8 @@ export default function MeditatePage() {
                     }
 
                     if (token.includes("pause")) {
-                        const durationMatch = token.match(/(\d+)/);
+                        // Match: pause 5s, pause:5s, etc.
+                        const durationMatch = token.match(/pause\s*[:=]?\s*(\d+)/i);
                         if (durationMatch) {
                             const dur = parseInt(durationMatch[1]);
                             const url = createSilenceWavURL(dur);
@@ -623,7 +624,8 @@ export default function MeditatePage() {
                             }]);
                         }
                     } else if (token.includes("rate")) {
-                        const rateMatch = token.match(/([+-]?\d+%)/);
+                        // Match: rate 10%, rate:-10%
+                        const rateMatch = token.match(/rate\s*[:=]?\s*([+-]?\d+%)/i);
                         if (rateMatch) {
                             currentRate.current = rateMatch[1];
                         }
