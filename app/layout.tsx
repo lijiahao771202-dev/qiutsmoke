@@ -21,6 +21,14 @@ export const metadata: Metadata = {
   title: "Rain - Meditation App",
   description: "Quit smoking and find peace with AI-guided meditation.",
   manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "Rain",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: {
+    telephone: false, // matches telephone=no
+  },
 };
 
 export const viewport: Viewport = {
@@ -38,14 +46,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="Rain" />
-        <meta name="format-detection" content="telephone=no" />
-        <link rel="manifest" href="/manifest.json" />
-      </head>
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} antialiased min-h-screen relative overflow-x-hidden`}
       >
