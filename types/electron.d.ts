@@ -9,6 +9,7 @@ declare global {
             onMeditationError: (callback: (error: string) => void) => void;
             onMeditationDone: (callback: () => void) => void;
             removeMeditationListeners: () => void;
+            stopMeditation: () => void;
         };
     }
 }
