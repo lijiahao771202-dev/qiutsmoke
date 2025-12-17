@@ -124,213 +124,305 @@ function GlassInput({ onAdd }: { onAdd: () => void }) {
 // Component: TTS Card with Audio Logic
 // -----------------------------------------------------------------------------
 
+// Helper: Generate Silence WAV Blob
+const createSilenceWavURL = (seconds: number) => {
+    const sr = 44100;
+    const sec = Math.max(0.05, seconds);
+    const samples = Math.max(1, Math.floor(sr * sec));
+    const channels = 1;
+    const bps = 16;
+    const blockAlign = (channels * bps) >> 3;
+    const byteRate = sr * blockAlign;
+    const dataSize = samples * blockAlign;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+    const writeStr = (offset: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i)); };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, channels, true);
+    view.setUint32(24, sr, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bps, true);
+    writeStr(36, 'data');
+    view.setUint32(40, dataSize, true);
+    const blob = new Blob([view], { type: 'audio/wav' });
+    return URL.createObjectURL(blob);
+};
+
+// -----------------------------------------------------------------------------
+// Component: TTS Card with Audio Logic
+// -----------------------------------------------------------------------------
+
 function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id: string) => void; onEdit: (card: TTSCard) => void }) {
+    // Queue State
+    type QueueItem =
+        | { type: 'pause', duration: number, id: string }
+        | { type: 'text', content: string, rate: string, voiceId: string, id: string, url?: string };
+
+    const [audioQueue, setAudioQueue] = useState<QueueItem[]>([]);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [isPaused, setIsPaused] = useState(false);
-    // const [isHovered, setIsHovered] = useState(false); // Removed for mobile UX
+    const [isPaused, setIsPaused] = useState(false); // UI state for "paused by user"
     const [isLoadingAudio, setIsLoadingAudio] = useState(false);
 
     // Refs
-    const stopRef = useRef<(() => void) | null>(null);
+    const processingRef = useRef(false);
     const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+    const wakeLockRef = useRef<any>(null);
+
+    // WakeLock Management
+    const requestWakeLock = async () => {
+        if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+            try {
+                wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+            } catch (err) {
+                console.warn('Wake Lock request failed:', err);
+            }
+        }
+    };
+
+    const releaseWakeLock = async () => {
+        if (wakeLockRef.current) {
+            try {
+                await wakeLockRef.current.release();
+                wakeLockRef.current = null;
+            } catch (err) {
+                console.warn('Wake Lock release failed:', err);
+            }
+        }
+    };
+
+    // Effect: Handle Wake Lock based on global playing state
+    useEffect(() => {
+        if (isPlaying) requestWakeLock();
+        else releaseWakeLock();
+        return () => { releaseWakeLock(); };
+    }, [isPlaying]);
 
     // Cleanup on unmount
     useEffect(() => {
         return () => {
-            if (stopRef.current) stopRef.current();
-        };
-    }, []);
-
-    const stopPlayback = () => {
-        if (stopRef.current) stopRef.current();
-        currentAudioRef.current = null; // Clear ref
-        setIsPlaying(false);
-        setIsPaused(false);
-        setIsLoadingAudio(false);
-    };
-
-
-    const createSilenceWavURL = (seconds: number) => {
-        const sr = 44100;
-        const sec = Math.max(0.05, seconds);
-        const samples = Math.max(1, Math.floor(sr * sec));
-        const channels = 1;
-        const bps = 16;
-        const blockAlign = (channels * bps) >> 3;
-        const byteRate = sr * blockAlign;
-        const dataSize = samples * blockAlign;
-        const buffer = new ArrayBuffer(44 + dataSize);
-        const view = new DataView(buffer);
-        const writeStr = (offset: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i)); };
-        writeStr(0, 'RIFF');
-        view.setUint32(4, 36 + dataSize, true);
-        writeStr(8, 'WAVE');
-        writeStr(12, 'fmt ');
-        view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true);
-        view.setUint16(22, channels, true);
-        view.setUint32(24, sr, true);
-        view.setUint32(28, byteRate, true);
-        view.setUint16(32, blockAlign, true);
-        view.setUint16(34, bps, true);
-        writeStr(36, 'data');
-        view.setUint32(40, dataSize, true);
-        // Data is initialized to 0 (silence) by default in ArrayBuffer/DataView
-        const blob = new Blob([view], { type: 'audio/wav' });
-        return URL.createObjectURL(blob);
-    };
-
-    const startPlayback = async () => {
-        setIsLoadingAudio(true);
-        setIsPaused(false);
-
-        // Reset stop reference logic
-        let shouldStop = false;
-
-        // Helper to play an audio URL (speech or silence)
-        const playAudioUrl = (url: string): Promise<void> => {
-            return new Promise((resolve, reject) => {
-                if (shouldStop) {
-                    resolve();
-                    return;
-                }
-
-                const audio = new Audio(url);
-                audio.preload = 'auto'; // Important for mobile
-                // @ts-ignore
-                audio.playsInline = true;
-                currentAudioRef.current = audio;
-
-                audio.onended = () => {
-                    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
-                    resolve();
-                };
-
-                audio.onerror = (e) => {
-                    console.error("Audio playback error", e);
-                    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
-                    reject(e);
-                };
-
-                // Override stopRef to handle this specific audio instance
-                const prevStop = stopRef.current;
-                stopRef.current = () => {
-                    shouldStop = true;
-                    audio.pause();
-                    audio.currentTime = 0;
-                    if (currentAudioRef.current === audio) {
-                        currentAudioRef.current = null;
-                    }
-                    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
-                    resolve();
-                };
-
-                audio.play().catch(e => {
-                    console.error("Play prevented", e);
-                    // If play fails (e.g. interaction policy), we typically resolve to continue or stop
-                    resolve();
-                });
-            });
-        };
-
-        stopRef.current = () => {
-            shouldStop = true;
             if (currentAudioRef.current) {
                 currentAudioRef.current.pause();
                 currentAudioRef.current = null;
             }
+            setAudioQueue([]);
+        };
+    }, []);
+
+    // -------------------------------------------------------------------------
+    // Audio Playback Helpers
+    // -------------------------------------------------------------------------
+
+    const playAudioElement = (url: string): Promise<void> => {
+        return new Promise((resolve) => {
+            const audio = new Audio(url);
+            currentAudioRef.current = audio;
+
+            // Important for mobile/background
+            audio.preload = 'auto';
+            // @ts-ignore
+            audio.playsInline = true;
+
+            // MediaSession Setup
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: card.title || "TTS Playback",
+                    artist: "Rain App",
+                });
+                navigator.mediaSession.setActionHandler('play', () => {
+                    audio.play();
+                    setIsPlaying(true);
+                    setIsPaused(false);
+                });
+                navigator.mediaSession.setActionHandler('pause', () => {
+                    audio.pause();
+                    setIsPlaying(false);
+                    setIsPaused(true);
+                });
+            }
+
+            audio.onended = () => {
+                if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+                resolve();
+            };
+
+            audio.onerror = (e) => {
+                console.error("Audio error:", e);
+                if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+                resolve(); // Resolve anyway to continue queue
+            };
+
+            audio.play().catch(e => {
+                console.error("Play prevented or interrupted:", e);
+                // If paused by system or user manually, we might want to handle differently
+                // But generally in this loop: if error, we move next or stop.
+                // If it's an "NotAllowedError", user didn't interact. But we are in click handler chain mostly.
+                resolve();
+            });
+        });
+    };
+
+    // -------------------------------------------------------------------------
+    // Queue Processor
+    // -------------------------------------------------------------------------
+    useEffect(() => {
+        // Conditions to run:
+        // 1. Must be 'isPlaying' (global switch)
+        // 2. Queue must have items
+        // 3. Not currently processing an item
+        // 4. Not in "User Paused" state (which sets isPlaying=false, so captured by #1)
+        if (!isPlaying || isPaused || audioQueue.length === 0 || processingRef.current) {
+            if (audioQueue.length === 0 && isPlaying && !processingRef.current) {
+                setIsPlaying(false); // Finished naturally
+            }
+            return;
+        }
+
+        const item = audioQueue[0];
+        processingRef.current = true;
+        setIsLoadingAudio(item.type === 'text' && !item.url); // Loading only if fetching
+
+        const process = async () => {
+            try {
+                if (item.type === 'pause') {
+                    const url = createSilenceWavURL(item.duration);
+                    await playAudioElement(url);
+                } else if (item.type === 'text') {
+                    let url = item.url;
+                    // JIT Fetch
+                    if (!url) {
+                        try {
+                            const res = await fetch("/api/tts", {
+                                method: "POST",
+                                body: JSON.stringify({
+                                    text: item.content,
+                                    voice: item.voiceId,
+                                    rate: item.rate
+                                }),
+                            });
+                            if (res.ok) {
+                                const blob = await res.blob();
+                                url = URL.createObjectURL(blob);
+                            } else {
+                                console.error("TTS Fetch Failed");
+                            }
+                        } catch (e) {
+                            console.error("Fetch error", e);
+                        }
+                    }
+
+                    if (url) {
+                        await playAudioElement(url);
+                    } else {
+                        // Skip if failed
+                        await new Promise(r => setTimeout(r, 500)); // Safety delay
+                    }
+                }
+            } catch (err) {
+                console.error("Process error", err);
+            } finally {
+                processingRef.current = false;
+                setIsLoadingAudio(false);
+                // Shift Queue
+                setAudioQueue(prev => prev.slice(1));
+            }
         };
 
-        try {
-            // 1. Parse text
-            const segments: Array<{ text?: string; pause?: number; rate?: string }> = [];
-            let currentRate = card.rate || "0%";
-            const regex = /(\[(?:pause\s+\d+s|rate\s+[+-]?\d+%)\])/g;
-            const parts = card.content.split(regex);
+        process();
 
-            for (const part of parts) {
-                if (!part.trim()) continue;
-                if (part.startsWith("[")) {
-                    if (part.includes("pause")) {
-                        const match = part.match(/pause\s+(\d+)s/);
-                        if (match) segments.push({ pause: parseInt(match[1]) });
-                    } else if (part.includes("rate")) {
-                        const match = part.match(/rate\s+([+-]?\d+%)/);
-                        if (match) currentRate = match[1];
-                    }
-                } else {
-                    segments.push({ text: part, rate: currentRate });
-                }
-            }
+    }, [audioQueue, isPlaying, isPaused]);
 
-            // 2. Playback Loop
-            setIsLoadingAudio(false);
-            setIsPlaying(true);
 
-            for (const seg of segments) {
-                if (shouldStop) break;
+    // -------------------------------------------------------------------------
+    // Controls
+    // -------------------------------------------------------------------------
 
-                if (seg.pause) {
-                    // Use silent audio instead of setTimeout for accurate timing preventing skipping
-                    const silenceUrl = createSilenceWavURL(seg.pause);
-                    await playAudioUrl(silenceUrl);
-                } else if (seg.text) {
-                    const res = await fetch("/api/tts", {
-                        method: "POST",
-                        body: JSON.stringify({
-                            text: seg.text,
-                            voice: card.voice_id,
-                            rate: seg.rate
-                        }),
-                    });
-
-                    if (!res.ok) throw new Error("Audio gen failed");
-                    if (shouldStop) break;
-
-                    const blob = await res.blob();
-                    const url = URL.createObjectURL(blob);
-                    await playAudioUrl(url);
-                }
-            }
-
-            // Finished naturally
-            if (!shouldStop) {
-                setIsPlaying(false);
-                setIsPaused(false);
-            }
-
-        } catch (e) {
-            console.error("Playback error", e);
-            setIsPlaying(false);
-        } finally {
-            // Initializing cleanup if needed
+    const startNewPlayback = async () => {
+        // 1. Reset
+        if (currentAudioRef.current) {
+            currentAudioRef.current.pause();
+            currentAudioRef.current = null;
         }
+        processingRef.current = false;
+
+        // 2. Parse
+        const segments: QueueItem[] = [];
+        let currentRate = card.rate || "0%";
+        const regex = /(\[(?:pause\s+\d+s|rate\s+[+-]?\d+%)\])/g;
+        const parts = card.content.split(regex);
+
+        for (const part of parts) {
+            if (!part.trim()) continue;
+            if (part.startsWith("[")) {
+                if (part.includes("pause")) {
+                    const match = part.match(/pause\s+(\d+)s/);
+                    if (match) {
+                        segments.push({
+                            type: 'pause',
+                            duration: parseInt(match[1]),
+                            id: Math.random().toString(36).substr(2, 9)
+                        });
+                    }
+                } else if (part.includes("rate")) {
+                    const match = part.match(/rate\s+([+-]?\d+%)/);
+                    if (match) currentRate = match[1];
+                }
+            } else {
+                segments.push({
+                    type: 'text',
+                    content: part,
+                    rate: currentRate,
+                    id: Math.random().toString(36).substr(2, 9),
+                    voiceId: card.voice_id
+                });
+            }
+        }
+
+        // 3. Set Queue & Start
+        setAudioQueue(segments);
+        setIsPlaying(true);
+        setIsPaused(false);
     };
 
     const togglePlay = () => {
         if (isPlaying) {
             // Pause
-            if (currentAudioRef.current) {
-                currentAudioRef.current.pause();
-            }
+            if (currentAudioRef.current) currentAudioRef.current.pause();
             setIsPlaying(false);
             setIsPaused(true);
         } else {
             // Resume or Start
-            if (isPaused && currentAudioRef.current) {
-                currentAudioRef.current.play();
+            if (isPaused && audioQueue.length > 0) {
+                // Resume
                 setIsPlaying(true);
                 setIsPaused(false);
+                if (currentAudioRef.current) currentAudioRef.current.play();
+                // If it was in the middle of a "promise await", setting isPlaying=true
+                // won't automatically resume the promise if it's strictly waiting on "ended".
+                // But for <audio>, calling .play() resumes it, eventually firing 'ended'.
+                // If it was fetching (isLoadingAudio), the promise is running in background.
+                // When fetch finishes, it checks nothing??
+                // Actually, the `process` function in useEffect doesn't check isPlaying *during* execution usually.
+                // But fetching is just fetch.
+                // The `playAudioElement` attaches `onended`. If we pause, `onended` doesn't fire.
+                // So calling play() resumes it.
             } else {
-                startPlayback();
+                startNewPlayback();
             }
         }
     };
 
     const handleRestart = () => {
-        stopPlayback();
-        // Allow state to settle then restart
-        setTimeout(() => startPlayback(), 100);
+        if (currentAudioRef.current) currentAudioRef.current.pause();
+        setIsPlaying(false);
+        setIsPaused(false);
+        setAudioQueue([]);
+        setTimeout(() => startNewPlayback(), 100);
     };
 
     return (
@@ -340,8 +432,6 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            onHoverStart={undefined} // Removed
-            onHoverEnd={undefined}   // Removed
             className="group relative"
         >
             <div
@@ -351,7 +441,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 )}
             >
                 {/* Visualizer Background */}
-                {isPlaying && (
+                {(isPlaying && !isPaused) && (
                     <div className="absolute inset-x-0 bottom-0 h-1/2 flex items-end justify-center gap-1 pb-4 opacity-30 pointer-events-none">
                         {[...Array(10)].map((_, i) => (
                             <motion.div
@@ -411,7 +501,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     </div>
                 </div>
 
-                {/* Edit & Delete Buttons - Always visible for better UX on mobile */}
+                {/* Edit & Delete Buttons */}
                 <div className="absolute top-4 right-4 flex gap-2 z-20 opacity-100">
                     <button
                         onClick={(e) => {
