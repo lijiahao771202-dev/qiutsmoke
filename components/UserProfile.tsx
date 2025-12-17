@@ -2,14 +2,13 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { User } from "@supabase/supabase-js";
 import { LogOut, ChevronDown, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import NotificationSettings from "./NotificationSettings";
 
 export default function UserProfile() {
-    const [user, setUser] = useState<User | null>(null);
+    const [user, setUser] = useState<any>(null);
     const [isOpen, setIsOpen] = useState(false);
     const [showNotificationSettings, setShowNotificationSettings] = useState(false);
     const router = useRouter();
@@ -30,7 +29,7 @@ export default function UserProfile() {
         });
 
         return () => subscription.unsubscribe();
-    }, [supabase.auth]);
+    }, []);
 
     // Close dropdown when clicking outside
     useEffect(() => {

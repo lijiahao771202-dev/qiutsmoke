@@ -18,8 +18,7 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
     const [message, setMessage] = useState("");
 
     useEffect(() => {
-        const supported = typeof window !== 'undefined' && "Notification" in window && "serviceWorker" in navigator;
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+        const supported = "Notification" in window && "serviceWorker" in navigator;
         setIsSupported(supported);
 
         if (supported) {

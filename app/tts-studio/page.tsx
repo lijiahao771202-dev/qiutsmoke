@@ -229,22 +229,18 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                         audio.onended = () => resolve();
                         audio.onerror = reject;
 
-                        // 停止当前播放
-                        if (window.electron?.stopMeditation) {
-                            window.electron.stopMeditation();
-                        } else {
-                            const audio = document.querySelector('audio');
-                            if (audio) {
-                                audio.pause();
-                                audio.currentTime = 0;
+                        // Override stopRef to handle this specific audio instance
+                        const prevStop = stopRef.current;
+                        stopRef.current = () => {
+                            audio.pause();
+                            shouldStop = true;
+                            // Clean up global ref
+                            if (currentAudioRef.current === audio) {
+                                currentAudioRef.current = null;
                             }
-                        }
-
-                        // Clean up global ref
-                        if (currentAudioRef.current === audio) {
-                            currentAudioRef.current = null;
-                        }
-                        // Don't call prevStop() recursively here to avoid mess.
+                            // Don't call prevStop() recursively here to avoid mess, just resolve.
+                            resolve();
+                        };
 
                         audio.play().catch(e => {
                             console.error("Play prevented", e);
@@ -568,7 +564,6 @@ export default function TTSStudioPage() {
                                 <div className="space-y-2">
                                     <label className="text-xs text-slate-400 uppercase tracking-wider">语音</label>
                                     <select
-                                        aria-label="选择语音"
                                         value={editVoiceId}
                                         onChange={(e) => setEditVoiceId(e.target.value)}
                                         className="w-full bg-slate-800 rounded-xl p-3 text-white focus:ring-2 focus:ring-rose-500 outline-none appearance-none cursor-pointer"

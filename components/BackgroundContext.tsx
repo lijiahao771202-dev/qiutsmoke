@@ -53,7 +53,6 @@ export function BackgroundProvider({ children }: { children: ReactNode }) {
         if (saved) {
             // Validate if saved ID exists
             const exists = WALLPAPERS.find(w => w.id === saved);
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             if (exists) setWallpaperId(saved);
         }
     }, []);
