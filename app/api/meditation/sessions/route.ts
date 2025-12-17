@@ -113,4 +113,4 @@ export async function PATCH(req: Request) {
     }
 }
 
-export const runtime = 'edge';
+// export const runtime = 'edge'; // Disabled for stability

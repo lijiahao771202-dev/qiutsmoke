@@ -9,8 +9,13 @@ export async function middleware() {
 
 export const config = {
     matcher: [
-        // 只匹配需要特殊处理的路由，这里暂时留空
-        // 如果需要重定向逻辑，在各个页面的 useEffect 中处理
-        '/((?!_next|favicon.ico|.*\\.).*)',
+        /*
+         * Match all request paths except for the ones starting with:
+         * - _next/static (static files)
+         * - _next/image (image optimization files)
+         * - favicon.ico (favicon file)
+         * - public folder files (manifest.json, etc)
+         */
+        '/((?!_next/static|_next/image|favicon.ico|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
     ],
 }
