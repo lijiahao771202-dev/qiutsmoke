@@ -2,15 +2,36 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import webpush from "web-push";
 
-// 配置 VAPID
-webpush.setVapidDetails(
-    process.env.VAPID_EMAIL || "mailto:admin@example.com",
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-    process.env.VAPID_PRIVATE_KEY!
-);
+// VAPID 配置延迟初始化
+let vapidConfigured = false;
+
+function ensureVapidConfigured() {
+    if (vapidConfigured) return true;
+
+    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    const privateKey = process.env.VAPID_PRIVATE_KEY;
+
+    if (!publicKey || !privateKey) {
+        console.warn("VAPID keys not configured");
+        return false;
+    }
+
+    webpush.setVapidDetails(
+        process.env.VAPID_EMAIL || "mailto:admin@example.com",
+        publicKey,
+        privateKey
+    );
+    vapidConfigured = true;
+    return true;
+}
 
 // POST: 手动发送通知给当前用户 (用于测试)
 export async function POST(req: Request) {
+    // 检查 VAPID 配置
+    if (!ensureVapidConfigured()) {
+        return NextResponse.json({ error: "VAPID keys not configured" }, { status: 500 });
+    }
+
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 

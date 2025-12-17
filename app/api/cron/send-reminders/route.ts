@@ -2,25 +2,51 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import webpush from "web-push";
 
-// 配置 VAPID
-webpush.setVapidDetails(
-    process.env.VAPID_EMAIL || "mailto:admin@example.com",
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-    process.env.VAPID_PRIVATE_KEY!
-);
+// VAPID 配置延迟初始化
+let vapidConfigured = false;
+
+function ensureVapidConfigured() {
+    if (vapidConfigured) return true;
+
+    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    const privateKey = process.env.VAPID_PRIVATE_KEY;
+
+    if (!publicKey || !privateKey) {
+        console.warn("VAPID keys not configured");
+        return false;
+    }
+
+    webpush.setVapidDetails(
+        process.env.VAPID_EMAIL || "mailto:admin@example.com",
+        publicKey,
+        privateKey
+    );
+    vapidConfigured = true;
+    return true;
+}
 
 // 这个 API 会被 Vercel Cron 每分钟调用一次
 export async function GET(req: Request) {
+    // 检查 VAPID 配置
+    if (!ensureVapidConfigured()) {
+        return NextResponse.json({ error: "VAPID keys not configured" }, { status: 500 });
+    }
+
     // 验证 Cron 密钥 (可选但推荐)
     const authHeader = req.headers.get("authorization");
     if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // 检查 Supabase 配置
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        return NextResponse.json({ error: "Supabase not configured" }, { status: 500 });
+    }
+
     // 使用 Service Role 访问所有用户数据
     const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
     try {
