@@ -127,7 +127,7 @@ function GlassInput({ onAdd }: { onAdd: () => void }) {
 function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id: string) => void; onEdit: (card: TTSCard) => void }) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [isPaused, setIsPaused] = useState(false);
-    const [isHovered, setIsHovered] = useState(false);
+    // const [isHovered, setIsHovered] = useState(false); // Removed for mobile UX
     const [isLoadingAudio, setIsLoadingAudio] = useState(false);
 
     // Refs
@@ -302,8 +302,8 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            onHoverStart={() => setIsHovered(true)}
-            onHoverEnd={() => setIsHovered(false)}
+            onHoverStart={undefined} // Removed
+            onHoverEnd={undefined}   // Removed
             className="group relative"
         >
             <div
@@ -373,19 +373,15 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     </div>
                 </div>
 
-                {/* Edit & Delete Buttons */}
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: isHovered ? 1 : 0 }}
-                    className="absolute top-4 right-4 flex gap-2 z-20"
-                >
+                {/* Edit & Delete Buttons - Always visible for better UX on mobile */}
+                <div className="absolute top-4 right-4 flex gap-2 z-20 opacity-100">
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
                             onEdit(card);
                         }}
                         title="编辑卡片"
-                        className="p-2 text-zinc-600 hover:text-blue-400 transition-colors"
+                        className="p-2 text-zinc-500/80 hover:text-blue-400 hover:bg-white/10 rounded-full transition-all"
                     >
                         <Pencil className="w-4 h-4" />
                     </button>
@@ -395,11 +391,11 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                             onDelete(card.id);
                         }}
                         title="删除卡片"
-                        className="p-2 text-zinc-600 hover:text-red-400 transition-colors"
+                        className="p-2 text-zinc-500/80 hover:text-red-400 hover:bg-white/10 rounded-full transition-all"
                     >
                         <Trash2 className="w-4 h-4" />
                     </button>
-                </motion.div>
+                </div>
             </div>
         </motion.div>
     );

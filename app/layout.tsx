@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import NavBar from "@/components/NavBar";
 import UserProfile from "@/components/UserProfile";
 import { SWRProvider } from "@/components/SWRProvider";
+import { AuthProvider } from "@/components/AuthProvider";
 import AppWrapper from '@/components/AppWrapper';
 import "./globals.css";
 
@@ -22,8 +23,8 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
 };
 
-export const viewport = {
-  themeColor: "#0f172a",
+export const viewport: Viewport = {
+  themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -49,13 +50,15 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} antialiased min-h-screen relative overflow-x-hidden`}
       >
-        <SWRProvider>
-          <AppWrapper>
-            <NavBar />
-            <UserProfile />
-            {children}
-          </AppWrapper>
-        </SWRProvider>
+        <AuthProvider>
+          <SWRProvider>
+            <AppWrapper>
+              <NavBar />
+              <UserProfile />
+              {children}
+            </AppWrapper>
+          </SWRProvider>
+        </AuthProvider>
         <script
           dangerouslySetInnerHTML={{
             __html: `
