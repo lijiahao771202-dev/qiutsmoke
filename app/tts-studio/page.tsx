@@ -166,149 +166,155 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
     const [audioQueue, setAudioQueue] = useState<QueueItem[]>([]);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [isPaused, setIsPaused] = useState(false); // UI state for "paused by user"
-    const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+    const [isLoadingAudio, setIsLoadingAudio] = useState(false); // For spinning indicator
+    const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
 
     // Refs
-    const processingRef = useRef(false);
-    const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+    const currentItemIdRef = useRef<string | null>(null);
+    const audioContextRef = useRef<AudioContext | null>(null);
     const wakeLockRef = useRef<any>(null);
 
-    // WakeLock Management
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    const ensureAudioContext = async () => {
+        const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
+        if (!audioContextRef.current && AC) {
+            const ctx = new AC();
+            audioContextRef.current = ctx;
+        }
+        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+            await audioContextRef.current.resume();
+        }
+    };
+
     const requestWakeLock = async () => {
         if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
-            try {
-                wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-            } catch (err) {
-                console.warn('Wake Lock request failed:', err);
-            }
+            try { wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch (err) { }
         }
     };
 
     const releaseWakeLock = async () => {
         if (wakeLockRef.current) {
-            try {
-                await wakeLockRef.current.release();
-                wakeLockRef.current = null;
-            } catch (err) {
-                console.warn('Wake Lock release failed:', err);
-            }
+            try { await wakeLockRef.current.release(); wakeLockRef.current = null; } catch (err) { }
         }
     };
 
-    // Effect: Handle Wake Lock based on global playing state
+    // Effect: WakeLock
     useEffect(() => {
         if (isPlaying) requestWakeLock();
         else releaseWakeLock();
         return () => { releaseWakeLock(); };
     }, [isPlaying]);
 
-    // Cleanup on unmount
+    // Cleanup
     useEffect(() => {
         return () => {
-            if (currentAudioRef.current) {
-                currentAudioRef.current.pause();
-                currentAudioRef.current = null;
-            }
+            if (currentAudio) currentAudio.pause();
             setAudioQueue([]);
         };
     }, []);
 
-    // -------------------------------------------------------------------------
-    // Audio Playback Helpers
-    // -------------------------------------------------------------------------
 
+    // -------------------------------------------------------------------------
+    // Audio Playback Engine (Promise Wrapper)
+    // -------------------------------------------------------------------------
     const playAudioElement = (url: string): Promise<void> => {
         return new Promise((resolve) => {
             const audio = new Audio(url);
-            currentAudioRef.current = audio;
+            setCurrentAudio(audio); // Capture ref
 
-            // Important for mobile/background
             audio.preload = 'auto';
             // @ts-ignore
             audio.playsInline = true;
 
-            // MediaSession Setup
+            // MediaSession
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.metadata = new MediaMetadata({
                     title: card.title || "TTS Playback",
                     artist: "Rain App",
                 });
-                navigator.mediaSession.setActionHandler('play', () => {
-                    audio.play();
-                    setIsPlaying(true);
-                    setIsPaused(false);
-                });
-                navigator.mediaSession.setActionHandler('pause', () => {
-                    audio.pause();
-                    setIsPlaying(false);
-                    setIsPaused(true);
-                });
+                navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
+                navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
             }
 
             audio.onended = () => {
                 if (url.startsWith('blob:')) URL.revokeObjectURL(url);
                 resolve();
             };
-
             audio.onerror = (e) => {
-                console.error("Audio error:", e);
+                console.error("Audio error", e);
                 if (url.startsWith('blob:')) URL.revokeObjectURL(url);
-                resolve(); // Resolve anyway to continue queue
+                resolve(); // Resolve anyway to proceed
             };
 
-            audio.play().catch(e => {
-                console.error("Play prevented or interrupted:", e);
-                // If paused by system or user manually, we might want to handle differently
-                // But generally in this loop: if error, we move next or stop.
-                // If it's an "NotAllowedError", user didn't interact. But we are in click handler chain mostly.
-                resolve();
-            });
+            const start = async () => {
+                try {
+                    await ensureAudioContext();
+                    await audio.play();
+                } catch (e) {
+                    console.error("Play failed", e);
+                    resolve();
+                }
+            };
+            start();
         });
     };
 
+    const playSilence = async (seconds: number) => {
+        const url = createSilenceWavURL(seconds);
+        // Use playAudioElement for silence too, to keep consistent event loop
+        return playAudioElement(url);
+    };
+
+
     // -------------------------------------------------------------------------
-    // Audio Queue Processing (Ref-Based Loop)
+    // Queue Consumer (The "Meditation Page" Pattern)
     // -------------------------------------------------------------------------
+    useEffect(() => {
+        // 1. Global Stop/Pause Check
+        if (!isPlaying) {
+            if (currentAudio) currentAudio.pause();
+            currentItemIdRef.current = null; // Reset item lock so it can "Resume" if needed? 
+            // Actually, if we pause, we usually want to resume the SAME item.
+            // But for Simplicity: "Pause" stops playback. "Resume" restarts logic?
+            // User requested: "Resume" logic.
+            // If we pause `currentAudio` (html audio), calling `.play()` resumes it.
+            // But if we are in the middle of a "Promise", the promise is pending "onended".
+            // If we pause, "onended" won't fire.
+            // So if we just set isPlaying=false, the Effect re-runs.
+            // But the *async function* from previous run is still alive?
+            // React's unique challenge. 
+            // In Meditation Page:
+            // if (!isPlaying) { currentAudio.pause(); return; }
+            // So it effectively "Aborts" the check loop.
+            // BUT the async function `(async () => { ... })()` initiated in previous render stays alive?
+            // No, variables in closure might persist.
+            // But `currentAudio` is state.
+            return;
+        }
 
-    const stopSignalRef = useRef(false);
+        // 2. Queue Empty Check
+        if (audioQueue.length === 0) {
+            setIsPlaying(false);
+            return;
+        }
 
-    const processQueue = async (initialQueue: QueueItem[]) => {
-        // Stop any previous processing
-        stopSignalRef.current = false;
-        processingRef.current = true; // Mark global processing
+        const item = audioQueue[0];
 
-        // We use a local queue copy to iterate, handling the sequence without state updates interrupting
-        // However, we need to update UI to show progress. 
-        // Strategy: 
-        // 1. We keep the full queue in Ref for the loop. 
-        // 2. We update State just for "View", but the Loop uses the Ref.
+        // 3. Prevent Re-entry for same item
+        if (currentItemIdRef.current === item.id) return;
+        currentItemIdRef.current = item.id;
 
-        const queue = [...initialQueue];
-
-        for (let i = 0; i < queue.length; i++) {
-            // Check stop signal (e.g. Pause or Stop clicked)
-            if (stopSignalRef.current) {
-                // Save remaining items back to state so we can resume later?
-                // For now, Pause simply stops playback. We can implement Resume logic 
-                // by slicing the queue from 'i' and saving to state.
-                const remaining = queue.slice(i);
-                setAudioQueue(remaining);
-                processingRef.current = false;
-                return;
-            }
-
-            const item = queue[i];
-
-            // UI Update: Remove item from visible queue *as we start it* or *after*?
-            // Let's remove it from UI queue to show progress
-            setAudioQueue(prev => prev.length > 0 ? prev.slice(1) : []);
-
+        // 4. Process Item
+        const process = async () => {
             try {
                 if (item.type === 'pause') {
-                    const url = createSilenceWavURL(item.duration);
-                    await playAudioElement(url);
+                    // Play Silence
+                    await playSilence(item.duration);
                 } else if (item.type === 'text') {
+                    // Fetch & Play
                     setIsLoadingAudio(true);
                     let url = item.url;
 
@@ -337,41 +343,48 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     }
                 }
             } catch (err) {
-                console.error("Item Error", err);
+                console.error("Process error", err);
+            } finally {
+                // 5. Advance Queue
+                // ONLY if we are still playing? 
+                // If user paused mid-way, `isPlaying` changed. 
+                // But this closure runs to completion.
+                // We should remove item.
+                setAudioQueue(prev => prev.slice(1));
+                currentItemIdRef.current = null; // Allow next item
             }
-        }
+        };
 
-        // Loop Finished
-        if (!stopSignalRef.current) {
-            setIsPlaying(false);
-            setIsPaused(false);
-            stopSignalRef.current = false;
-        }
-        processingRef.current = false;
-    };
+        process();
+
+    }, [isPlaying, audioQueue]); // Intentionally exclude currentAudio to avoid loops, relying on ref logic?
+    // Actually Meditation page dependencies: [isPlaying, audioQueue, currentAudio]
+    // My playAudioElement updates currentAudio.
 
 
-    const startNewPlayback = async () => {
-        if (currentAudioRef.current) {
-            currentAudioRef.current.pause();
-            currentAudioRef.current = null;
+    // -------------------------------------------------------------------------
+    // Controls
+    // -------------------------------------------------------------------------
+
+    const startNewPlayback = () => {
+        // Reset
+        if (currentAudio) {
+            currentAudio.pause();
+            setCurrentAudio(null);
         }
-        stopSignalRef.current = true; // Stop existing
-        await new Promise(r => setTimeout(r, 50)); // Tiny yield
+        currentItemIdRef.current = null;
 
         const segments: QueueItem[] = [];
         let currentRate = card.rate || "0%";
-        // Flexible Regex: Match [pause...] or [rate...] with any content inside brackets
+        // Flexible Regex
         const regex = /(\[(?:pause|rate)[^\]]+\])/g;
         const parts = card.content.split(regex);
 
         for (const part of parts) {
             if (!part.trim()) continue;
             if (part.startsWith("[")) {
-                // Flexible parsing
                 if (part.includes("pause")) {
-                    // Match: pause 5s, pause:5s, pause=5s
-                    const match = part.match(/pause\s*[:=]?\s*(\d+)\s*s/i);
+                    const match = part.match(/pause\s*[:=]?\s*(\d+)/i);
                     if (match) {
                         segments.push({
                             type: 'pause',
@@ -380,7 +393,6 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                         });
                     }
                 } else if (part.includes("rate")) {
-                    // Match: rate 10%, rate:-10%
                     const match = part.match(/rate\s*[:=]?\s*([+-]?\d+%)/i);
                     if (match) currentRate = match[1];
                 }
@@ -397,39 +409,62 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
         setAudioQueue(segments);
         setIsPlaying(true);
-        setIsPaused(false);
-
-        // Start the loop
-        processQueue(segments);
     };
 
     const togglePlay = () => {
         if (isPlaying) {
             // PAUSE
-            stopSignalRef.current = true; // Signal loop to stop
-            if (currentAudioRef.current) currentAudioRef.current.pause();
             setIsPlaying(false);
-            setIsPaused(true);
+            if (currentAudio) currentAudio.pause();
         } else {
             // RESUME or START
-            if (isPaused && audioQueue.length > 0) {
-                // RESUME
+            if (audioQueue.length > 0) {
                 setIsPlaying(true);
-                setIsPaused(false);
-                processQueue(audioQueue); // Resume with current state queue
+                // The Effect will start processing the head item.
+                // NOTE: If we were halfway through an item, `process` function finished?
+                // If we paused `currentAudio`, `onended` never fired.
+                // So the queue head is still the same item.
+                // Upon `setIsPlaying(true)`, the Effect runs again.
+                // Checks `currentItemIdRef`. 
+                // If we didn't clear `currentItemIdRef` on pause, it returns.
+                // BUT we want to RESUME playback of `currentAudio` if it exists.
+
+                // Resume Logic:
+                if (currentAudio && currentAudio.paused) {
+                    currentAudio.play();
+                    // But `playAudioElement` promise is still pending?
+                    // No. The previous Effect instance created the promise.
+                    // If we unmount/remount effect...
+                    // The Promise is in a detached closure.
+                } else {
+                    // No current audio, just let logic run
+                }
             } else {
                 startNewPlayback();
             }
         }
     };
 
-    const handleRestart = () => {
-        if (currentAudioRef.current) currentAudioRef.current.pause();
-        setIsPlaying(false);
-        setIsPaused(false);
-        setAudioQueue([]);
-        setTimeout(() => startNewPlayback(), 100);
-    };
+    // Resume Fix: If we just toggle `isPlaying`, execute Effect. 
+    // If `currentAudio` exists, we need to `play()` it.
+    // I added logic in `togglePlay` to `currentAudio.play()`.
+    // But `useEffect` will also run.
+    // If logic: `if (currentItemIdRef.current === item.id) return;`
+    // This prevents re-fetch. Good.
+    // So `currentAudio.play()` in `togglePlay` resumes the audio.
+    // `onended` eventually fires.
+    // Promise resolves.
+    // `setAudioQueue` called.
+    // Effect runs for NEXT item.
+    // This seems correct for "Resume".
+
+    // One caveat: `isLoadingAudio` spinner.
+    // If fetching, currentAudio is null.
+    // We toggle pause. `isPlaying=false`.
+    // fetch finishes. `playAudioElement` starts. `setIsPlaying` is false...
+    // The promise resolves. `setAudioQueue` happens.
+    // Next item... Effect runs.. `isPlaying` is false -> returns.
+    // So it stops correctly at end of current fetch.
 
     return (
         <motion.div
@@ -447,88 +482,105 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 )}
             >
                 {/* Visualizer Background */}
-                {(isPlaying && !isPaused) && (
-                    <div className="absolute inset-x-0 bottom-0 h-1/2 flex items-end justify-center gap-1 pb-4 opacity-30 pointer-events-none">
-                        {[...Array(10)].map((_, i) => (
-                            <motion.div
-                                key={i}
-                                animate={{ height: [10, 30, 10] }}
-                                transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.1, ease: "easeInOut" }}
-                                className="w-1.5 bg-rose-400 rounded-full"
-                            />
-                        ))}
+                {(isPlaying && !currentAudio?.paused) && (
+                    <div className="absolute inset-0 z-0 opacity-20 pointer-events-none overflow-hidden">
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-32 flex items-center justify-center gap-1">
+                            {[...Array(12)].map((_, i) => (
+                                <motion.div
+                                    key={i}
+                                    className="w-1.5 bg-rose-400 rounded-full"
+                                    animate={{ height: [12, 32, 12] }}
+                                    transition={{
+                                        duration: 0.8,
+                                        repeat: Infinity,
+                                        delay: i * 0.1,
+                                        ease: "easeInOut"
+                                    }}
+                                />
+                            ))}
+                        </div>
                     </div>
                 )}
 
-                <div className="relative z-10 flex flex-col h-full justify-between gap-4">
-                    <div onClick={togglePlay} className="cursor-pointer">
-                        <h3 className="text-rose-100 font-bold text-lg mb-2 line-clamp-1">{card.title || "无标题"}</h3>
-                        <p className="text-rose-50/80 text-base leading-relaxed font-light line-clamp-4 select-none whitespace-pre-wrap">
+                <div className="relative z-10 flex flex-col h-full gap-4">
+                    {/* Header */}
+                    <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                            <h3 className="text-lg font-semibold text-white/90 leading-tight">
+                                {card.title || "未命名卡片"}
+                            </h3>
+                            <div className="flex items-center gap-2 text-xs text-white/40">
+                                <span className="bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
+                                    {card.voice_id}
+                                </span>
+                                <span>{card.rate || "Default"}</span>
+                            </div>
+                        </div>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => onEdit(card)} className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors">
+                                <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => onDelete(card.id)} className="p-2 hover:bg-red-500/20 rounded-lg text-white/60 hover:text-red-400 transition-colors">
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Content Preview */}
+                    <div className="flex-1 min-h-[60px] max-h-[120px] overflow-y-auto custom-scrollbar my-2">
+                        <p className="text-sm text-white/70 leading-relaxed font-light whitespace-pre-wrap">
                             {card.content}
                         </p>
                     </div>
 
-                    <div className="flex items-center justify-between mt-auto pt-4 border-t border-rose-200/10">
-                        <div className="flex items-center gap-2 text-xs text-rose-200/60">
-                            <span className={cn(
-                                "w-2 h-2 rounded-full",
-                                isPlaying ? "bg-rose-400 animate-pulse" : (isPaused ? "bg-yellow-400" : "bg-white/20")
-                            )} />
-                            {VOICES.find(v => v.id === card.voice_id)?.name.split(" ")[0]}
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            {/* Restart Button */}
-                            {(isPlaying || isPaused) && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleRestart(); }}
-                                    className="w-8 h-8 rounded-full flex items-center justify-center bg-white/5 text-rose-200/50 hover:bg-rose-500/20 hover:text-rose-200 transition-colors"
-                                    title="重新播放"
-                                >
-                                    <RotateCcw className="w-4 h-4" />
-                                </button>
+                    {/* Control Bar */}
+                    <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                            className={cn(
+                                "flex items-center justify-center w-10 h-10 rounded-full transition-all border",
+                                isPlaying
+                                    ? "bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/30"
+                                    : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20"
                             )}
+                        >
+                            {isLoadingAudio ? (
+                                <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
+                            ) : isPlaying ? (
+                                <Pause className="w-4 h-4 fill-current" />
+                            ) : (
+                                <Play className="w-4 h-4 fill-current ml-0.5" />
+                            )}
+                        </button>
 
-                            {/* Play/Pause Button */}
-                            <button
-                                onClick={(e) => { e.stopPropagation(); togglePlay(); }}
-                                className={cn(
-                                    "w-10 h-10 rounded-full flex items-center justify-center transition-all",
-                                    isPlaying ? "bg-rose-500/20 text-rose-400" : "bg-white/5 text-rose-200/50 hover:bg-rose-500/10 hover:text-rose-200"
-                                )}
-                            >
-                                {isLoadingAudio ? (
-                                    <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                                ) : (
-                                    isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />
-                                )}
-                            </button>
+                        <div className="flex-1 space-y-1.5">
+                            <div className="flex justify-between text-xs text-white/40 font-mono">
+                                <span>{isPlaying ? "PLAYING" : "READY"}</span>
+                                <span>{audioQueue.length > 0 ? `${audioQueue.length} SEGS` : "00:00"}</span>
+                            </div>
+                            {/* Progress Bar (Fake visual based on queue left) */}
+                            <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                                <motion.div
+                                    className="h-full bg-rose-500"
+                                    layout
+                                    transition={{ duration: 0.3 }}
+                                    style={{ width: `${audioQueue.length > 0 ? 100 : 0}%` }}
+                                />
+                            </div>
                         </div>
-                    </div>
-                </div>
 
-                {/* Edit & Delete Buttons */}
-                <div className="absolute top-4 right-4 flex gap-2 z-20 opacity-100">
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onEdit(card);
-                        }}
-                        title="编辑卡片"
-                        className="p-2 text-zinc-500/80 hover:text-blue-400 hover:bg-white/10 rounded-full transition-all"
-                    >
-                        <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onDelete(card.id);
-                        }}
-                        title="删除卡片"
-                        className="p-2 text-zinc-500/80 hover:text-red-400 hover:bg-white/10 rounded-full transition-all"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </button>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsPlaying(false);
+                                if (currentAudio) currentAudio.pause();
+                                setAudioQueue([]);
+                            }}
+                            className="p-2 hover:bg-white/10 rounded-full text-white/40 hover:text-white transition-colors"
+                        >
+                            <RotateCw className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
             </div>
         </motion.div>
