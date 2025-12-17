@@ -149,12 +149,90 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         setIsLoadingAudio(false);
     };
 
+
+    const createSilenceWavURL = (seconds: number) => {
+        const sr = 44100;
+        const sec = Math.max(0.05, seconds);
+        const samples = Math.max(1, Math.floor(sr * sec));
+        const channels = 1;
+        const bps = 16;
+        const blockAlign = (channels * bps) >> 3;
+        const byteRate = sr * blockAlign;
+        const dataSize = samples * blockAlign;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+        const writeStr = (offset: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i)); };
+        writeStr(0, 'RIFF');
+        view.setUint32(4, 36 + dataSize, true);
+        writeStr(8, 'WAVE');
+        writeStr(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, channels, true);
+        view.setUint32(24, sr, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bps, true);
+        writeStr(36, 'data');
+        view.setUint32(40, dataSize, true);
+        // Data is initialized to 0 (silence) by default in ArrayBuffer/DataView
+        const blob = new Blob([view], { type: 'audio/wav' });
+        return URL.createObjectURL(blob);
+    };
+
     const startPlayback = async () => {
         setIsLoadingAudio(true);
         setIsPaused(false);
 
         // Reset stop reference logic
         let shouldStop = false;
+
+        // Helper to play an audio URL (speech or silence)
+        const playAudioUrl = (url: string): Promise<void> => {
+            return new Promise((resolve, reject) => {
+                if (shouldStop) {
+                    resolve();
+                    return;
+                }
+
+                const audio = new Audio(url);
+                audio.preload = 'auto'; // Important for mobile
+                // @ts-ignore
+                audio.playsInline = true;
+                currentAudioRef.current = audio;
+
+                audio.onended = () => {
+                    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+                    resolve();
+                };
+
+                audio.onerror = (e) => {
+                    console.error("Audio playback error", e);
+                    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+                    reject(e);
+                };
+
+                // Override stopRef to handle this specific audio instance
+                const prevStop = stopRef.current;
+                stopRef.current = () => {
+                    shouldStop = true;
+                    audio.pause();
+                    audio.currentTime = 0;
+                    if (currentAudioRef.current === audio) {
+                        currentAudioRef.current = null;
+                    }
+                    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+                    resolve();
+                };
+
+                audio.play().catch(e => {
+                    console.error("Play prevented", e);
+                    // If play fails (e.g. interaction policy), we typically resolve to continue or stop
+                    resolve();
+                });
+            });
+        };
+
         stopRef.current = () => {
             shouldStop = true;
             if (currentAudioRef.current) {
@@ -193,27 +271,15 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 if (shouldStop) break;
 
                 if (seg.pause) {
-                    await new Promise(resolve => {
-                        const id = setTimeout(resolve, seg.pause! * 1000);
-                        // Hook pause cancellation? Complex. 
-                        // For simplicity, pauses are not "pausable" in this V1, they just run.
-                        // Or we could use a pausable timeout helper.
-                        // For now, let's keep it simple. If user pauses during [pause], it might just wait.
-                        // If user STOPS, proper cleanup needed.
-                        const prevStop = stopRef.current;
-                        stopRef.current = () => {
-                            clearTimeout(id);
-                            shouldStop = true;
-                            if (prevStop) prevStop();
-                            resolve(null);
-                        };
-                    });
+                    // Use silent audio instead of setTimeout for accurate timing preventing skipping
+                    const silenceUrl = createSilenceWavURL(seg.pause);
+                    await playAudioUrl(silenceUrl);
                 } else if (seg.text) {
                     const res = await fetch("/api/tts", {
                         method: "POST",
                         body: JSON.stringify({
                             text: seg.text,
-                            voice: card.voice_id, // Use card's voice ID
+                            voice: card.voice_id,
                             rate: seg.rate
                         }),
                     });
@@ -223,33 +289,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
                     const blob = await res.blob();
                     const url = URL.createObjectURL(blob);
-                    const audio = new Audio(url);
-                    currentAudioRef.current = audio;
-
-                    await new Promise<void>((resolve, reject) => {
-                        audio.onended = () => resolve();
-                        audio.onerror = reject;
-
-                        // Override stopRef to handle this specific audio instance
-                        const prevStop = stopRef.current;
-                        stopRef.current = () => {
-                            audio.pause();
-                            shouldStop = true;
-                            // Clean up global ref
-                            if (currentAudioRef.current === audio) {
-                                currentAudioRef.current = null;
-                            }
-                            // Don't call prevStop() recursively here to avoid mess, just resolve.
-                            resolve();
-                        };
-
-                        audio.play().catch(e => {
-                            console.error("Play prevented", e);
-                            resolve();
-                        });
-                    });
-
-                    URL.revokeObjectURL(url);
+                    await playAudioUrl(url);
                 }
             }
 
@@ -263,9 +303,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             console.error("Playback error", e);
             setIsPlaying(false);
         } finally {
-            if (!isPaused && !isPlaying) {
-                // Clean up if fully done?
-            }
+            // Initializing cleanup if needed
         }
     };
 
