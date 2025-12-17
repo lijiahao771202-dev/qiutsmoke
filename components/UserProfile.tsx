@@ -60,7 +60,7 @@ export default function UserProfile() {
 
     return (
         <>
-            <div className="fixed top-6 right-6 z-50" ref={dropdownRef}>
+            <div className="fixed top-[calc(1.5rem+env(safe-area-inset-top))] right-6 z-50" ref={dropdownRef}>
                 <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
