@@ -33,7 +33,7 @@ function BackgroundLayer() {
                         className="absolute inset-0"
                     >
                         <div
-                            className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-80"
+                            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
                             style={{ backgroundImage: 'url(/mountain-9472312.svg)' }}
                         />
                     </motion.div>
