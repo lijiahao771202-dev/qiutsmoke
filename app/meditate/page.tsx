@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import AuthGuard from "@/components/AuthGuard";
 
 // IP Address from system check
-const LAN_IP = "10.173.165.189:3000";
+const LAN_IP = "10.173.165.153:3001";
 
 const DEFAULT_PROMPT = "创建一个关于坐在舒适的房间里听着温柔雨声的引导冥想脚本。请用中文回复。";
 
@@ -144,36 +144,25 @@ export default function MeditatePage() {
                         try { localStorage.setItem("global_system_prompt", text); } catch { }
                     } else {
                         // Default system prompt
-                        const DEFAULT_SYSTEM = `你是一位专业的冥想引导（Meditation Guide）脚本作家、资深疗愈师、和富有经验的“节奏导演”。
-你的唯一任务是生成高质量的、具有人性化关怀和强烈画面感的、适合 TTS 朗读的中文冥想引导脚本。
+                        const DEFAULT_SYSTEM = `你是一位专业的冥想引导师与资深“节奏导演”。你的唯一任务是生成具有强烈的画面感和真实节奏感的中文冥想脚本。
 
-## 核心规则 1：内容质量与人性化关怀（疗愈作家）
-这是你的首要标准。文本必须能引导听众进入一个宁静、接纳的想象空间。
-- **语气（Tone）：** 必须是温柔的、包容的、接纳的、绝对不带评判的。
-- **画面感（Imagery）：** 必须使用生动的、感官的词汇（如：温暖、柔软、流淌、蔚蓝、沉静）。你必须引导用户去“想象”、“看到”或“感受”具体的场景或身体感觉。
-- **放松引导（Guidance）：** 你的脚本必须包含有效的放松结构（例如呼吸引导、身体扫描）。
-- **（重要）核心：正念引导（处理分心）** 你必须在脚本中（至少 1-2 次）插入关于“处理走神”的引导。明确告诉听众：走神是正常的，不要批评自己，只是轻轻地把注意力带回来。
-- **禁止项（Avoid）：** 绝对禁止使用生硬、机械或书面化的语言。禁止说教。
+## 核心规则 1：节奏导演 (Rhythm Director)
+你不仅在写文字，还在指挥时间。
+- **强制停顿**：
+  - 在每个引导性指令后必须停顿（如：「深呼吸... [pause 4s] 慢慢呼出... [pause 5s]」）。
+  - 在意境转换处必须停顿（如：「现在离开那片森林 [pause 6s]」）。
+- **留白比例**：确保 [pause Xs] 的总时长与文本朗读时间大致相当（约 1:1）。
+- **长停顿**：关键时刻使用 [pause 10s] 的深度留白。
+- **取消频率限制**：自由控制停顿，无需刻意避开标点。
 
-## 核心规则 2：节奏与留白（节奏导演）
-你必须自主控制脚本的节奏，营造“拟真”的停顿。
-- **默认时长（Default Duration）：** 如果用户没有指定时长，你必须自主决定一个合理的总时长（通常在 3 到 6 分钟之间）。
-- **停顿与文本的比例（Pause Ratio）：** 你的脚本必须有合适的“留白”。你应确保【所有 [pause:...] 的总时长】与【文本朗读时间】大致相当（例如 1:1 或更多）。
-- **长停顿（Long Pauses）：** 你必须在关键节点（如呼吸引导后、感受身体时）策略性地使用【长停顿】（例如 [pause:8s]、[pause:10s] 或更长）。
-- **指令：** 你必须使用 [pause:...]（支持秒）和 [rate:...]（支持百分比或倍速）。
-
-## 你的内部工作流程
-1. **分析主题**
-2. **设定目标与时长**
-3. **分配时间**
-4. **撰写脚本（疗愈作家）：** 包含“呼吸引导”、“身体扫描”、“分心提醒”。
-5. **插入停顿（节奏导演）：** 策略性插入 [pause:...] 和 [rate:...]。
-6. **输出：** 严格只输出纯脚本文本。
+## 核心规则 2：疗愈文字 (Healer)
+- **语气**：温柔、接纳、不评判。
+- **画面感**：使用大量感官描绘（温暖、流动、轻柔）。
+- **正念提醒**：包含 1-2 次对于“走神”的温柔接纳。
 
 ## 约束条件
-- 严格使用支持的指令。
-- 使用自然标点符号。
-- 最终只输出纯脚本文本，绝不包含任何解释、标题、或你的内部计算过程。`;
+- 使用指令：[pause Xs] 和 [rate +/-N%]。
+- 严格只输出纯脚本文本，不要标题、不要前言、不要后缀解释。`;
                         setGlobalSystemPrompt(DEFAULT_SYSTEM);
                     }
                 }
@@ -438,16 +427,25 @@ export default function MeditatePage() {
                 }
                 setShowAudioHint(false);
             } else {
+                // === P0: 增强队列恢复 === //
                 setShowAudioHint(false);
                 try { await ensureAudioContext(); } catch { }
+
+                // 恢复当前暂停的音频
                 if (currentAudio && isPlaying && currentAudio.paused) {
                     try { await currentAudio.play(); } catch { }
+                }
+
+                // 关键：如果队列有项目但没有在播放，强制触发下一个
+                if (audioQueue.length > 0 && !currentItemIdRef.current && !currentAudio) {
+                    // 强制刷新队列触发 useEffect
+                    setAudioQueue(prev => [...prev]);
                 }
             }
         };
         document.addEventListener('visibilitychange', onVisibility);
         return () => document.removeEventListener('visibilitychange', onVisibility);
-    }, [currentAudio, isPlaying]);
+    }, [currentAudio, isPlaying, audioQueue]);
 
     useEffect(() => {
         (async () => {
@@ -458,6 +456,29 @@ export default function MeditatePage() {
             }
         })();
     }, [isPlaying]);
+
+    // === P1: AudioContext 看门狗 - 自动恢复挂起的音频上下文 === //
+    useEffect(() => {
+        if (!isPlaying) return;
+
+        const watchdog = setInterval(async () => {
+            // 检查 AudioContext 状态
+            if (audioContextRef.current?.state === 'suspended') {
+                try {
+                    await audioContextRef.current.resume();
+                    console.log('[Watchdog] AudioContext resumed');
+                } catch { }
+            }
+
+            // 检查队列是否停滞（有项目但没在播放）
+            if (audioQueue.length > 0 && !currentAudio && !currentItemIdRef.current) {
+                console.log('[Watchdog] Queue stalled, forcing refresh');
+                setAudioQueue(prev => [...prev]);
+            }
+        }, 3000);
+
+        return () => clearInterval(watchdog);
+    }, [isPlaying, audioQueue, currentAudio]);
 
     // ...
 
@@ -667,6 +688,23 @@ export default function MeditatePage() {
         }
     };
 
+    // === P2: TTS API 重试工具 === //
+    const fetchWithRetry = async (url: string, options: RequestInit, retries = 3): Promise<Response | null> => {
+        for (let i = 0; i < retries; i++) {
+            try {
+                const res = await fetch(url, options);
+                if (res.ok) return res;
+                // 如果是 4xx 错误，不重试
+                if (res.status >= 400 && res.status < 500) return null;
+            } catch (e) {
+                console.warn(`[TTS] Retry ${i + 1}/${retries}`, e);
+                if (i === retries - 1) return null;
+                await new Promise(r => setTimeout(r, 1000 * (i + 1))); // 递增延迟
+            }
+        }
+        return null;
+    };
+
     const generateAudio = async (text: string) => {
         try {
             if (window.electron) {
@@ -677,12 +715,13 @@ export default function MeditatePage() {
                     id: Math.random().toString(36).substr(2, 9)
                 }]);
             } else {
-                const resp = await fetch('/api/tts', {
+                // 使用重试逻辑
+                const resp = await fetchWithRetry('/api/tts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text, voice: selectedVoice, rate: currentRate.current })
                 });
-                if (resp.ok) {
+                if (resp && resp.ok) {
                     const blob = await resp.blob();
                     try {
                         const isIOS = typeof navigator !== 'undefined' && ((/iPad|iPhone|iPod/.test(navigator.userAgent)) || ((navigator.platform === 'MacIntel') && (navigator.maxTouchPoints > 1)));
@@ -722,6 +761,8 @@ export default function MeditatePage() {
                             id: Math.random().toString(36).substr(2, 9)
                         }]);
                     }
+                } else {
+                    console.error('[TTS] Failed after retries');
                 }
             }
         } catch (e) {

@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     }
 
     try {
-        const { title, content, voiceId, rate } = await req.json();
+        const { title, content, voiceId, rate, guidanceLevel } = await req.json();
         if (!content) return NextResponse.json({ error: "Content is required" }, { status: 400 });
 
         const { error } = await supabase
@@ -42,7 +42,8 @@ export async function POST(req: Request) {
                 title: title || "无标题",
                 content,
                 voice_id: voiceId,
-                rate: rate || "0%"
+                rate: rate || "0%",
+                guidance_level: guidanceLevel || 'medium'
             });
 
         if (error) throw error;
@@ -88,7 +89,7 @@ export async function PATCH(req: Request) {
     }
 
     try {
-        const { id, title, content, voiceId, rate } = await req.json();
+        const { id, title, content, voiceId, rate, guidanceLevel } = await req.json();
         if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
         const updates: any = {};
@@ -96,6 +97,7 @@ export async function PATCH(req: Request) {
         if (content !== undefined) updates.content = content;
         if (voiceId !== undefined) updates.voice_id = voiceId;
         if (rate !== undefined) updates.rate = rate;
+        if (guidanceLevel !== undefined) updates.guidance_level = guidanceLevel;
 
         const { error } = await supabase
             .from('tts_cards')

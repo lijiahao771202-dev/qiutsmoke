@@ -27,8 +27,9 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
   },
   formatDetection: {
-    telephone: false, // matches telephone=no
+    telephone: false,
   },
+  themeColor: "#0a0a1a",
 };
 
 export const viewport: Viewport = {
@@ -37,6 +38,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
+  themeColor: "#0a0a1a",
 };
 
 export default function RootLayout({
@@ -45,32 +47,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="h-full">
       <body
-        className={`${inter.variable} ${jetbrainsMono.variable} antialiased min-h-screen relative overflow-x-hidden`}
+        suppressHydrationWarning
+        className={`${inter.variable} ${jetbrainsMono.variable} antialiased min-h-screen h-full relative overflow-x-hidden bg-[#0a0a1a]`}
       >
         <AuthProvider>
           <SWRProvider>
             <AppWrapper>
-              <NavBar />
-              <UserProfile />
-              {children}
+              <div className="relative z-10 min-h-full flex flex-col">
+                <NavBar />
+                <UserProfile />
+                <main className="flex-1 contents">
+                  {children}
+                </main>
+              </div>
             </AppWrapper>
           </SWRProvider>
         </AuthProvider>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-                  document.documentElement.classList.add('dark')
-                } else {
-                  document.documentElement.classList.remove('dark')
-                }
-              } catch (_) {}
-            `,
-          }}
-        />
+        {/* 移除了 dark theme 脚本以避免 Hydration 错误 */}
 
         {process.env.NODE_ENV === 'production' && (
           <script

@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, Trash2, Plus, Sparkles, RotateCcw, Pencil, X } from "lucide-react";
+import { Play, Pause, Trash2, Plus, Sparkles, RotateCcw, RotateCw, Pencil, Edit2, X, Download, Music, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AuthGuard from "@/components/AuthGuard";
+import { saveAudioCache, getAudioCache, hasAudioCache, deleteAudioCache } from "@/lib/audioCache";
 // Removed Server Actions import
 // import { createCard, getCards, deleteCard, type TTSCard } from "./actions";
 
@@ -14,6 +15,7 @@ export interface TTSCard {
     content: string;
     voice_id: string;
     rate: string;
+    guidance_level?: 'light' | 'medium' | 'heavy';
     created_at: Date;
 }
 
@@ -27,6 +29,12 @@ const VOICES = [
     { id: "zh-CN-YunyangNeural", name: "云野 (男声-专业)" },
 ];
 
+const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
+    light: { label: "🍃 轻引导", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/20" },
+    medium: { label: "⚖️ 中引导", color: "bg-blue-500/20 text-blue-300 border-blue-500/20" },
+    heavy: { label: "🧘 多引导", color: "bg-purple-500/20 text-purple-300 border-purple-500/20" }
+};
+
 // -----------------------------------------------------------------------------
 // Component: Glass Input Card
 // -----------------------------------------------------------------------------
@@ -36,21 +44,141 @@ function GlassInput({ onAdd }: { onAdd: () => void }) {
     const [voiceId, setVoiceId] = useState(VOICES[0].id);
     const [isLoading, setIsLoading] = useState(false);
 
+    // AI 生成相关状态
+    const [aiPrompt, setAiPrompt] = useState("");
+    const [aiGenerating, setAiGenerating] = useState(false);
+    const [aiDuration, setAiDuration] = useState<number>(5);
+    const [guidanceLevel, setGuidanceLevel] = useState<'light' | 'medium' | 'heavy'>('medium');
+
     const handleSubmit = async () => {
         if (!text.trim()) return;
         setIsLoading(true);
         try {
             const res = await fetch("/api/tts/cards", {
                 method: "POST",
-                body: JSON.stringify({ title, content: text, voiceId, rate: "0%" }),
+                body: JSON.stringify({ title, content: text, voiceId, rate: "0%", guidanceLevel }),
             });
             if (res.ok) {
                 setText("");
                 setTitle("");
+                setAiPrompt("");
                 onAdd();
             }
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    // AI 生成冥想文本
+    const handleAIGenerate = async () => {
+        if (!aiPrompt.trim() || aiGenerating) return;
+
+        setAiGenerating(true);
+        setText(""); // 清空现有内容
+
+        // 按 280 字/分钟计算
+        // 动态计算目标字数和停顿时间
+        const totalSeconds = aiDuration * 60;
+        let textRatio = 0.5; // medium default
+
+        if (guidanceLevel === 'light') textRatio = 0.1; // 10% text, 90% pause
+        if (guidanceLevel === 'heavy') textRatio = 0.7; // 70% text, 30% pause
+
+        const targetTextSeconds = Math.round(totalSeconds * textRatio);
+        const targetPauseSeconds = Math.round(totalSeconds * (1 - textRatio));
+        const estimatedWords = Math.round(targetTextSeconds * (260 / 60)); // 260 chars/min
+
+        // Auto-fill title if empty
+        if (!title.trim()) {
+            setTitle(aiPrompt);
+        }
+
+        // 简化的统一 prompt
+        // 根据引导强度调整 Prompt
+        let densityRule = "";
+        switch (guidanceLevel) {
+            case 'light':
+                densityRule = `
+【核心策略：轻引导 (Silence Dominant)】
+- **超级留白**：必须使用极长的停顿（如 [pause 120s], [pause 300s]）。让静默占据 90% 以上的时间。
+- **仅保留防走神**：除了简短的开场和结束，中间只偶尔插入一句“如果你走神了，轻轻回来”。
+- **目标**：像一个挂钟一样安静，只在整点轻轻提醒。`;
+                break;
+            case 'heavy':
+                densityRule = `
+【核心策略：多引导 (Heavy Guidance)】
+- **全程陪伴**：留白比例约为 **0.5:1**（说话多于停顿）。
+- **体验**：提供持续、详细的步骤指引和感官描绘，用连续的声音牵引用户的注意力，防止新手走神。`;
+                break;
+            case 'medium':
+            default:
+                densityRule = `
+【核心策略：中引导 (Standard Guidance)】
+- **标准平衡**：留白与文本时间比例约为 **1:1**。
+- **体验**：在引导语和静默体验之间保持完美的平衡。`;
+                break;
+        }
+
+        const systemPrompt = `你是一位专业的冥想引导师与资深“节奏导演”。你的任务是创作高质量、具有人性化关怀和强烈画面感的、适合 TTS 朗读的中文冥想引导脚本。
+
+${densityRule}
+
+【核心规则 1：节奏导演】
+你必须自主控制脚本的节奏，营造真实的停顿感。
+- **强制停顿**：
+  - 在每个引导性指令后必须停顿（如：「深呼吸... [pause 4s] 慢慢呼出... [pause 5s]」）。
+  - 在意境转换处必须停顿（如：「现在离开那片森林 [pause 6s] 来到溪水边...」）。
+- **长停顿**：按照选定的留白策略，在关键体验时刻使用长停顿。
+- **自由控制**：完全根据内容需要自主决定停顿位置。
+
+【核心规则 2：疗愈文字与关怀】
+- **语气**：温柔、包容、接纳。
+- **画面感**：使用感官词汇（温暖、流淌、蔚蓝、沉静）。
+- **正念引导**：脚本中必须包含对“走神”的温柔接纳引导。
+
+【约束条件】
+- 直接输出脚本内容，不要任何开场白或解释。
+- 最终字数：约 ${estimatedWords} 字。
+- 总时长控制：文本约 ${targetTextSeconds} 秒，停顿总时长必须约 ${targetPauseSeconds} 秒（总计 ${totalSeconds} 秒）。
+- 严格执行：请确保 [pause Xs] 的总和接近 ${targetPauseSeconds} 秒。
+- 开头用 [rate -10%] 设置舒缓的基础语速。`;
+
+        try {
+            const response = await fetch("/api/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    prompt: `${aiPrompt}（目标时长：${aiDuration}分钟）`,
+                    systemPrompt
+                }),
+            });
+
+            if (!response.ok) throw new Error("生成失败");
+
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error("无法读取响应");
+
+            const decoder = new TextDecoder();
+            let fullContent = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                fullContent += chunk;
+                setText(fullContent);
+            }
+
+            // 自动设置标题
+            if (!title.trim()) {
+                setTitle(aiPrompt.slice(0, 20) + (aiPrompt.length > 20 ? "..." : ""));
+            }
+        } catch (e) {
+            console.error("AI 生成失败:", e);
+            setText("生成失败，请重试...");
+        } finally {
+            setAiGenerating(false);
         }
     };
 
@@ -74,6 +202,60 @@ function GlassInput({ onAdd }: { onAdd: () => void }) {
                         placeholder="给卡片起个标题..."
                         className="w-full bg-transparent text-xl font-bold text-white placeholder:text-white/40 mb-2 focus:outline-none"
                     />
+
+                    {/* AI 生成区域 */}
+                    <div className="rounded-2xl p-4 space-y-3 mb-4 bg-white/5 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
+                        <div className="flex items-center gap-2 text-xs text-rose-300/80 font-medium">
+                            <Sparkles className="w-3.5 h-3.5 text-rose-400" />
+                            <span>AI 生成助手</span>
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                            <input
+                                value={aiPrompt}
+                                onChange={(e) => setAiPrompt(e.target.value)}
+                                className="flex-1 min-w-[200px] bg-white/5 backdrop-blur rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:ring-2 focus:ring-rose-500/40 outline-none border border-white/10 transition-all"
+                                placeholder="描述您想要的内容，如：正念呼吸练习、身体扫描、助眠引导..."
+                                disabled={aiGenerating}
+                            />
+                            <select
+                                title="选择引导强度"
+                                value={guidanceLevel}
+                                onChange={(e) => setGuidanceLevel(e.target.value as any)}
+                                className="bg-white/5 backdrop-blur rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-rose-500/40 outline-none border border-white/10 cursor-pointer transition-all"
+                                disabled={aiGenerating}
+                            >
+                                <option value="light" className="bg-zinc-800">🍃 轻引导</option>
+                                <option value="medium" className="bg-zinc-800">⚖️ 中引导</option>
+                                <option value="heavy" className="bg-zinc-800">🧘 多引导</option>
+                            </select>
+                            <select
+                                value={aiDuration}
+                                onChange={(e) => setAiDuration(Number(e.target.value))}
+                                className="bg-white/5 backdrop-blur rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-rose-500/40 outline-none border border-white/10 cursor-pointer transition-all"
+                                disabled={aiGenerating}
+                                title="选择时长"
+                            >
+                                <option value={3} className="bg-zinc-800">3分钟</option>
+                                <option value={5} className="bg-zinc-800">5分钟</option>
+                                <option value={10} className="bg-zinc-800">10分钟</option>
+                                <option value={15} className="bg-zinc-800">15分钟</option>
+                                <option value={20} className="bg-zinc-800">20分钟</option>
+                            </select>
+                            <button
+                                onClick={handleAIGenerate}
+                                disabled={!aiPrompt.trim() || aiGenerating}
+                                className="px-5 py-2.5 bg-gradient-to-r from-rose-500 to-pink-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-rose-500/20 hover:shadow-rose-500/40 hover:scale-[1.02] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
+                            >
+                                {aiGenerating ? (
+                                    <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
+                                ) : (
+                                    <Sparkles className="w-4 h-4" />
+                                )}
+                                <span>{aiGenerating ? "生成中" : "生成"}</span>
+                            </button>
+                        </div>
+                    </div>
+
 
                     <textarea
                         value={text}
@@ -154,6 +336,19 @@ const createSilenceWavURL = (seconds: number) => {
     return URL.createObjectURL(blob);
 };
 
+// Helper: Get Duration from Blob
+const getBlobDuration = async (blob: Blob): Promise<number> => {
+    return new Promise((resolve) => {
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onloadedmetadata = () => {
+            URL.revokeObjectURL(url);
+            resolve(audio.duration);
+        };
+        audio.onerror = () => resolve(0);
+    });
+};
+
 // -----------------------------------------------------------------------------
 // Component: TTS Card with Audio Logic
 // -----------------------------------------------------------------------------
@@ -169,14 +364,60 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     const [isLoadingAudio, setIsLoadingAudio] = useState(false); // For spinning indicator
     const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
 
+    // 合成状态
+    const [isSynthesizing, setIsSynthesizing] = useState(false);
+    const [synthesizeProgress, setSynthesizeProgress] = useState({ current: 0, total: 0 });
+
+    // 缓存状态
+    const [hasCachedAudio, setHasCachedAudio] = useState(false);
+    const [cachedAudioUrl, setCachedAudioUrl] = useState<string | null>(null);
+    const [audioDuration, setAudioDuration] = useState<number | null>(null); // 音频总时长
+    const [showCardMenu, setShowCardMenu] = useState(false);
+    const [useCachedPlayback, setUseCachedPlayback] = useState(true); // 默认使用缓存播放
+
+    // 播放进度状态 (用于缓存音频)
+    const [playbackProgress, setPlaybackProgress] = useState({ currentTime: 0, duration: 0 });
+
+    // 检查缓存状态
+    useEffect(() => {
+        hasAudioCache(card.id).then(async (exists) => {
+            setHasCachedAudio(exists);
+            if (exists) {
+                try {
+                    const blob = await getAudioCache(card.id);
+                    if (blob) {
+                        const duration = await getBlobDuration(blob);
+                        setAudioDuration(duration);
+                    }
+                } catch (e) {
+                    console.error("Failed to get audio duration via cache", e);
+                }
+            }
+        });
+    }, [card.id]);
+
     // Refs
     const currentItemIdRef = useRef<string | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
+    const cachedSourceRef = useRef<AudioBufferSourceNode | null>(null);
+    const cachedAudioBufferRef = useRef<AudioBuffer | null>(null); // 保存解码后的 AudioBuffer
     const wakeLockRef = useRef<any>(null);
+    const playbackStartTimeRef = useRef<number>(0);
+    const pausedAtRef = useRef<number>(0); // 暂停位置（秒）
+    const isPausedRef = useRef<boolean>(false); // 是否处于暂停状态
+    const isPlayingRef = useRef<boolean>(false); // 同步跟踪播放状态
+    const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    // 格式化时间为 mm:ss
+    const formatTime = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
 
     const ensureAudioContext = async () => {
         const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -270,34 +511,64 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
 
     // -------------------------------------------------------------------------
-    // Queue Consumer (The "Meditation Page" Pattern)
+    // Queue Consumer with PREFETCH (预加载机制)
     // -------------------------------------------------------------------------
+
+    // 预加载多个 text 项（并行）
+    const prefetchNextTextItems = async (queue: QueueItem[]) => {
+        // 找到队列中前5个没有 url 的 text 项并并行预加载
+        const itemsToFetch: QueueItem[] = [];
+        for (let i = 1; i < queue.length && itemsToFetch.length < 3; i++) {
+            const item = queue[i];
+            // 跳过 pause 项，只处理没有 url 的 text 项
+            if (item.type === 'text' && !item.url) {
+                itemsToFetch.push(item);
+            }
+        }
+
+        // 并行预加载所有项
+        await Promise.all(itemsToFetch.map(async (item) => {
+            if (item.type !== 'text') return;
+            try {
+                const res = await fetch("/api/tts", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        text: item.content,
+                        voice: item.voiceId,
+                        rate: item.rate
+                    }),
+                });
+                if (res.ok) {
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    // 更新队列中该项的 url
+                    setAudioQueue(prev => prev.map(q =>
+                        q.id === item.id ? { ...q, url } : q
+                    ));
+                    console.log(`[Prefetch] ✅ 预加载完成: ${item.content.substring(0, 20)}...`);
+                }
+            } catch (e) {
+                console.warn("[Prefetch] Failed", e);
+            }
+        }));
+    };
+
     useEffect(() => {
         // 1. Global Stop/Pause Check
         if (!isPlaying) {
             if (currentAudio) currentAudio.pause();
-            currentItemIdRef.current = null; // Reset item lock so it can "Resume" if needed? 
-            // Actually, if we pause, we usually want to resume the SAME item.
-            // But for Simplicity: "Pause" stops playback. "Resume" restarts logic?
-            // User requested: "Resume" logic.
-            // If we pause `currentAudio` (html audio), calling `.play()` resumes it.
-            // But if we are in the middle of a "Promise", the promise is pending "onended".
-            // If we pause, "onended" won't fire.
-            // So if we just set isPlaying=false, the Effect re-runs.
-            // But the *async function* from previous run is still alive?
-            // React's unique challenge. 
-            // In Meditation Page:
-            // if (!isPlaying) { currentAudio.pause(); return; }
-            // So it effectively "Aborts" the check loop.
-            // BUT the async function `(async () => { ... })()` initiated in previous render stays alive?
-            // No, variables in closure might persist.
-            // But `currentAudio` is state.
+            currentItemIdRef.current = null;
             return;
         }
 
-        // 2. Queue Empty Check
-        if (audioQueue.length === 0) {
+        // 2. Queue Empty Check - 但如果正在使用缓存播放则跳过
+        if (audioQueue.length === 0 && !cachedSourceRef.current && !isPlayingRef.current) {
             setIsPlaying(false);
+            return;
+        }
+
+        // 如果正在使用缓存播放，不需要处理队列
+        if (cachedSourceRef.current) {
             return;
         }
 
@@ -310,15 +581,18 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         // 4. Process Item
         const process = async () => {
             try {
+                // 🚀 预加载下一个 text 项（在处理当前项时并行进行）
+                prefetchNextTextItems(audioQueue);
+
                 if (item.type === 'pause') {
-                    // Play Silence
+                    // Play Silence（同时预加载在后台进行）
                     await playSilence(item.duration);
                 } else if (item.type === 'text') {
                     // Fetch & Play
-                    setIsLoadingAudio(true);
                     let url = item.url;
 
                     if (!url) {
+                        setIsLoadingAudio(true);
                         try {
                             const res = await fetch("/api/tts", {
                                 method: "POST",
@@ -335,8 +609,8 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                         } catch (e) {
                             console.error("Fetch failed", e);
                         }
+                        setIsLoadingAudio(false);
                     }
-                    setIsLoadingAudio(false);
 
                     if (url) {
                         await playAudioElement(url);
@@ -346,10 +620,6 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 console.error("Process error", err);
             } finally {
                 // 5. Advance Queue
-                // ONLY if we are still playing? 
-                // If user paused mid-way, `isPlaying` changed. 
-                // But this closure runs to completion.
-                // We should remove item.
                 setAudioQueue(prev => prev.slice(1));
                 currentItemIdRef.current = null; // Allow next item
             }
@@ -357,9 +627,207 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
         process();
 
-    }, [isPlaying, audioQueue]); // Intentionally exclude currentAudio to avoid loops, relying on ref logic?
-    // Actually Meditation page dependencies: [isPlaying, audioQueue, currentAudio]
-    // My playAudioElement updates currentAudio.
+    }, [isPlaying, audioQueue]);
+
+
+    // -------------------------------------------------------------------------
+    // 一键合成完整音频
+    // -------------------------------------------------------------------------
+    const synthesizeAndDownload = async () => {
+        if (isSynthesizing) return;
+        setIsSynthesizing(true);
+        setSynthesizeProgress({ current: 0, total: 0 });
+
+        try {
+            // 1. 解析内容为片段
+            type SynthSegment =
+                | { type: 'pause', duration: number }
+                | { type: 'text', content: string, rate: string, voiceId: string };
+
+            const segments: SynthSegment[] = [];
+            let currentRate = card.rate || "0%";
+            const regex = /(\[(?:pause|rate)[^\]]+\])/g;
+            const parts = card.content.split(regex);
+
+            for (const part of parts) {
+                if (!part.trim()) continue;
+                if (part.startsWith("[")) {
+                    if (part.includes("pause")) {
+                        const match = part.match(/pause\s*[:=]?\s*(\d+)/i);
+                        if (match) {
+                            segments.push({ type: 'pause', duration: parseInt(match[1]) });
+                        }
+                    } else if (part.includes("rate")) {
+                        const match = part.match(/rate\s*[:=]?\s*([+-]?\d+%)/i);
+                        if (match) currentRate = match[1];
+                    }
+                } else {
+                    segments.push({ type: 'text', content: part, rate: currentRate, voiceId: card.voice_id });
+                }
+            }
+
+            const textSegments = segments.filter(s => s.type === 'text');
+            setSynthesizeProgress({ current: 0, total: textSegments.length });
+
+            // 2. 创建 AudioContext
+            const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+            const ctx = new AC();
+
+            // 3. 获取所有音频 ArrayBuffer
+            const audioBuffers: AudioBuffer[] = [];
+            let textIndex = 0;
+            let actualSampleRate = 24000; // TTS 默认采样率，会在第一个解码后更新
+
+            for (const seg of segments) {
+                if (seg.type === 'pause') {
+                    // 静音会在拼接时根据实际采样率生成
+                    audioBuffers.push({ type: 'pause', duration: seg.duration } as any);
+                } else {
+                    // 请求 TTS
+                    try {
+                        const res = await fetch("/api/tts", {
+                            method: "POST",
+                            body: JSON.stringify({
+                                text: seg.content,
+                                voice: seg.voiceId,
+                                rate: seg.rate
+                            }),
+                        });
+                        if (res.ok) {
+                            const arrayBuffer = await res.arrayBuffer();
+                            const decoded = await ctx.decodeAudioData(arrayBuffer);
+                            // 使用第一个 TTS 的采样率
+                            if (textIndex === 0) {
+                                actualSampleRate = decoded.sampleRate;
+                                console.log("[Synthesize] 实际采样率:", actualSampleRate);
+                            }
+                            audioBuffers.push(decoded);
+                        }
+                    } catch (e) {
+                        console.error("[Synthesize] TTS fetch failed", e);
+                    }
+                    textIndex++;
+                    setSynthesizeProgress({ current: textIndex, total: textSegments.length });
+                }
+            }
+
+            // 4. 处理静音并计算总长度
+            const finalBuffers: AudioBuffer[] = [];
+            let numberOfChannels = 1; // 默认单声道
+
+            // 先检测实际声道数
+            for (const buf of audioBuffers) {
+                if ((buf as any).type !== 'pause' && buf.numberOfChannels) {
+                    numberOfChannels = Math.max(numberOfChannels, buf.numberOfChannels);
+                }
+            }
+            console.log("[Synthesize] 声道数:", numberOfChannels);
+
+            for (const buf of audioBuffers) {
+                if ((buf as any).type === 'pause') {
+                    // 生成与实际采样率和声道数匹配的静音
+                    const samples = Math.floor(actualSampleRate * (buf as any).duration);
+                    const silenceBuffer = ctx.createBuffer(numberOfChannels, samples, actualSampleRate);
+                    finalBuffers.push(silenceBuffer);
+                } else {
+                    finalBuffers.push(buf);
+                }
+            }
+
+            const totalLength = finalBuffers.reduce((sum, buf) => sum + buf.length, 0);
+            const mergedBuffer = ctx.createBuffer(numberOfChannels, totalLength, actualSampleRate);
+
+            // 逐声道拼接
+            for (let channel = 0; channel < numberOfChannels; channel++) {
+                const channelData = mergedBuffer.getChannelData(channel);
+                let offset = 0;
+
+                for (const buf of finalBuffers) {
+                    // 如果源音频声道数少于目标，使用第一个声道
+                    const sourceChannel = Math.min(channel, buf.numberOfChannels - 1);
+                    const data = buf.getChannelData(sourceChannel);
+                    channelData.set(data, offset);
+                    offset += buf.length;
+                }
+            }
+
+            // 5. 手动编码为 WAV 格式（比 toWav 库更可靠）
+            const encodeWAV = (audioBuffer: AudioBuffer): ArrayBuffer => {
+                const numChannels = audioBuffer.numberOfChannels;
+                const sampleRate = audioBuffer.sampleRate;
+                const format = 1; // PCM
+                const bitDepth = 16;
+
+                const bytesPerSample = bitDepth / 8;
+                const blockAlign = numChannels * bytesPerSample;
+
+                // 获取交错的音频数据
+                const length = audioBuffer.length;
+                const buffer = new ArrayBuffer(44 + length * blockAlign);
+                const view = new DataView(buffer);
+
+                // WAV 文件头
+                const writeString = (offset: number, str: string) => {
+                    for (let i = 0; i < str.length; i++) {
+                        view.setUint8(offset + i, str.charCodeAt(i));
+                    }
+                };
+
+                writeString(0, 'RIFF');
+                view.setUint32(4, 36 + length * blockAlign, true);
+                writeString(8, 'WAVE');
+                writeString(12, 'fmt ');
+                view.setUint32(16, 16, true); // fmt chunk size
+                view.setUint16(20, format, true);
+                view.setUint16(22, numChannels, true);
+                view.setUint32(24, sampleRate, true);
+                view.setUint32(28, sampleRate * blockAlign, true);
+                view.setUint16(32, blockAlign, true);
+                view.setUint16(34, bitDepth, true);
+                writeString(36, 'data');
+                view.setUint32(40, length * blockAlign, true);
+
+                // 写入音频数据（交错格式）
+                let offset = 44;
+                const channels: Float32Array[] = [];
+                for (let i = 0; i < numChannels; i++) {
+                    channels.push(audioBuffer.getChannelData(i));
+                }
+
+                for (let i = 0; i < length; i++) {
+                    for (let ch = 0; ch < numChannels; ch++) {
+                        const sample = Math.max(-1, Math.min(1, channels[ch][i]));
+                        const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+                        view.setInt16(offset, int16, true);
+                        offset += 2;
+                    }
+                }
+
+                return buffer;
+            };
+
+            const wavArrayBuffer = encodeWAV(mergedBuffer);
+            const blob = new Blob([wavArrayBuffer], { type: 'audio/wav' });
+
+            console.log("[Synthesize] WAV 大小:", (wavArrayBuffer.byteLength / 1024).toFixed(1), "KB");
+
+            // 保存到 IndexedDB
+            await saveAudioCache(card.id, blob);
+            setHasCachedAudio(true);
+
+            // 创建可播放的 URL
+            const url = URL.createObjectURL(blob);
+            setCachedAudioUrl(url);
+
+            console.log("[Synthesize] ✅ 合成完成并已缓存");
+        } catch (err) {
+            console.error("[Synthesize] Error", err);
+        } finally {
+            setIsSynthesizing(false);
+            setSynthesizeProgress({ current: 0, total: 0 });
+            setShowCardMenu(false);
+        }
+    };
 
 
     // -------------------------------------------------------------------------
@@ -411,33 +879,227 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         setIsPlaying(true);
     };
 
-    const togglePlay = () => {
-        if (isPlaying) {
+    // 从指定位置开始播放缓存音频
+    const playFromPosition = async (startTime: number = 0) => {
+        if (!cachedAudioBufferRef.current || !audioContextRef.current) {
+            console.warn("[Play] AudioBuffer 未加载");
+            return;
+        }
+
+        // 停止当前播放 - 先设置 isPausedRef 防止旧 onended 干扰
+        if (cachedSourceRef.current) {
+            isPausedRef.current = true; // 临时设置，防止旧 onended 清除新 interval
+            try { cachedSourceRef.current.stop(); } catch (e) { /* ignore */ }
+            cachedSourceRef.current = null;
+        }
+
+        const ctx = audioContextRef.current;
+        const audioBuffer = cachedAudioBufferRef.current;
+
+        // 恢复 AudioContext
+        if (ctx.state === 'suspended') {
+            await ctx.resume();
+        }
+
+        // 清除之前的进度定时器
+        if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current);
+        }
+
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+
+        const remainingDuration = audioBuffer.duration - startTime;
+
+        source.onended = () => {
+            // 如果是手动暂停 或 这个 source 已经不是当前播放的 source（说明是旧的被 stop）
+            if (isPausedRef.current || cachedSourceRef.current !== source) {
+                console.log("[Play] 忽略 onended（手动暂停或已切换 source）");
+                return; // 不清除 interval，让新的 source 继续使用
+            }
+
+            // 使用 AudioContext 实际时间判断是否真正播放完成
+            const actualElapsed = audioContextRef.current
+                ? audioContextRef.current.currentTime - playbackStartTimeRef.current
+                : 0;
+            console.log(`[Play] onended 触发, 实际播放时长: ${actualElapsed.toFixed(1)}s, 总时长: ${audioBuffer.duration.toFixed(1)}s`);
+
+            // 只有播放了至少 95% 才认为是真正播放完成
+            if (actualElapsed >= audioBuffer.duration * 0.95) {
+                isPlayingRef.current = false; // 同步更新
+                setIsPlaying(false);
+                cachedSourceRef.current = null;
+                pausedAtRef.current = 0;
+                isPausedRef.current = false;
+                setPlaybackProgress({ currentTime: audioBuffer.duration, duration: audioBuffer.duration });
+                console.log("[Play] ✅ 播放完成");
+
+                // 只有真正完成时才清除 interval
+                if (progressIntervalRef.current) {
+                    clearInterval(progressIntervalRef.current);
+                    progressIntervalRef.current = null;
+                }
+            }
+        };
+
+        cachedSourceRef.current = source;
+        isPlayingRef.current = true; // 同步更新
+        console.log("[Play] 设置 isPlaying = true");
+        setIsPlaying(true);
+
+        // 记录开始时间并启动进度更新
+        playbackStartTimeRef.current = ctx.currentTime - startTime;
+        progressIntervalRef.current = setInterval(() => {
+            if (audioContextRef.current && cachedSourceRef.current) {
+                const elapsed = audioContextRef.current.currentTime - playbackStartTimeRef.current;
+                setPlaybackProgress(prev => ({
+                    ...prev,
+                    currentTime: Math.min(elapsed, prev.duration)
+                }));
+            }
+        }, 100);
+
+        // 从指定位置开始播放
+        isPausedRef.current = false; // 重置暂停标志
+        console.log(`[Play] source.start 参数: startTime=${startTime.toFixed(2)}, remainingDuration=${remainingDuration.toFixed(2)}, bufferDuration=${audioBuffer.duration.toFixed(2)}`);
+        source.start(0, startTime, remainingDuration);
+        console.log(`[Play] ▶️ 从 ${startTime.toFixed(1)}s 开始播放`);
+    };
+
+    // 跳转到指定位置
+    const seekTo = async (time: number) => {
+        if (!cachedAudioBufferRef.current) return;
+
+        pausedAtRef.current = time;
+        setPlaybackProgress(prev => ({ ...prev, currentTime: time }));
+
+        // 使用 ref 判断是否正在播放
+        if (isPlayingRef.current) {
+            console.log("[Play] 播放中拖动进度条到:", time.toFixed(1), "s");
+            await playFromPosition(time);
+        }
+    };
+
+    // 播放缓存音频 - 使用 Web Audio API
+    const playCachedAudio = async () => {
+        // 先停止任何正在播放的音频
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio.src = '';
+            setCurrentAudio(null);
+        }
+        // 停止 AudioBufferSourceNode
+        if (cachedSourceRef.current) {
+            try {
+                cachedSourceRef.current.stop();
+            } catch (e) { /* ignore */ }
+            cachedSourceRef.current = null;
+        }
+        setAudioQueue([]); // 清空流式队列
+        currentItemIdRef.current = null;
+
+        // 如果已有缓存的 AudioBuffer 且处于暂停状态，从该位置恢复
+        if (cachedAudioBufferRef.current && isPausedRef.current) {
+            console.log("[Play] 从暂停位置恢复:", pausedAtRef.current.toFixed(1), "s");
+            isPausedRef.current = false;
+            await playFromPosition(pausedAtRef.current);
+            return;
+        }
+
+        setIsLoadingAudio(true);
+        try {
+            // 从 IndexedDB 获取缓存
+            const cachedBlob = await getAudioCache(card.id);
+            if (!cachedBlob) {
+                console.warn("[Play] 缓存不存在，回退到流式播放");
+                setIsLoadingAudio(false);
+                startNewPlayback();
+                return;
+            }
+
+            // 使用 Web Audio API 播放
+            const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+            if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+                audioContextRef.current = new AC();
+            }
+            const ctx = audioContextRef.current!;
+
+            // 恢复 AudioContext（iOS 需要用户交互后恢复）
+            if (ctx.state === 'suspended') {
+                await ctx.resume();
+            }
+
+            const arrayBuffer = await cachedBlob.arrayBuffer();
+            console.log("[Play] 解码 WAV, 大小:", (arrayBuffer.byteLength / 1024).toFixed(1), "KB");
+
+            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+            const totalDuration = audioBuffer.duration;
+            console.log("[Play] 解码成功, 时长:", totalDuration.toFixed(1), "秒");
+
+            // 保存 AudioBuffer 引用
+            cachedAudioBufferRef.current = audioBuffer;
+            pausedAtRef.current = 0;
+
+            // 设置时长
+            setPlaybackProgress({ currentTime: 0, duration: totalDuration });
+            setIsLoadingAudio(false);
+
+            // 从头开始播放
+            await playFromPosition(0);
+        } catch (e) {
+            console.error("[Play] 播放错误", e);
+            setIsPlaying(false);
+            setIsLoadingAudio(false);
+            if (progressIntervalRef.current) {
+                clearInterval(progressIntervalRef.current);
+            }
+        }
+    };
+
+    const togglePlay = async () => {
+        console.log("[Play] togglePlay 调用, isPlayingRef:", isPlayingRef.current, "isPlaying:", isPlaying);
+
+        if (isPlayingRef.current) {
             // PAUSE
+            console.log("[Play] 点击暂停, hasCachedAudio:", hasCachedAudio, "useCachedPlayback:", useCachedPlayback);
+
+            // 如果是缓存播放模式，保存当前位置
+            if (hasCachedAudio && useCachedPlayback && playbackProgress.duration > 0) {
+                pausedAtRef.current = playbackProgress.currentTime;
+                isPausedRef.current = true;
+                console.log("[Play] ⏸ 暂停于:", pausedAtRef.current.toFixed(1), "s");
+            }
+
+            isPlayingRef.current = false; // 同步更新
             setIsPlaying(false);
             if (currentAudio) currentAudio.pause();
+
+            // 停止缓存音频播放
+            if (cachedSourceRef.current) {
+                try {
+                    cachedSourceRef.current.stop();
+                } catch (e) { /* ignore */ }
+                cachedSourceRef.current = null;
+            }
+            // 清理进度定时器（但不重置进度）
+            if (progressIntervalRef.current) {
+                clearInterval(progressIntervalRef.current);
+                progressIntervalRef.current = null;
+            }
         } else {
-            // RESUME or START
+            // 如果有缓存且选择使用缓存播放
+            if (hasCachedAudio && useCachedPlayback) {
+                await playCachedAudio();
+                return;
+            }
+
+            // RESUME or START (流式播放)
             if (audioQueue.length > 0) {
                 setIsPlaying(true);
-                // The Effect will start processing the head item.
-                // NOTE: If we were halfway through an item, `process` function finished?
-                // If we paused `currentAudio`, `onended` never fired.
-                // So the queue head is still the same item.
-                // Upon `setIsPlaying(true)`, the Effect runs again.
-                // Checks `currentItemIdRef`. 
-                // If we didn't clear `currentItemIdRef` on pause, it returns.
-                // BUT we want to RESUME playback of `currentAudio` if it exists.
-
                 // Resume Logic:
                 if (currentAudio && currentAudio.paused) {
                     currentAudio.play();
-                    // But `playAudioElement` promise is still pending?
-                    // No. The previous Effect instance created the promise.
-                    // If we unmount/remount effect...
-                    // The Promise is in a detached closure.
-                } else {
-                    // No current audio, just let logic run
                 }
             } else {
                 startNewPlayback();
@@ -506,9 +1168,20 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     {/* Header */}
                     <div className="flex items-start justify-between">
                         <div className="space-y-1">
-                            <h3 className="text-lg font-semibold text-white/90 leading-tight">
-                                {card.title || "未命名卡片"}
-                            </h3>
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-semibold text-white/90 leading-tight">
+                                    {card.title || "未命名卡片"}
+                                </h3>
+                                {/* Guidance Badge */}
+                                {card.guidance_level && GUIDANCE_BADGES[card.guidance_level] && (
+                                    <span className={cn(
+                                        "px-1.5 py-0.5 rounded border text-[10px]",
+                                        GUIDANCE_BADGES[card.guidance_level].color
+                                    )}>
+                                        {GUIDANCE_BADGES[card.guidance_level].label}
+                                    </span>
+                                )}
+                            </div>
                             <div className="flex items-center gap-2 text-xs text-white/40">
                                 <span className="bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
                                     {card.voice_id}
@@ -516,13 +1189,117 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                 <span>{card.rate || "Default"}</span>
                             </div>
                         </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => onEdit(card)} className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors">
-                                <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button onClick={() => onDelete(card.id)} className="p-2 hover:bg-red-500/20 rounded-lg text-white/60 hover:text-red-400 transition-colors">
-                                <Trash2 className="w-4 h-4" />
-                            </button>
+                        <div className="flex items-center gap-1">
+                            {/* 已合成标记 */}
+                            {hasCachedAudio && (
+                                <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs">
+                                    <Music className="w-3 h-3" />
+                                    <span>已合成</span>
+                                </div>
+                            )}
+
+                            {/* 菜单按钮 */}
+                            <div className="relative">
+                                <button
+                                    onClick={() => setShowCardMenu(!showCardMenu)}
+                                    className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors"
+                                >
+                                    <Edit2 className="w-4 h-4" />
+                                </button>
+
+                                {/* 下拉菜单 */}
+                                <AnimatePresence>
+                                    {showCardMenu && (
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                                            className="absolute right-0 top-full mt-1 w-40 py-1 rounded-xl bg-zinc-900/95 border border-white/10 shadow-xl z-50"
+                                        >
+                                            {/* 合成音频 */}
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); synthesizeAndDownload(); }}
+                                                disabled={isSynthesizing}
+                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                                            >
+                                                {isSynthesizing ? (
+                                                    <>
+                                                        <span className="animate-spin w-4 h-4 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full" />
+                                                        <span>{synthesizeProgress.current}/{synthesizeProgress.total}</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Music className="w-4 h-4 text-emerald-400" />
+                                                        <span>{hasCachedAudio ? '重新合成' : '合成音频'}</span>
+                                                    </>
+                                                )}
+                                            </button>
+
+                                            {/* 删除缓存 */}
+                                            {hasCachedAudio && (
+                                                <button
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation();
+                                                        await deleteAudioCache(card.id);
+                                                        setHasCachedAudio(false);
+                                                        setCachedAudioUrl(null);
+                                                        setShowCardMenu(false);
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-amber-400 hover:bg-white/10 transition-colors"
+                                                >
+                                                    <RotateCcw className="w-4 h-4" />
+                                                    <span>删除缓存</span>
+                                                </button>
+                                            )}
+
+                                            {/* 下载音频 */}
+                                            {hasCachedAudio && (
+                                                <button
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation();
+                                                        const blob = await getAudioCache(card.id);
+                                                        if (blob) {
+                                                            const url = URL.createObjectURL(blob);
+                                                            const a = document.createElement('a');
+                                                            a.href = url;
+                                                            a.download = `${card.title || '未命名'}_合成音频.wav`;
+                                                            document.body.appendChild(a);
+                                                            a.click();
+                                                            document.body.removeChild(a);
+                                                            URL.revokeObjectURL(url);
+                                                        }
+                                                        setShowCardMenu(false);
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sky-400 hover:bg-white/10 transition-colors"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                    <span>下载音频</span>
+                                                </button>
+                                            )}
+
+                                            <div className="my-1 border-t border-white/10" />
+
+                                            {/* 编辑 */}
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setShowCardMenu(false); onEdit(card); }}
+                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                                <span>编辑卡片</span>
+                                            </button>
+
+                                            {/* 删除 */}
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setShowCardMenu(false); onDelete(card.id); }}
+                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                                <span>删除卡片</span>
+                                            </button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
                         </div>
                     </div>
 
@@ -555,18 +1332,77 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
                         <div className="flex-1 space-y-1.5">
                             <div className="flex justify-between text-xs text-white/40 font-mono">
-                                <span>{isPlaying ? "PLAYING" : "READY"}</span>
-                                <span>{audioQueue.length > 0 ? `${audioQueue.length} SEGS` : "00:00"}</span>
+                                {hasCachedAudio ? (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setUseCachedPlayback(!useCachedPlayback); }}
+                                        className={cn(
+                                            "px-1.5 py-0.5 rounded transition-colors text-left",
+                                            useCachedPlayback
+                                                ? "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
+                                                : "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
+                                        )}
+                                        title="点击切换播放模式"
+                                    >
+                                        {isPlaying
+                                            ? (useCachedPlayback ? "CACHED ▶" : "STREAM ▶")
+                                            : (useCachedPlayback ? "CACHED" : "STREAM")}
+                                    </button>
+                                ) : (
+                                    <span>{isPlaying ? "STREAMING" : "READY"}</span>
+                                )}
+                                {/* 时间显示 */}
+                                {playbackProgress.duration > 0 ? (
+                                    <span>
+                                        {formatTime(playbackProgress.currentTime)} / {formatTime(playbackProgress.duration)}
+                                    </span>
+                                ) : (
+                                    <span>
+                                        {audioDuration && hasCachedAudio ? formatTime(audioDuration) : (audioQueue.length > 0 ? `${audioQueue.length} SEGS` : "00:00")}
+                                    </span>
+                                )}
                             </div>
-                            {/* Progress Bar (Fake visual based on queue left) */}
-                            <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                                <motion.div
-                                    className="h-full bg-rose-500"
-                                    layout
-                                    transition={{ duration: 0.3 }}
-                                    style={{ width: `${audioQueue.length > 0 ? 100 : 0}%` }}
-                                />
-                            </div>
+                            {/* Progress Bar - 可拖动 */}
+                            {playbackProgress.duration > 0 ? (
+                                <div className="relative h-6 flex items-center group">
+                                    {/* 背景轨道 */}
+                                    <div className="absolute left-0 right-0 h-1.5 bg-white/10 rounded-full" />
+                                    {/* 已播放部分 */}
+                                    <div
+                                        className="absolute left-0 h-1.5 bg-gradient-to-r from-rose-500 to-amber-500 rounded-full pointer-events-none"
+                                        style={{ width: `${(playbackProgress.currentTime / playbackProgress.duration) * 100}%` }}
+                                    />
+                                    {/* 拖动滑块 */}
+                                    <input
+                                        type="range"
+                                        min={0}
+                                        max={playbackProgress.duration}
+                                        step={0.1}
+                                        value={playbackProgress.currentTime}
+                                        onChange={(e) => {
+                                            e.stopPropagation();
+                                            const time = parseFloat(e.target.value);
+                                            seekTo(time);
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="absolute left-0 right-0 h-6 opacity-0 cursor-pointer z-10"
+                                        title="拖动调整播放位置"
+                                    />
+                                    {/* 拖动手柄 */}
+                                    <div
+                                        className="absolute w-3 h-3 bg-white rounded-full shadow-lg transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                                        style={{ left: `${(playbackProgress.currentTime / playbackProgress.duration) * 100}%` }}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                    <motion.div
+                                        className="h-full bg-gradient-to-r from-rose-500 to-amber-500"
+                                        layout
+                                        transition={{ duration: 0.1 }}
+                                        style={{ width: `${audioQueue.length > 0 ? 100 : 0}%` }}
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         <button
@@ -597,6 +1433,12 @@ export default function TTSStudioPage() {
     const [editContent, setEditContent] = useState("");
     const [editVoiceId, setEditVoiceId] = useState(VOICES[0].id);
     const [isSaving, setIsSaving] = useState(false);
+
+    // AI 生成相关状态
+    const [aiPrompt, setAiPrompt] = useState("");
+    const [aiGenerating, setAiGenerating] = useState(false);
+    const [aiDuration, setAiDuration] = useState<number>(5); // 目标时长（分钟）
+    const [guidanceLevel, setGuidanceLevel] = useState<'light' | 'medium' | 'heavy'>('medium');
 
     const fetchCards = useCallback(async () => {
         try {
@@ -633,6 +1475,114 @@ export default function TTSStudioPage() {
         setEditTitle(card.title);
         setEditContent(card.content);
         setEditVoiceId(card.voice_id);
+    };
+
+    // AI 生成冥想文本
+    const handleAIGenerate = async () => {
+        if (!aiPrompt.trim() || aiGenerating) return;
+
+        setAiGenerating(true);
+        setEditContent(""); // 清空现有内容
+
+        // 按 280 字/分钟计算
+        // 动态计算目标字数和停顿时间
+        const totalSeconds = aiDuration * 60;
+        let textRatio = 0.5; // medium default
+
+        if (guidanceLevel === 'light') textRatio = 0.1; // 10% text, 90% pause
+        if (guidanceLevel === 'heavy') textRatio = 0.7; // 70% text, 30% pause
+
+        const targetTextSeconds = Math.round(totalSeconds * textRatio);
+        const targetPauseSeconds = Math.round(totalSeconds * (1 - textRatio));
+        const estimatedWords = Math.round(targetTextSeconds * (260 / 60)); // 260 chars/min
+
+        // Auto-fill title if empty
+        if (!editTitle.trim()) {
+            setEditTitle(aiPrompt);
+        }
+
+        // 简化的统一 prompt
+        // 根据引导强度调整 Prompt
+        let densityRule = "";
+        switch (guidanceLevel) {
+            case 'light':
+                densityRule = `
+【核心策略：轻引导 (Silence Dominant)】
+- **超级留白**：必须使用极长的停顿（如 [pause 120s], [pause 300s]）。让静默占据 90% 以上的时间。
+- **仅保留防走神**：除了简短的开场和结束，中间只偶尔插入一句“如果你走神了，轻轻回来”。
+- **目标**：像一个挂钟一样安静，只在整点轻轻提醒。`;
+                break;
+            case 'heavy':
+                densityRule = `
+【核心策略：多引导 (Heavy Guidance)】
+- **全程陪伴**：留白比例约为 **0.5:1**（说话多于停顿）。
+- **体验**：提供持续、详细的步骤指引和感官描绘，用连续的声音牵引用户的注意力，防止新手走神。`;
+                break;
+            case 'medium':
+            default:
+                densityRule = `
+【核心策略：中引导 (Standard Guidance)】
+- **标准平衡**：留白与文本时间比例约为 **1:1**。
+- **体验**：在引导语和静默体验之间保持完美的平衡。`;
+                break;
+        }
+
+        const systemPrompt = `你是一位专业的冥想引导师与资深“节奏导演”。你的任务是创作高质量、具有人性化关怀和强烈画面感的、适合 TTS 朗读的中文冥想引导脚本。
+
+${densityRule}
+
+【核心规则 1：节奏导演】
+你必须自主控制脚本的节奏，营造真实的停顿感。
+- **强制停顿**：
+  - 在每个引导性指令后必须停顿（如：「深呼吸... [pause 4s] 慢慢呼出... [pause 5s]」）。
+  - 在意境转换处必须停顿（如：「现在离开那片森林 [pause 6s] 来到溪水边...」）。
+- **长停顿**：按照选定的留白策略，在关键体验时刻使用长停顿。
+- **自由控制**：完全根据内容需要自主决定停顿位置。
+
+【核心规则 2：疗愈文字与关怀】
+- **语气**：温柔、包容、接纳。
+- **画面感**：使用感官词汇（温暖、流淌、蔚蓝、沉静）。
+- **正念引导**：脚本中必须包含对“走神”的温柔接纳引导。
+
+【约束条件】
+- 直接输出脚本内容，不要任何开场白或解释。
+- 最终字数：约 ${estimatedWords} 字。
+- 总时长控制：文本约 ${targetTextSeconds} 秒，停顿总时长必须约 ${targetPauseSeconds} 秒（总计 ${totalSeconds} 秒）。
+- 严格执行：请确保 [pause Xs] 的总和接近 ${targetPauseSeconds} 秒。
+- 开头用 [rate -10%] 设置舒缓的基础语速。`;
+
+        try {
+            const response = await fetch("/api/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    prompt: `${aiPrompt}（目标时长：${aiDuration}分钟）`,
+                    systemPrompt
+                }),
+            });
+
+            if (!response.ok) throw new Error("生成失败");
+
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error("无法读取响应");
+
+            const decoder = new TextDecoder();
+            let fullContent = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                fullContent += chunk;
+                setEditContent(fullContent);
+            }
+        } catch (e) {
+            console.error("AI 生成失败:", e);
+            setEditContent("生成失败，请重试...");
+        } finally {
+            setAiGenerating(false);
+        }
     };
 
     const handleSaveEdit = async () => {
@@ -736,6 +1686,66 @@ export default function TTSStudioPage() {
                                     {/* Content */}
                                     <div className="space-y-2">
                                         <label className="text-xs text-slate-400 uppercase tracking-wider">内容</label>
+
+                                        {/* AI 生成区域 */}
+                                        <div className="bg-slate-700/50 rounded-xl p-3 space-y-3 mb-3">
+                                            <div className="flex items-center gap-2 text-xs text-slate-400">
+                                                <span className="text-rose-400">✨</span>
+                                                <span>AI 生成助手</span>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    value={aiPrompt}
+                                                    onChange={(e) => setAiPrompt(e.target.value)}
+                                                    className="flex-1 bg-slate-800 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:ring-2 focus:ring-rose-500 outline-none"
+                                                    placeholder="描述您想要的内容，如：正念呼吸练习、身体扫描、助眠引导..."
+                                                    disabled={aiGenerating}
+                                                />
+                                                <select
+                                                    value={guidanceLevel}
+                                                    onChange={(e) => setGuidanceLevel(e.target.value as any)}
+                                                    className="bg-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-rose-500 outline-none cursor-pointer"
+                                                    disabled={aiGenerating}
+                                                    title="选择引导强度"
+                                                >
+                                                    <option value="light">🍃 轻引导</option>
+                                                    <option value="medium">⚖️ 中引导</option>
+                                                    <option value="heavy">🧘 多引导</option>
+                                                </select>
+                                                <select
+                                                    value={aiDuration}
+                                                    onChange={(e) => setAiDuration(Number(e.target.value))}
+                                                    className="bg-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-rose-500 outline-none"
+                                                    disabled={aiGenerating}
+                                                    title="选择目标时长"
+                                                >
+                                                    <option value={3}>3分钟</option>
+                                                    <option value={5}>5分钟</option>
+                                                    <option value={10}>10分钟</option>
+                                                    <option value={15}>15分钟</option>
+                                                    <option value={20}>20分钟</option>
+                                                    <option value={30}>30分钟</option>
+                                                </select>
+                                            </div>
+                                            <button
+                                                onClick={handleAIGenerate}
+                                                disabled={!aiPrompt.trim() || aiGenerating}
+                                                className="w-full py-2 bg-gradient-to-r from-rose-500 to-orange-500 text-white text-sm rounded-lg hover:from-rose-400 hover:to-orange-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                            >
+                                                {aiGenerating ? (
+                                                    <>
+                                                        <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
+                                                        <span>生成中...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span>✨</span>
+                                                        <span>AI 生成</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+
                                         <textarea
                                             value={editContent}
                                             onChange={(e) => setEditContent(e.target.value)}
@@ -748,6 +1758,7 @@ export default function TTSStudioPage() {
                                     <div className="space-y-2">
                                         <label className="text-xs text-slate-400 uppercase tracking-wider">语音</label>
                                         <select
+                                            title="选择语音"
                                             value={editVoiceId}
                                             onChange={(e) => setEditVoiceId(e.target.value)}
                                             className="w-full bg-slate-800 rounded-xl p-3 text-white focus:ring-2 focus:ring-rose-500 outline-none appearance-none cursor-pointer"

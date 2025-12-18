@@ -1,8 +1,12 @@
 {
   "name": "Rain Meditation",
   "short_name": "Rain",
+  "description": "正念冥想与戒烟辅助应用",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a1a",
+  "theme_color": "#0a0a1a",
   "icons": []
 }
