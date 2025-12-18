@@ -4,9 +4,9 @@
   "description": "正念冥想与戒烟辅助应用",
   "start_url": "/",
   "scope": "/",
-  "display": "fullscreen",
+  "display": "standalone",
   "orientation": "portrait",
-  "background_color": "transparent",
-  "theme_color": "transparent",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": []
 }

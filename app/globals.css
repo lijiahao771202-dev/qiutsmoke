@@ -40,12 +40,15 @@ body {
 /* 背景层全屏覆盖 - 延伸到 iOS 安全区域外 */
 .bg-fullscreen {
   position: fixed;
-  top: calc(-1 * env(safe-area-inset-top, 0px));
+  top: -50px;
+  /* 强制向上延伸，覆盖状态栏 */
   left: 0;
   right: 0;
   bottom: 0;
-  min-height: calc(100dvh + env(safe-area-inset-top, 0px));
-  min-height: calc(-webkit-fill-available + env(safe-area-inset-top, 0px));
+  padding-top: 50px;
+  /* 补偿偏移，保持内容位置 */
+  min-height: calc(100dvh + 50px);
+  min-height: calc(100vh + 50px);
 }
 
 @layer utilities {
