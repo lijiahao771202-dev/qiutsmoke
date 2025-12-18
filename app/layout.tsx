@@ -48,7 +48,7 @@ export default function RootLayout({
     <html lang="en" className="h-full">
       <body
         suppressHydrationWarning
-        className={`${inter.variable} ${jetbrainsMono.variable} antialiased min-h-screen h-full relative overflow-x-hidden bg-[#0a0a1a]`}
+        className={`${inter.variable} ${jetbrainsMono.variable} antialiased min-h-screen h-full relative overflow-x-hidden`}
       >
         <AuthProvider>
           <SWRProvider>
