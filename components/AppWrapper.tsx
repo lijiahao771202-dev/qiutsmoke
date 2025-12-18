@@ -10,7 +10,7 @@ function BackgroundLayer() {
     const isDefault = wallpaperId === 'default';
 
     return (
-        <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none bg-[#0a0a1a]">
+        <div className="bg-fullscreen z-0 overflow-hidden pointer-events-none bg-[#0a0a1a]">
             {/* 底层基础渐变，作为兜底 */}
             <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-purple-900/50 to-slate-900 opacity-50" />
 

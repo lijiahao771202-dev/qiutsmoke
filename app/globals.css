@@ -25,6 +25,25 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* iOS 全屏支持 - 确保视口充满整个屏幕 */
+html,
+body {
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  /* iOS Safari 兼容 */
+}
+
+/* 背景层全屏覆盖 - 延伸到 iOS 安全区域外 */
+.bg-fullscreen {
+  position: fixed;
+  top: calc(-1 * env(safe-area-inset-top, 0px));
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: calc(100dvh + env(safe-area-inset-top, 0px));
+  min-height: calc(-webkit-fill-available + env(safe-area-inset-top, 0px));
+}
+
 @layer utilities {
   .glass-panel {
     @apply bg-white/10 backdrop-blur-2xl border border-white/10 shadow-black/20;
