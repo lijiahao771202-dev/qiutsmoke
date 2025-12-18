@@ -10,10 +10,7 @@ function BackgroundLayer() {
     const isDefault = wallpaperId === 'default';
 
     return (
-        <div className="bg-fullscreen z-0 overflow-hidden pointer-events-none bg-[#0a0a1a]">
-            {/* 底层基础渐变，作为兜底 */}
-            <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-purple-900/50 to-slate-900 opacity-50" />
-
+        <div className="bg-fullscreen z-0 overflow-hidden pointer-events-none">
             <AnimatePresence mode="popLayout">
                 {!isDefault && currentWallpaper ? (
                     <motion.div
@@ -22,10 +19,9 @@ function BackgroundLayer() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 1.2, ease: "easeInOut" }}
-                        className="absolute inset-0 bg-cover bg-center bg-no-repeat lg:bg-fixed"
+                        className="bg-fullscreen bg-cover bg-center bg-no-repeat"
                         style={{
                             backgroundImage: `url(${currentWallpaper})`,
-                            height: '100dvh', // 使用 dynamic viewport height
                         }}
                     />
                 ) : (
@@ -35,15 +31,10 @@ function BackgroundLayer() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 1.2, ease: "easeInOut" }}
-                        className="absolute inset-0"
+                        className="bg-fullscreen"
                     >
-                        <div
-                            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-                            style={{
-                                backgroundImage: 'url(/mountain-9472312.svg)',
-                                height: '100dvh',
-                            }}
-                        />
+                        {/* 默认渐变背景 */}
+                        <div className="bg-fullscreen bg-gradient-to-br from-slate-900 via-purple-900/50 to-slate-900" />
                     </motion.div>
                 )}
             </AnimatePresence>
