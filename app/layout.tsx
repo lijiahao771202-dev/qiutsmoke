@@ -37,6 +37,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
+  themeColor: "#000000",
 };
 
 export default function RootLayout({
@@ -53,12 +54,12 @@ export default function RootLayout({
         <AuthProvider>
           <SWRProvider>
             <AppWrapper>
-              <div className="relative z-10 min-h-full flex flex-col">
+              <div className="relative z-10 min-h-screen flex flex-col overflow-x-hidden">
                 <NavBar />
                 <UserProfile />
-                <main className="flex-1 contents">
+                <div className="flex-1 flex flex-col">
                   {children}
-                </main>
+                </div>
               </div>
             </AppWrapper>
           </SWRProvider>

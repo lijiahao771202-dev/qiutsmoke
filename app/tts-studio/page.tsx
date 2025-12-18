@@ -1613,7 +1613,7 @@ ${densityRule}
     return (
         <AuthGuard>
             <div className="min-h-screen text-white">
-                <main className="relative z-10 max-w-6xl mx-auto px-6 py-12 pt-24 pb-32">
+                <div className="relative z-10 max-w-6xl mx-auto px-6 py-12 pt-24 pb-32 min-h-screen">
                     <div className="text-center mb-8">
                         <h1 className="text-2xl font-medium tracking-tight text-white/90">声波工坊</h1>
                         <p className="text-rose-200/60 text-sm mt-1">Text to Speech Studio</p>
@@ -1641,7 +1641,7 @@ ${densityRule}
                             )}
                         </div>
                     </div>
-                </main>
+                </div>
 
                 {/* Edit Modal */}
                 <AnimatePresence>

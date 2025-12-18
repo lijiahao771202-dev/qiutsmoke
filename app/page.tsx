@@ -170,7 +170,7 @@ export default function Home() {
   const healthMetrics = getHealthStatus();
 
   return (
-    <main className="flex-1 flex flex-col items-center justify-center z-10 pt-20 pb-24 md:pb-0 px-4">
+    <div className="flex-1 flex flex-col items-center justify-center z-10 pt-20 pb-24 md:pb-0 px-4 min-h-screen">
       {/* Liquid Glass Container */}
       <div
         className="p-6 rounded-3xl relative overflow-hidden w-full max-w-md mx-auto"
@@ -347,6 +347,6 @@ export default function Home() {
           </motion.div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
