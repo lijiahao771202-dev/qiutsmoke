@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import webpush from "web-push";
+import { getDailyMessage, getDangerMessage, type MindfulnessMessage } from "@/lib/mindfulness-messages";
 
 // VAPID 配置延迟初始化
 let vapidConfigured = false;
@@ -50,94 +51,145 @@ export async function GET(req: Request) {
     );
 
     try {
-        // 获取当前 UTC 时间
         const now = new Date();
+        const results = {
+            daily: { checked: 0, matched: 0, sent: 0, failed: 0 },
+            danger: { checked: 0, matched: 0, sent: 0, failed: 0 }
+        };
 
-        // 查询所有应该在当前时间发送提醒的用户
-        // 我们查找 reminder_time 在当前分钟内的订阅
-        const currentHour = now.getUTCHours().toString().padStart(2, "0");
-        const currentMinute = now.getUTCMinutes().toString().padStart(2, "0");
-        const currentTimeUTC = `${currentHour}:${currentMinute}:00`;
-
-        // 简化版：直接匹配时间 (生产环境应考虑时区转换)
-        // 这里假设 reminder_time 存的是用户本地时间，我们需要转换
-        // 但为简化，先用 SQL 函数处理
-        const { data: subscriptions, error } = await supabase
+        // ==================== 1. 处理每日定时提醒 ====================
+        const { data: subscriptions, error: subError } = await supabase
             .from("push_subscriptions")
-            .select("id, endpoint, p256dh, auth, reminder_time, timezone")
+            .select("id, endpoint, p256dh, auth, reminder_time, reminder_times, timezone")
             .eq("enabled", true);
 
-        if (error) {
-            console.error("Query error:", error);
-            return NextResponse.json({ error: error.message }, { status: 500 });
+        if (subError) {
+            console.error("Query subscriptions error:", subError);
         }
 
-        if (!subscriptions?.length) {
-            return NextResponse.json({ message: "No subscriptions", sent: 0 });
-        }
+        if (subscriptions?.length) {
+            results.daily.checked = subscriptions.length;
 
-        // 筛选出当前时间应该发送的订阅
-        const toSend = subscriptions.filter(sub => {
-            try {
-                // 获取用户时区的当前时间
-                const userNow = new Date(now.toLocaleString("en-US", { timeZone: sub.timezone || "Asia/Shanghai" }));
-                const userHour = userNow.getHours().toString().padStart(2, "0");
-                const userMinute = userNow.getMinutes().toString().padStart(2, "0");
-                const userTime = `${userHour}:${userMinute}`;
+            // 筛选当前时间应该发送的订阅
+            const dailyToSend = subscriptions.filter(sub => {
+                try {
+                    const userNow = new Date(now.toLocaleString("en-US", { timeZone: sub.timezone || "Asia/Shanghai" }));
+                    const userHour = userNow.getHours().toString().padStart(2, "0");
+                    const userMinute = userNow.getMinutes().toString().padStart(2, "0");
+                    const userTime = `${userHour}:${userMinute}`;
 
-                // 检查是否匹配 reminder_time (格式: "08:00:00")
-                const reminderTime = sub.reminder_time?.substring(0, 5); // "08:00"
-                return userTime === reminderTime;
-            } catch {
-                return false;
+                    // 检查 reminder_times 数组（新格式）或 reminder_time（旧格式）
+                    const times = sub.reminder_times || [sub.reminder_time?.substring(0, 5)].filter(Boolean);
+                    return times.some((t: string) => t === userTime);
+                } catch {
+                    return false;
+                }
+            });
+
+            results.daily.matched = dailyToSend.length;
+
+            if (dailyToSend.length > 0) {
+                const dailyResults = await sendNotifications(supabase, dailyToSend, getDailyMessage());
+                results.daily.sent = dailyResults.sent;
+                results.daily.failed = dailyResults.failed;
             }
-        });
-
-        if (!toSend.length) {
-            return NextResponse.json({ message: "No reminders due", checked: subscriptions.length, sent: 0 });
         }
 
-        const payload = JSON.stringify({
-            title: "🧘 该冥想了",
-            body: "来一场心灵放松吧，保持每日的正念练习",
-            icon: "/icon-192.png",
-            data: { url: "/meditate" }
-        });
+        // ==================== 2. 处理高危时段提醒 ====================
+        const { data: dangerTimes, error: dangerError } = await supabase
+            .from("user_danger_times")
+            .select(`
+                id, 
+                time_slot, 
+                label,
+                user_id,
+                push_subscriptions!inner(id, endpoint, p256dh, auth, timezone, enabled)
+            `)
+            .eq("enabled", true)
+            .eq("push_subscriptions.enabled", true);
 
-        // 发送通知
-        const results = await Promise.allSettled(
-            toSend.map(sub =>
-                webpush.sendNotification(
-                    {
-                        endpoint: sub.endpoint,
-                        keys: {
+        // 如果表不存在，忽略错误
+        if (dangerError && !dangerError.message.includes("does not exist")) {
+            console.error("Query danger times error:", dangerError);
+        }
+
+        if (dangerTimes?.length) {
+            results.danger.checked = dangerTimes.length;
+
+            // 筛选当前时间匹配的高危时段
+            const dangerToSend: Array<{
+                endpoint: string;
+                p256dh: string;
+                auth: string;
+                subId: string;
+            }> = [];
+
+            for (const dt of dangerTimes) {
+                try {
+                    const sub = (dt as any).push_subscriptions;
+                    if (!sub) continue;
+
+                    const userNow = new Date(now.toLocaleString("en-US", { timeZone: sub.timezone || "Asia/Shanghai" }));
+                    const userHour = userNow.getHours().toString().padStart(2, "0");
+                    const userMinute = userNow.getMinutes().toString().padStart(2, "0");
+                    const userTime = `${userHour}:${userMinute}`;
+
+                    const dangerTime = dt.time_slot?.substring(0, 5);
+                    if (userTime === dangerTime) {
+                        dangerToSend.push({
+                            endpoint: sub.endpoint,
                             p256dh: sub.p256dh,
-                            auth: sub.auth
-                        }
-                    },
-                    payload
-                ).catch(err => {
-                    // 如果订阅失效 (410 Gone)，禁用它
-                    if (err.statusCode === 410) {
-                        supabase
-                            .from("push_subscriptions")
-                            .update({ enabled: false })
-                            .eq("id", sub.id);
+                            auth: sub.auth,
+                            subId: sub.id
+                        });
                     }
-                    throw err;
-                })
-            )
-        );
+                } catch (e) {
+                    console.error("Process danger time error:", e);
+                }
+            }
 
-        const successful = results.filter(r => r.status === "fulfilled").length;
-        const failed = results.filter(r => r.status === "rejected").length;
+            results.danger.matched = dangerToSend.length;
+
+            if (dangerToSend.length > 0) {
+                // 使用高危时段专用文案
+                const dangerMessage = getDangerMessage();
+                const payload = JSON.stringify({
+                    title: dangerMessage.title,
+                    body: dangerMessage.body,
+                    icon: "/icon-192.png",
+                    data: { url: dangerMessage.url || "/meditate" }
+                });
+
+                const dangerResults = await Promise.allSettled(
+                    dangerToSend.map(sub =>
+                        webpush.sendNotification(
+                            {
+                                endpoint: sub.endpoint,
+                                keys: { p256dh: sub.p256dh, auth: sub.auth }
+                            },
+                            payload
+                        ).catch(err => {
+                            if (err.statusCode === 410) {
+                                supabase
+                                    .from("push_subscriptions")
+                                    .update({ enabled: false })
+                                    .eq("id", sub.subId);
+                            }
+                            throw err;
+                        })
+                    )
+                );
+
+                results.danger.sent = dangerResults.filter(r => r.status === "fulfilled").length;
+                results.danger.failed = dangerResults.filter(r => r.status === "rejected").length;
+            }
+        }
 
         return NextResponse.json({
             success: true,
-            checked: subscriptions.length,
-            matched: toSend.length,
-            sent: successful,
-            failed
+            timestamp: now.toISOString(),
+            daily: results.daily,
+            danger: results.danger
         });
     } catch (err: unknown) {
         console.error("Cron error:", err);
@@ -146,4 +198,48 @@ export async function GET(req: Request) {
             details: err instanceof Error ? err.message : String(err)
         }, { status: 500 });
     }
+}
+
+// 发送通知的辅助函数
+async function sendNotifications(
+    supabase: ReturnType<typeof createClient>,
+    subscriptions: Array<{
+        id: string;
+        endpoint: string;
+        p256dh: string;
+        auth: string;
+    }>,
+    message: MindfulnessMessage
+) {
+    const payload = JSON.stringify({
+        title: message.title,
+        body: message.body,
+        icon: "/icon-192.png",
+        data: { url: message.url || "/meditate" }
+    });
+
+    const results = await Promise.allSettled(
+        subscriptions.map(sub =>
+            webpush.sendNotification(
+                {
+                    endpoint: sub.endpoint,
+                    keys: { p256dh: sub.p256dh, auth: sub.auth }
+                },
+                payload
+            ).catch(err => {
+                if (err.statusCode === 410) {
+                    supabase
+                        .from("push_subscriptions")
+                        .update({ enabled: false })
+                        .eq("id", sub.id);
+                }
+                throw err;
+            })
+        )
+    );
+
+    return {
+        sent: results.filter(r => r.status === "fulfilled").length,
+        failed: results.filter(r => r.status === "rejected").length
+    };
 }

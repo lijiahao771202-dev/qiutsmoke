@@ -5,7 +5,9 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 // Curated list of high-quality scenic wallpapers (Unsplash IDs)
 // Curated list of high-quality scenic wallpapers (Unsplash IDs)
 export const WALLPAPERS = [
-    { id: 'default', url: '', name: 'Default Aurora' },
+    // 动态背景 - 专为iOS 26状态栏适配设计
+    { id: 'dark-fluid', url: '', name: '深色流体 ✨', type: 'dynamic' as const },
+    { id: 'default', url: '/gerbera-9665515.jpg', name: 'Gerbera' },
     // Nature & Landscapes
     { id: 'mountains', url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=1200&auto=format&fit=crop', name: 'Misty Mountains' },
     { id: 'ocean', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1200&auto=format&fit=crop', name: 'Tropical Beach' },

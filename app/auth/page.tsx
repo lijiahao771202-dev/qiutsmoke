@@ -1,32 +1,61 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { createBrowserClient } from '@supabase/ssr';
 import { motion } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
-import { useSearchParams } from 'next/navigation';
+import { Sparkles, Loader2 } from 'lucide-react';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 function AuthContent() {
     const searchParams = useSearchParams();
+    const router = useRouter();
     const next = searchParams.get('next') || '/';
-
-    // Convert relative URL to absolute URL for redirection
-    const getRedirectUrl = () => {
-        if (typeof window === 'undefined') return undefined; // Should not happen in client component but safe guard
-        const origin = window.location.origin;
-        // Ensure next doesn't start with / to avoid double slashes if origin has trailing slash (it usually doesn't)
-        // But origin usually doesn't have trailing slash.
-        // Let's be safe.
-        const cleanNext = next.startsWith('/') ? next : `/${next}`;
-        return `${origin}/auth/callback?next=${encodeURIComponent(cleanNext)}`;
-    };
 
     const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
+
+    // 监听认证状态变化，登录成功后自动跳转
+    useEffect(() => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            console.log('[Auth] State changed:', event, session?.user?.email);
+
+            if (event === 'SIGNED_IN' && session) {
+                // 登录成功，自动跳转到目标页面
+                console.log('[Auth] Signed in! Redirecting to:', next);
+
+                // 使用 setTimeout 确保状态更新完成
+                setTimeout(() => {
+                    router.replace(next);
+                }, 100);
+            }
+        });
+
+        // 检查是否已登录
+        const checkSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                console.log('[Auth] Already signed in, redirecting to:', next);
+                router.replace(next);
+            }
+        };
+        checkSession();
+
+        return () => {
+            subscription.unsubscribe();
+        };
+    }, [supabase, router, next]);
+
+    // Convert relative URL to absolute URL for OAuth redirection
+    const getRedirectUrl = () => {
+        if (typeof window === 'undefined') return undefined;
+        const origin = window.location.origin;
+        const cleanNext = next.startsWith('/') ? next : `/${next}`;
+        return `${origin}/auth/callback?next=${encodeURIComponent(cleanNext)}`;
+    };
 
     return (
         <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-black text-white selection:bg-rose-500/30">
@@ -123,9 +152,25 @@ function AuthContent() {
     );
 }
 
+// 加载中状态
+function AuthLoading() {
+    return (
+        <div className="min-h-screen bg-black flex items-center justify-center">
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex flex-col items-center gap-4"
+            >
+                <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+                <p className="text-white/40 text-sm">正在检查登录状态...</p>
+            </motion.div>
+        </div>
+    );
+}
+
 export default function AuthPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen bg-black" />}>
+        <Suspense fallback={<AuthLoading />}>
             <AuthContent />
         </Suspense>
     );

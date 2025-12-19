@@ -1,8 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, BellOff, Clock, X, Plus, Trash2, Send } from "lucide-react";
+import { Bell, BellOff, Clock, X, Plus, Trash2, Send, AlertTriangle, Shield } from "lucide-react";
+
+interface DangerTime {
+    id: string;
+    time_slot: string;
+    label: string;
+    enabled: boolean;
+}
 
 interface NotificationSettingsProps {
     onClose?: () => void;
@@ -16,6 +23,26 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
     const [loading, setLoading] = useState(false);
     const [testLoading, setTestLoading] = useState(false);
     const [message, setMessage] = useState("");
+
+    // 高危时段相关状态
+    const [dangerTimes, setDangerTimes] = useState<DangerTime[]>([]);
+    const [newDangerTime, setNewDangerTime] = useState("14:00");
+    const [newDangerLabel, setNewDangerLabel] = useState("");
+    const [dangerLoading, setDangerLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState<"daily" | "danger">("daily");
+
+    // 加载高危时段
+    const loadDangerTimes = useCallback(async () => {
+        try {
+            const res = await fetch("/api/danger-times");
+            if (res.ok) {
+                const data = await res.json();
+                setDangerTimes(data);
+            }
+        } catch (err) {
+            console.error("Failed to load danger times:", err);
+        }
+    }, []);
 
     useEffect(() => {
         const supported = "Notification" in window && "serviceWorker" in navigator;
@@ -34,7 +61,10 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
                 setIsSubscribed(data.enabled || false);
             } catch { }
         }
-    }, []);
+
+        // 加载高危时段
+        loadDangerTimes();
+    }, [loadDangerTimes]);
 
     const requestPermission = async () => {
         if (!isSupported) return false;
@@ -57,7 +87,6 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
                 }
             }
 
-            // Save to localStorage (simple approach without database)
             localStorage.setItem("meditation_reminders", JSON.stringify({
                 times: reminderTimes,
                 enabled: true,
@@ -65,8 +94,7 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
             }));
 
             setIsSubscribed(true);
-            setMessage(`✅ 已设置 ${reminderTimes.length} 个提醒时段！`);
-            setMessage("✅ 提醒已开启 (本地存储)");
+            setMessage("✅ 提醒已开启");
         } catch (err) {
             console.error("Subscribe error:", err);
             setMessage("设置失败: " + (err instanceof Error ? err.message : String(err)));
@@ -104,57 +132,85 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
         setReminderTimes(newTimes);
     };
 
-    // 测试通知 - 简化版
+    // 添加高危时段
+    const addDangerTime = async () => {
+        if (!newDangerTime) return;
+        setDangerLoading(true);
+        setMessage("");
+
+        try {
+            const res = await fetch("/api/danger-times", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    time_slot: newDangerTime,
+                    label: newDangerLabel || "高危时段"
+                })
+            });
+
+            if (res.ok) {
+                const newItem = await res.json();
+                setDangerTimes([...dangerTimes, newItem]);
+                setNewDangerTime("14:00");
+                setNewDangerLabel("");
+                setMessage("✅ 高危时段已添加");
+            } else {
+                const err = await res.json();
+                setMessage("添加失败: " + (err.error || "未知错误"));
+            }
+        } catch (err) {
+            console.error("Add danger time error:", err);
+            setMessage("添加失败");
+        }
+
+        setDangerLoading(false);
+    };
+
+    // 删除高危时段
+    const removeDangerTime = async (id: string) => {
+        try {
+            const res = await fetch(`/api/danger-times?id=${id}`, {
+                method: "DELETE"
+            });
+
+            if (res.ok) {
+                setDangerTimes(dangerTimes.filter(t => t.id !== id));
+                setMessage("已删除");
+            }
+        } catch (err) {
+            console.error("Delete danger time error:", err);
+        }
+    };
+
+    // 测试通知
     const sendTestNotification = async () => {
         setTestLoading(true);
         setMessage("");
-        console.log("[Notification] Starting test...");
-        console.log("[Notification] Current permission:", permission);
-        console.log("[Notification] API available:", "Notification" in window);
 
         try {
-            // 先请求权限
             if (Notification.permission === "default") {
-                console.log("[Notification] Requesting permission...");
                 const result = await Notification.requestPermission();
-                console.log("[Notification] Permission result:", result);
                 setPermission(result);
                 if (result !== "granted") {
-                    setMessage("❌ 需要通知权限！请在浏览器设置中允许");
+                    setMessage("❌ 需要通知权限！");
                     setTestLoading(false);
                     return;
                 }
             } else if (Notification.permission === "denied") {
-                setMessage("❌ 通知被阻止！请在浏览器设置中允许");
+                setMessage("❌ 通知被阻止！请在设置中允许");
                 setTestLoading(false);
                 return;
             }
 
-            // 创建通知
-            console.log("[Notification] Creating notification...");
-            const notification = new Notification("🧘 测试提醒", {
+            new Notification("🧘 测试提醒", {
                 body: "如果你看到这条消息，说明通知功能正常！",
-                tag: "test-notification",
-                requireInteraction: false
+                tag: "test-notification"
             });
 
-            notification.onclick = () => {
-                console.log("[Notification] Clicked!");
-                window.focus();
-            };
-
-            notification.onerror = (e) => {
-                console.error("[Notification] Error:", e);
-            };
-
-            console.log("[Notification] Created successfully!");
-            setMessage("✅ 测试通知已发送！请查看系统通知");
-
-            // 临时 alert 确认
-            alert("通知已创建！如果没看到系统通知，请检查 macOS 通知中心或 Chrome 通知设置");
+            setMessage("✅ 测试通知已发送！");
         } catch (err) {
-            console.error("[Notification] Exception:", err);
-            setMessage("发送失败: " + (err instanceof Error ? err.message : String(err)));
+            console.error("Test notification error:", err);
+            setMessage("发送失败");
         }
 
         setTestLoading(false);
@@ -179,12 +235,12 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
             className="glass-panel rounded-3xl p-6 relative overflow-hidden max-w-md mx-auto"
         >
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                     <div className="p-2 rounded-xl bg-gradient-to-br from-amber-400/20 to-orange-500/20">
                         <Bell className="w-5 h-5 text-amber-400" />
                     </div>
-                    <h3 className="text-lg font-light text-white">每日冥想提醒</h3>
+                    <h3 className="text-lg font-light text-white">智能正念提醒</h3>
                 </div>
                 {onClose && (
                     <button
@@ -197,88 +253,192 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
                 )}
             </div>
 
-            {/* Time Pickers */}
-            <div className="mb-4">
-                <label className="block text-white/40 text-xs uppercase tracking-wider mb-3">提醒时间 (最多5个)</label>
-                <div className="space-y-2">
-                    {reminderTimes.map((time, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                            <div className="flex-1 relative">
-                                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-                                <input
-                                    type="time"
-                                    value={time}
-                                    onChange={(e) => updateTime(index, e.target.value)}
-                                    title="选择提醒时间"
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white focus:outline-none focus:ring-1 focus:ring-amber-400/50"
-                                />
+            {/* Tab 切换 */}
+            <div className="flex gap-2 mb-4">
+                <button
+                    onClick={() => setActiveTab("daily")}
+                    className={`flex-1 py-2 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${activeTab === "daily"
+                            ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                            : "bg-white/5 text-white/50 hover:bg-white/10"
+                        }`}
+                >
+                    <Clock className="w-4 h-4" />
+                    每日提醒
+                </button>
+                <button
+                    onClick={() => setActiveTab("danger")}
+                    className={`flex-1 py-2 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${activeTab === "danger"
+                            ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                            : "bg-white/5 text-white/50 hover:bg-white/10"
+                        }`}
+                >
+                    <Shield className="w-4 h-4" />
+                    高危时段
+                </button>
+            </div>
+
+            {/* 每日提醒 Tab */}
+            {activeTab === "daily" && (
+                <div className="space-y-4">
+                    <p className="text-white/40 text-xs">设置每日冥想提醒时间（最多5个）</p>
+
+                    <div className="space-y-2">
+                        {reminderTimes.map((time, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                                <div className="flex-1 relative">
+                                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                                    <input
+                                        type="time"
+                                        value={time}
+                                        onChange={(e) => updateTime(index, e.target.value)}
+                                        title="选择提醒时间"
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white focus:outline-none focus:ring-1 focus:ring-amber-400/50"
+                                    />
+                                </div>
+                                {reminderTimes.length > 1 && (
+                                    <button
+                                        onClick={() => removeTime(index)}
+                                        className="p-2 hover:bg-rose-500/20 rounded-lg transition-colors text-rose-400"
+                                        title="删除"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                )}
                             </div>
-                            {reminderTimes.length > 1 && (
+                        ))}
+                    </div>
+
+                    {reminderTimes.length < 5 && (
+                        <button
+                            onClick={addTime}
+                            className="w-full flex items-center justify-center gap-2 py-2 border border-dashed border-white/20 rounded-xl text-white/40 hover:text-white/60 hover:border-white/30 transition-colors text-sm"
+                            title="添加时间"
+                        >
+                            <Plus className="w-4 h-4" />
+                            添加时间段
+                        </button>
+                    )}
+
+                    <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={isSubscribed ? unsubscribe : subscribe}
+                        disabled={loading}
+                        className={`w-full py-3.5 rounded-2xl font-medium transition-all ${isSubscribed
+                                ? "bg-white/10 text-white/70 hover:bg-white/15"
+                                : "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/20"
+                            }`}
+                    >
+                        {loading ? (
+                            <span className="flex items-center justify-center gap-2">
+                                <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                                    className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+                                />
+                                处理中...
+                            </span>
+                        ) : isSubscribed ? (
+                            <span className="flex items-center justify-center gap-2">
+                                <BellOff className="w-5 h-5" />
+                                关闭提醒
+                            </span>
+                        ) : (
+                            <span className="flex items-center justify-center gap-2">
+                                <Bell className="w-5 h-5" />
+                                开启 {reminderTimes.length} 个提醒
+                            </span>
+                        )}
+                    </motion.button>
+                </div>
+            )}
+
+            {/* 高危时段 Tab */}
+            {activeTab === "danger" && (
+                <div className="space-y-4">
+                    <p className="text-white/40 text-xs flex items-center gap-2">
+                        <AlertTriangle className="w-3 h-3 text-rose-400" />
+                        标记容易想抽烟的时段，系统会在这些时间发送正念提醒
+                    </p>
+
+                    {/* 现有高危时段 */}
+                    <div className="space-y-2">
+                        {dangerTimes.map((dt) => (
+                            <div
+                                key={dt.id}
+                                className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3"
+                            >
+                                <Shield className="w-4 h-4 text-rose-400" />
+                                <span className="text-white font-mono">{dt.time_slot.substring(0, 5)}</span>
+                                <span className="text-white/50 text-sm flex-1">{dt.label}</span>
                                 <button
-                                    onClick={() => removeTime(index)}
-                                    className="p-2 hover:bg-rose-500/20 rounded-lg transition-colors text-rose-400"
-                                    title="删除此时间"
+                                    onClick={() => removeDangerTime(dt.id)}
+                                    className="p-1.5 hover:bg-rose-500/20 rounded-lg transition-colors text-rose-400"
+                                    title="删除"
                                 >
                                     <Trash2 className="w-4 h-4" />
                                 </button>
-                            )}
+                            </div>
+                        ))}
+
+                        {dangerTimes.length === 0 && (
+                            <p className="text-center text-white/30 py-4 text-sm">
+                                还没有设置高危时段
+                            </p>
+                        )}
+                    </div>
+
+                    {/* 添加新高危时段 */}
+                    <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                        <p className="text-white/60 text-xs font-medium">添加高危时段</p>
+                        <div className="flex gap-2">
+                            <div className="relative">
+                                <input
+                                    type="time"
+                                    value={newDangerTime}
+                                    onChange={(e) => setNewDangerTime(e.target.value)}
+                                    className="bg-white/5 border border-white/10 rounded-lg py-2 px-3 text-white w-28 focus:outline-none focus:ring-1 focus:ring-rose-400/50"
+                                    title="时间"
+                                />
+                            </div>
+                            <input
+                                type="text"
+                                value={newDangerLabel}
+                                onChange={(e) => setNewDangerLabel(e.target.value)}
+                                placeholder="标签（如：饭后）"
+                                className="flex-1 bg-white/5 border border-white/10 rounded-lg py-2 px-3 text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-rose-400/50"
+                            />
                         </div>
-                    ))}
+                        <button
+                            onClick={addDangerTime}
+                            disabled={dangerLoading || !newDangerTime}
+                            className="w-full py-2.5 bg-gradient-to-r from-rose-500 to-pink-500 text-white rounded-xl font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {dangerLoading ? (
+                                <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                                    className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
+                                />
+                            ) : (
+                                <>
+                                    <Plus className="w-4 h-4" />
+                                    添加高危时段
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
+            )}
 
-                {reminderTimes.length < 5 && (
-                    <button
-                        onClick={addTime}
-                        className="mt-3 w-full flex items-center justify-center gap-2 py-2 border border-dashed border-white/20 rounded-xl text-white/40 hover:text-white/60 hover:border-white/30 transition-colors text-sm"
-                        title="添加新的提醒时间"
-                    >
-                        <Plus className="w-4 h-4" />
-                        添加时间段
-                    </button>
-                )}
-            </div>
-
-            {/* Subscribe Button */}
-            <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={isSubscribed ? unsubscribe : subscribe}
-                disabled={loading}
-                className={`w-full py-3.5 rounded-2xl font-medium transition-all mb-3 ${isSubscribed
-                    ? "bg-white/10 text-white/70 hover:bg-white/15"
-                    : "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/20"
-                    }`}
-            >
-                {loading ? (
-                    <span className="flex items-center justify-center gap-2">
-                        <motion.div
-                            animate={{ rotate: 360 }}
-                            transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                            className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
-                        />
-                        处理中...
-                    </span>
-                ) : isSubscribed ? (
-                    <span className="flex items-center justify-center gap-2">
-                        <BellOff className="w-5 h-5" />
-                        关闭提醒
-                    </span>
-                ) : (
-                    <span className="flex items-center justify-center gap-2">
-                        <Bell className="w-5 h-5" />
-                        开启 {reminderTimes.length} 个提醒
-                    </span>
-                )}
-            </motion.button>
-
-            {/* Test Notification Button */}
+            {/* 测试通知按钮 */}
             <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={sendTestNotification}
                 disabled={testLoading}
-                className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 transition-colors text-sm flex items-center justify-center gap-2"
-                title="发送一条测试通知"
+                className="w-full mt-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 transition-colors text-sm flex items-center justify-center gap-2"
+                title="发送测试通知"
             >
                 {testLoading ? (
                     <motion.div
@@ -294,7 +454,7 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
                 )}
             </motion.button>
 
-            {/* Message */}
+            {/* 消息提示 */}
             <AnimatePresence>
                 {message && (
                     <motion.p
@@ -308,17 +468,12 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
                 )}
             </AnimatePresence>
 
-            {/* iOS Hint */}
+            {/* 权限提示 */}
             {permission === "default" && (
                 <p className="text-xs text-white/30 text-center mt-4">
                     💡 点击按钮后请允许通知权限
                 </p>
             )}
-
-            {/* Note about local storage */}
-            <p className="text-xs text-white/20 text-center mt-3">
-                ⚠️ 提醒时间保存在本地，需要部署到服务器后才能定时推送
-            </p>
         </motion.div>
     );
 }

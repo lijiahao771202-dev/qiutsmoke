@@ -11,7 +11,7 @@ export default function NavBar() {
     const isActive = (path: string) => pathname === path;
 
     return (
-        <nav className="fixed md:top-6 md:bottom-auto bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-50 glass-panel rounded-full p-2 flex justify-center items-center gap-6 md:gap-4 shadow-2xl shadow-black/40 backdrop-blur-3xl bg-black/20 border border-white/10 ring-1 ring-white/5">
+        <nav className="fixed md:top-6 md:bottom-auto bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-50 glass-panel rounded-full p-2 flex justify-center items-center gap-6 md:gap-4 shadow-2xl shadow-black/40 backdrop-blur-3xl bg-black/20 border border-white/10 ring-1 ring-white/5">
             <Link
                 href="/"
                 className={cn(

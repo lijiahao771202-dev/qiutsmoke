@@ -1,35 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
-import NavBar from "@/components/NavBar";
-import UserProfile from "@/components/UserProfile";
-import { SWRProvider } from "@/components/SWRProvider";
-import { AuthProvider } from "@/components/AuthProvider";
-import AppWrapper from '@/components/AppWrapper';
 import "./globals.css";
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-geist-sans",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-geist-mono",
-});
-
-export const metadata: Metadata = {
-  title: "Rain - Meditation App",
-  description: "Quit smoking and find peace with AI-guided meditation.",
-  manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    title: "Rain",
-    statusBarStyle: "black-translucent",
-  },
-  formatDetection: {
-    telephone: false,
-  },
-};
+import AppWrapper from "@/components/AppWrapper";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -40,40 +11,41 @@ export const viewport: Viewport = {
   themeColor: "#000000",
 };
 
+export const metadata: Metadata = {
+  title: "Rain - 正念冥想",
+  description: "帮助你戒烟与冥想的正念应用",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Rain",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-capable": "yes",
+  },
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="zh-CN">
       <body
-        suppressHydrationWarning
-        className={`${inter.variable} ${jetbrainsMono.variable} antialiased min-h-screen h-full relative overflow-x-hidden`}
+        className="antialiased"
+        style={{
+          background: 'transparent',
+          overflowX: 'hidden',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+        }}
       >
-        <AuthProvider>
-          <SWRProvider>
-            <AppWrapper>
-              <div className="relative z-10 min-h-screen flex flex-col overflow-x-hidden">
-                <NavBar />
-                <UserProfile />
-                <div className="flex-1 flex flex-col">
-                  {children}
-                </div>
-              </div>
-            </AppWrapper>
-          </SWRProvider>
-        </AuthProvider>
-        {/* 移除了 dark theme 脚本以避免 Hydration 错误 */}
-
-        {process.env.NODE_ENV === 'production' && (
-          <script
-            id="pwa-register"
-            dangerouslySetInnerHTML={{
-              __html: `if ('serviceWorker' in navigator) {window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js').catch(()=>{})})}`,
-            }}
-          />
-        )}
+        <AppWrapper>
+          <div className="relative z-10 font-sans">
+            {children}
+          </div>
+        </AppWrapper>
       </body>
     </html>
   );

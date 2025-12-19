@@ -37,14 +37,23 @@ body {
   /* iOS Safari 兼容 */
 }
 
-/* 背景层全屏覆盖 - 延伸到 iOS 安全区域外 */
+/* 背景层全屏覆盖 - 终极强制覆盖方案 (The Nuclear Option) */
 .bg-fullscreen {
   position: fixed;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: -1;
-  /* 强制设为底层 */
+  top: -10vh !important;
+  /* 强制向上延伸 10% 屏幕高度 */
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 120vh !important;
+  /* 强制高度为 120% 屏幕高度 */
+  z-index: 0;
+  pointer-events: none;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: translate3d(0, 0, 0);
+  /* 开启硬件加速 */
 }
 
 @layer utilities {
