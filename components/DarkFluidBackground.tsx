@@ -1,50 +1,90 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+
+// Curated "Fluid Light" Palettes
+const PALETTES = [
+    {
+        name: "Aurora Borealis",
+        colors: [
+            "rgba(139, 92, 246, 0.4)", // Violet
+            "rgba(6, 182, 212, 0.4)",  // Cyan
+            "rgba(59, 130, 246, 0.4)"  // Blue
+        ]
+    },
+    {
+        name: "Sunset Bliss",
+        colors: [
+            "rgba(244, 63, 94, 0.4)",  // Rose
+            "rgba(249, 115, 22, 0.4)", // Orange
+            "rgba(167, 139, 250, 0.4)" // Light Violet
+        ]
+    },
+    {
+        name: "Oceanic Depth",
+        colors: [
+            "rgba(16, 185, 129, 0.4)", // Emerald
+            "rgba(56, 189, 248, 0.4)", // Light Blue
+            "rgba(6, 182, 212, 0.4)"   // Cyan
+        ]
+    },
+    {
+        name: "Cyberpunk Neon",
+        colors: [
+            "rgba(236, 72, 153, 0.4)", // Pink
+            "rgba(168, 85, 247, 0.4)", // Purple
+            "rgba(34, 211, 238, 0.4)"  // Cyan Neon
+        ]
+    },
+    {
+        name: "Golden Hour",
+        colors: [
+            "rgba(234, 179, 8, 0.4)",  // Yellow
+            "rgba(249, 115, 22, 0.4)", // Orange
+            "rgba(251, 146, 60, 0.4)"  // Light Orange
+        ]
+    }
+];
 
 /**
- * 深色流体动态背景
- * 设计用于匹配iOS 26的状态栏动态着色系统
- * 使用深色调确保状态栏文字可见性
+ * Enhanced Dark Fluid Background
+ * "Ultra-Premium" Edition
+ * Features: Richer color palette (Rose/Cyan/Violet), deeper blurs, and smoother motion.
  */
 export function DarkFluidBackground() {
+    const [palette, setPalette] = useState(PALETTES[0]);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        // Randomly select a palette on mount
+        // Use a simple hash of the date or just random to ensure freshness
+        const randomIndex = Math.floor(Math.random() * PALETTES.length);
+        setPalette(PALETTES[randomIndex]);
+        setMounted(true);
+    }, []);
+
+    if (!mounted) return null; // Prevent hydration mismatch
+
     return (
-        <div className="fixed inset-0 overflow-hidden pointer-events-none" style={{ zIndex: -1 }}>
-            {/* 基础深色背景 */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black via-slate-950 to-black" />
+        <div className="fixed inset-0 overflow-hidden pointer-events-none bg-[#050505]" style={{ zIndex: -1 }}>
 
-            {/* 流动的深色光斑 1 - 深紫色 */}
+            {/* Ambient Base Light (Subtle fill) */}
+            <div className="absolute inset-0 bg-gradient-to-b from-slate-900/50 via-[#0a0a0a] to-black" />
+
+            {/* Orb 1: Top Left */}
             <motion.div
-                className="absolute w-[600px] h-[600px] rounded-full blur-[150px] opacity-30"
+                className="absolute w-[80vw] h-[80vw] rounded-full blur-[160px] opacity-40 mix-blend-screen"
                 style={{
-                    background: 'radial-gradient(circle, rgba(88, 28, 135, 0.8) 0%, transparent 70%)',
-                    top: '-20%',
-                    left: '-10%',
+                    background: `radial-gradient(circle, ${palette.colors[0]} 0%, transparent 70%)`,
+                    top: '-30%',
+                    left: '-20%',
                 }}
                 animate={{
-                    x: [0, 100, 50, 0],
-                    y: [0, 50, 100, 0],
-                    scale: [1, 1.2, 0.9, 1],
-                }}
-                transition={{
-                    duration: 20,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                }}
-            />
-
-            {/* 流动的深色光斑 2 - 深蓝色 */}
-            <motion.div
-                className="absolute w-[500px] h-[500px] rounded-full blur-[120px] opacity-25"
-                style={{
-                    background: 'radial-gradient(circle, rgba(30, 58, 138, 0.8) 0%, transparent 70%)',
-                    top: '30%',
-                    right: '-15%',
-                }}
-                animate={{
-                    x: [0, -80, -40, 0],
-                    y: [0, 80, 40, 0],
-                    scale: [1, 0.8, 1.1, 1],
+                    x: [0, 50, -30, 0],
+                    y: [0, -40, 40, 0],
+                    scale: [1, 1.1, 0.9, 1],
+                    rotate: [0, 20, -10, 0],
                 }}
                 transition={{
                     duration: 25,
@@ -53,39 +93,55 @@ export function DarkFluidBackground() {
                 }}
             />
 
-            {/* 流动的深色光斑 3 - 深青色 */}
+            {/* Orb 2: Middle Right */}
             <motion.div
-                className="absolute w-[450px] h-[450px] rounded-full blur-[100px] opacity-20"
+                className="absolute w-[70vw] h-[70vw] rounded-full blur-[140px] opacity-30 mix-blend-screen"
                 style={{
-                    background: 'radial-gradient(circle, rgba(6, 78, 59, 0.8) 0%, transparent 70%)',
-                    bottom: '10%',
-                    left: '20%',
+                    background: `radial-gradient(circle, ${palette.colors[1]} 0%, transparent 70%)`,
+                    top: '20%',
+                    right: '-30%',
                 }}
                 animate={{
-                    x: [0, 60, -30, 0],
-                    y: [0, -60, 30, 0],
-                    scale: [1, 1.15, 0.95, 1],
+                    x: [0, -60, 40, 0],
+                    y: [0, 70, -50, 0],
+                    scale: [1, 0.9, 1.2, 1],
+                    rotate: [0, -15, 10, 0],
                 }}
                 transition={{
-                    duration: 18,
+                    duration: 30,
                     repeat: Infinity,
                     ease: "easeInOut",
+                    delay: 2,
                 }}
             />
 
-            {/* 状态栏区域专用深色渐变 - 确保顶部始终是深色 */}
-            <div
-                className="absolute top-0 left-0 right-0 h-32"
+            {/* Orb 3: Bottom Left */}
+            <motion.div
+                className="absolute w-[90vw] h-[90vw] rounded-full blur-[180px] opacity-35 mix-blend-screen"
                 style={{
-                    background: 'linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 50%, transparent 100%)',
+                    background: `radial-gradient(circle, ${palette.colors[2]} 0%, transparent 70%)`,
+                    bottom: '-40%',
+                    left: '10%',
+                }}
+                animate={{
+                    x: [0, 40, -40, 0],
+                    y: [0, -30, 30, 0],
+                    scale: [1, 1.15, 0.95, 1],
+                    rotate: [0, 10, -5, 0],
+                }}
+                transition={{
+                    duration: 28,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                    delay: 5,
                 }}
             />
 
-            {/* 细腻的噪点纹理层 */}
+            {/* Cinematic Noise & Texture */}
             <div
-                className="absolute inset-0 opacity-[0.015]"
+                className="absolute inset-0 opacity-[0.03] mix-blend-overlay"
                 style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
                 }}
             />
         </div>

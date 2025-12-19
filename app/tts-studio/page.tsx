@@ -6,6 +6,7 @@ import { Play, Pause, Trash2, Plus, Sparkles, RotateCcw, RotateCw, Pencil, Edit2
 import { cn } from "@/lib/utils";
 import AuthGuard from "@/components/AuthGuard";
 import { saveAudioCache, getAudioCache, hasAudioCache, deleteAudioCache } from "@/lib/audioCache";
+import { GlassCard } from "@/components/ui/GlassCard";
 // Removed Server Actions import
 // import { createCard, getCards, deleteCard, type TTSCard } from "./actions";
 
@@ -188,7 +189,7 @@ ${densityRule}
             animate={{ opacity: 1, y: 0 }}
             className="relative w-full max-w-2xl mx-auto mb-12"
         >
-            <div className="relative overflow-hidden rounded-3xl border border-rose-200/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] backdrop-blur-3xl bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02] p-1 transition-all">
+            <GlassCard className="p-1 rounded-[2rem] bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02] border-rose-200/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
                 <div className="relative z-10 p-6 space-y-4">
                     <div className="flex items-center justify-between mb-2">
                         <h2 className="text-rose-200/80 text-sm font-medium uppercase tracking-wider flex items-center gap-2">
@@ -297,7 +298,7 @@ ${densityRule}
                         </motion.button>
                     </div>
                 </div>
-            </div>
+            </GlassCard>
         </motion.div>
     );
 }
@@ -1137,11 +1138,12 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
             className="group relative"
         >
-            <div
+            <GlassCard
                 className={cn(
-                    "relative h-full overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05] backdrop-blur-xl p-6 transition-all",
-                    "hover:bg-rose-500/10 hover:border-rose-200/20 hover:shadow-2xl hover:shadow-rose-500/10"
+                    "h-full p-6 transition-all bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05]",
+                    "hover:bg-rose-500/10 hover:shadow-rose-500/10"
                 )}
+                hoverEffect={true}
             >
                 {/* Visualizer Background */}
                 {(isPlaying && !currentAudio?.paused) && (
@@ -1418,7 +1420,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                         </button>
                     </div>
                 </div>
-            </div>
+            </GlassCard>
         </motion.div>
     );
 }

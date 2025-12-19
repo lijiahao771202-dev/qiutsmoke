@@ -23,3 +23,5 @@ export async function GET(request: Request) {
     // 如果没有 code 或交换失败，重定向到登录页
     return NextResponse.redirect(`${origin}/auth?error=auth_callback_failed`)
 }
+
+export const runtime = 'edge';

@@ -2,93 +2,39 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Droplets, Wind, RefreshCw, Check, Calendar, Sparkles } from "lucide-react";
+import { Droplets, Wind, Activity, Zap, Heart, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
+import { GlassCard } from "@/components/ui/GlassCard";
+// FluidBackground removed to use global background system
 
 const MILESTONES = [1, 3, 7, 14, 30, 60, 100, 365];
 
 export default function Home() {
   const [days, setDays] = useState(0);
   const [startDate, setStartDate] = useState<string | null>(null);
-  const [checkInDates, setCheckInDates] = useState<string[]>([]);
-  const [todayCheckedIn, setTodayCheckedIn] = useState(false);
-  const [consecutiveDays, setConsecutiveDays] = useState(0);
 
-  function calculateConsecutiveDays(dates: string[]) {
-    if (!Array.isArray(dates) || dates.length === 0) return 0;
-
-    const sortedDates = dates
-      .map(d => new Date(d))
-      .sort((a, b) => b.getTime() - a.getTime());
-
-    let consecutive = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    for (let i = 0; i < sortedDates.length; i++) {
-      const checkDate = new Date(sortedDates[i]);
-      checkDate.setHours(0, 0, 0, 0);
-
-      const expectedDate = new Date(today);
-      expectedDate.setDate(today.getDate() - i);
-      expectedDate.setHours(0, 0, 0, 0);
-
-      if (checkDate.getTime() === expectedDate.getTime()) {
-        consecutive++;
-      } else {
-        break;
-      }
-    }
-
-    return consecutive;
-  }
-
+  // --- Logic Preserved from Original ---
   useEffect(() => {
     const savedDate = localStorage.getItem("quitDate");
     if (savedDate) {
-      setStartDate(savedDate);
-      const start = new Date(savedDate);
-      const now = new Date();
-      const diffTime = Math.abs(now.getTime() - start.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      setDays(diffDays);
-    }
-
-    // Load check-in dates
-    const savedCheckIns = localStorage.getItem("checkInDates");
-    if (savedCheckIns) {
-      let dates: string[] = [];
-      try {
-        dates = JSON.parse(savedCheckIns);
-        if (!Array.isArray(dates)) dates = [];
-      } catch {
-        dates = [];
-      }
-      setCheckInDates(dates);
-
-      // Check if today is already checked in
-      const today = new Date().toDateString();
-      setTodayCheckedIn(dates.includes(today));
-
-      // Calculate consecutive days
-      setConsecutiveDays(calculateConsecutiveDays(dates));
+      updateDays(savedDate);
     }
   }, []);
 
-
+  const updateDays = (dateStr: string) => {
+    setStartDate(dateStr);
+    const start = new Date(dateStr);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    setDays(diffDays);
+  };
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newDate = e.target.value;
     if (newDate) {
-      setStartDate(newDate);
       localStorage.setItem("quitDate", newDate);
-
-      const start = new Date(newDate);
-      const now = new Date();
-      const diffTime = Math.abs(now.getTime() - start.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      setDays(diffDays);
+      updateDays(newDate);
     }
   };
 
@@ -98,255 +44,186 @@ export default function Home() {
         return { target: milestone, remaining: milestone - days };
       }
     }
-    return null;
+    return { target: 1000, remaining: 0 }; // Default fallthrough
   };
 
   const getHealthStatus = () => {
-    const hours = days * 24;
+    // Re-using logic but mapping to icons/colors for new UI
+    // Heart rate (0.014 days), Blood oxygen (0.5 days), Taste (2 days), Lung (14 days), Circulation (14 days), Energy (30 days)
 
-    // Heart rate normalizes after 20 minutes (0.014 days)
-    const heartRate = {
-      label: '心率',
-      status: days >= 0.014 ? '正常' : '恢复中',
-      progress: Math.min((days / 0.014) * 100, 100),
-      color: days >= 0.014 ? 'text-green-400' : 'text-blue-400',
-    };
+    const metrics = [
+      {
+        id: 'heart',
+        label: '心率',
+        requiredDays: 0.014,
+        icon: Heart,
+        color: "text-rose-400",
+        desc: "恢复正常水平"
+      },
+      {
+        id: 'oxygen',
+        label: '血氧',
+        requiredDays: 0.5,
+        icon: Activity,
+        color: "text-sky-400",
+        desc: "一氧化碳排净"
+      },
+      {
+        id: 'taste',
+        label: '味觉',
+        requiredDays: 2,
+        icon: Droplets,
+        color: "text-orange-400",
+        desc: "神经末梢修复"
+      },
+      {
+        id: 'lungs',
+        label: '肺功能',
+        requiredDays: 14,
+        icon: Wind,
+        color: "text-emerald-400",
+        desc: "纤毛再生中"
+      },
+      {
+        id: 'energy',
+        label: '体力',
+        requiredDays: 30,
+        icon: Zap,
+        color: "text-yellow-400",
+        desc: "循环显著改善"
+      }
+    ];
 
-    // Blood oxygen normalizes after 12 hours (0.5 days)
-    const bloodOxygen = {
-      label: '血氧',
-      status: days >= 0.5 ? '正常' : '恢复中',
-      progress: Math.min((days / 0.5) * 100, 100),
-      color: days >= 0.5 ? 'text-green-400' : 'text-blue-400',
-    };
-
-    // Taste and smell improve after 2 days
-    const taste = {
-      label: '味觉',
-      status: days >= 2 ? '已改善' : days >= 1 ? '改善中' : '待恢复',
-      progress: Math.min((days / 2) * 100, 100),
-      color: days >= 2 ? 'text-green-400' : days >= 1 ? 'text-blue-400' : 'text-slate-400',
-    };
-
-    // Lung function improves after 14 days (2 weeks)
-    const lungFunction = {
-      label: '肺功能',
-      status: days >= 14 ? '明显改善' : days >= 7 ? '改善中' : '待改善',
-      progress: Math.min((days / 14) * 100, 100),
-      color: days >= 14 ? 'text-green-400' : days >= 7 ? 'text-blue-400' : 'text-slate-400',
-    };
-
-    // Circulation improves after 14 days
-    const circulation = {
-      label: '血液循环',
-      status: days >= 14 ? '已改善' : days >= 3 ? '改善中' : '待改善',
-      progress: Math.min((days / 14) * 100, 100),
-      color: days >= 14 ? 'text-green-400' : days >= 3 ? 'text-blue-400' : 'text-slate-400',
-    };
-
-    // Energy levels improve after 30 days
-    const energy = {
-      label: '体力',
-      status: days >= 30 ? '显著提升' : days >= 14 ? '提升中' : '待提升',
-      progress: Math.min((days / 30) * 100, 100),
-      color: days >= 30 ? 'text-green-400' : days >= 14 ? 'text-blue-400' : 'text-slate-400',
-    };
-
-    // Return the two most relevant metrics based on current progress
-    if (days < 0.5) {
-      return [heartRate, bloodOxygen];
-    } else if (days < 2) {
-      return [bloodOxygen, taste];
-    } else if (days < 14) {
-      return [taste, lungFunction];
-    } else if (days < 30) {
-      return [lungFunction, circulation];
-    } else {
-      return [circulation, energy];
-    }
+    return metrics.map(m => ({
+      ...m,
+      progress: Math.min((days / m.requiredDays) * 100, 100),
+      status: days >= m.requiredDays ? '完成' : '进行中'
+    }));
   };
 
   const nextMilestone = getNextMilestone();
-  const healthMetrics = getHealthStatus();
+  const healthMetrics = getHealthStatus(); // Now returns all for grid display
+
+  // Only show the 4 most relevant metrics to avoid clutter
+  // Filter for metrics that are either in progress or recently completed
+  const activeMetrics = healthMetrics.filter(m => m.progress < 100).slice(0, 4);
+  // If fewer than 4 active, fill with completed ones from the end
+  const displayMetrics = activeMetrics.length < 4
+    ? [...healthMetrics.filter(m => m.progress >= 100).reverse().slice(0, 4 - activeMetrics.length), ...activeMetrics]
+    : activeMetrics;
+
+  // Sort by progress desc (completed first in the filled list, or active ones)
+  // Actually, visual order: Completed -> In Progress makes sense to show achievements
+  displayMetrics.sort((a, b) => b.progress - a.progress);
+
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center relative z-10 pt-20 pb-24 md:pb-0 px-4 min-h-screen">
-      {/* Liquid Glass Container */}
-      <div
-        className="p-6 rounded-3xl relative overflow-hidden w-full max-w-md mx-auto"
-        style={{
-          background: 'rgba(255, 255, 255, 0.08)',
-          backdropFilter: 'blur(20px) saturate(180%) brightness(105%)',
-          WebkitBackdropFilter: 'blur(20px) saturate(180%) brightness(105%)',
-          border: '1px solid rgba(255, 255, 255, 0.25)',
-          boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.37), inset 0 1px 1px 0 rgba(255, 255, 255, 0.3)',
-        }}
-      >
-        {/* Glass edge refraction effect */}
-        <div
-          className="absolute inset-0 rounded-3xl pointer-events-none"
-          style={{
-            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, 0.08) 100%)',
-          }}
-        />
+    <div className="relative min-h-screen text-white font-sans selection:bg-white/20">
+      {/* Background is handled globally by AppWrapper now */}
 
-        <div className="relative z-10 space-y-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center space-y-1"
-          >
-            <h1 className="text-xl font-light text-slate-300 tracking-wide">戒烟</h1>
-            <div className="relative">
-              <div className="text-[6rem] font-bold leading-none text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50 drop-shadow-2xl">
-                {days}
-              </div>
-              <div className="absolute -right-2 top-2 text-lg text-slate-400 font-light">天</div>
-            </div>
-            {/* Quit Date Display */}
-            {startDate && (
-              <div className="text-xs text-slate-400">
-                戒烟日：{new Date(startDate).toLocaleDateString('zh-CN', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
-              </div>
-            )}
-          </motion.div>
+      <main className="relative z-10 flex flex-col items-center px-6 pt-20 pb-24 mx-auto w-full max-w-lg min-h-screen">
 
-          {/* Milestones Progress */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            className="space-y-4"
-          >
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-400">里程碑进度</span>
-              {nextMilestone && (
-                <span className="text-slate-300">
-                  还有 <span className="font-medium text-white">{nextMilestone.remaining}</span> 天到 {nextMilestone.target} 天
-                </span>
-              )}
-            </div>
+        {/* Header Area */}
+        <motion.header
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="w-full flex justify-between items-center mb-12"
+        >
+          <div className="flex flex-col">
+            <span className="text-xs font-medium text-white/50 tracking-widest uppercase">My Journey</span>
+            <h1 className="text-2xl font-semibold tracking-tight">戒烟进度</h1>
+          </div>
+          <GlassCard className="p-2 rounded-full cursor-pointer active:scale-95 transition-transform">
+            <Calendar className="w-5 h-5 text-white/70" />
+            <input
+              type="date"
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              onChange={handleDateChange}
+            />
+          </GlassCard>
+        </motion.header>
 
-            {/* Progress Bar Container */}
-            <div className="relative pt-8 pb-4">
-              {/* Background Line */}
-              <div className="absolute top-1/2 left-0 right-0 h-1 bg-white/10 rounded-full" />
+        {/* Main Counter */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.8, ease: "circOut" }}
+          className="relative mb-16 text-center"
+        >
+          <div className="absolute inset-0 bg-blue-500/20 blur-[80px] rounded-full" />
+          <h2 className="relative text-[8rem] font-bold leading-none tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/10 drop-shadow-2xl">
+            {days}
+          </h2>
+          <p className="text-lg text-white/40 font-light tracking-widest uppercase mt-2">Days Free</p>
+        </motion.div>
 
-              {/* Progress Line */}
-              <div
-                className="absolute top-1/2 left-0 h-1 bg-gradient-to-r from-green-400 to-blue-400 rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.min((days / MILESTONES[MILESTONES.length - 1]) * 100, 100)}%`
-                }}
-              />
+        {/* Milestone Tracker (Horizontal) */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.6 }}
+          className="w-full mb-8"
+        >
+          <div className="flex justify-between items-end mb-3 px-1">
+            <span className="text-sm text-white/60">下一目标</span>
+            <span className="text-sm font-medium text-white">
+              {nextMilestone.remaining > 0 ? `${nextMilestone.remaining} 天后` : "已达成"}
+            </span>
+          </div>
 
-              {/* Milestone Markers */}
-              <div className="relative flex justify-between">
-                {MILESTONES.map((milestone, index) => {
-                  const isAchieved = days >= milestone;
-                  const isCurrent = !isAchieved && (index === 0 || days >= MILESTONES[index - 1]);
+          <GlassCard className="p-1 rounded-2xl h-3 w-full bg-black/20">
+            <motion.div
+              className="h-full bg-white rounded-xl shadow-[0_0_10px_white]"
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.min((days / nextMilestone.target) * 100, 100)}%` }}
+              transition={{ duration: 1.5, ease: "easeOut" }}
+            />
+          </GlassCard>
+          <div className="flex justify-between mt-2 text-xs text-white/30 font-mono">
+            <span>0</span>
+            <span>{nextMilestone.target} DAYS</span>
+          </div>
+        </motion.div>
 
-                  return (
-                    <div key={milestone} className="flex flex-col items-center" style={{ flex: index === 0 ? '0 0 auto' : '1 1 0' }}>
-                      {/* Marker Dot */}
-                      <div
-                        className={cn(
-                          "w-3 h-3 rounded-full transition-all duration-300 relative z-10",
-                          isAchieved
-                            ? "bg-green-400 shadow-lg shadow-green-400/50"
-                            : isCurrent
-                              ? "bg-blue-400 shadow-lg shadow-blue-400/50 animate-pulse"
-                              : "bg-white/20"
-                        )}
-                      />
-
-                      {/* Milestone Label */}
-                      <span
-                        className={cn(
-                          "text-xs mt-2 transition-colors duration-300",
-                          isAchieved
-                            ? "text-green-400 font-medium"
-                            : isCurrent
-                              ? "text-blue-400 font-medium"
-                              : "text-slate-500"
-                        )}
-                      >
-                        {milestone}天
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Dynamic Health Metrics */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="grid grid-cols-2 gap-4"
-          >
-            {healthMetrics.map((metric, index) => (
-              <div
-                key={metric.label}
-                className="p-4 rounded-2xl flex flex-col items-center justify-center space-y-2 relative overflow-hidden"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  backdropFilter: 'blur(8px)',
-                  WebkitBackdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                }}
-              >
-                {index === 0 ? (
-                  <Wind className="w-6 h-6 text-blue-400 relative z-10" />
-                ) : (
-                  <Droplets className="w-6 h-6 text-cyan-400 relative z-10" />
-                )}
-                <span className="text-sm text-slate-400 relative z-10">{metric.label}</span>
-                <span className={cn("text-lg font-medium relative z-10", metric.color)}>
-                  {metric.status}
-                </span>
-                {/* Progress Bar */}
-                <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden relative z-10">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-400 to-green-400 transition-all duration-500"
-                    style={{ width: `${metric.progress}%` }}
-                  />
+        {/* Health Stats Grid */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+          className="grid grid-cols-2 gap-4 w-full"
+        >
+          {displayMetrics.map((item, idx) => (
+            <GlassCard
+              key={item.id}
+              className="p-5 flex flex-col gap-3 group"
+              hoverEffect
+              style={{ animationDelay: `${idx * 100}ms` }}
+            >
+              <div className="flex justify-between items-start">
+                <div className={cn("p-2 rounded-xl bg-white/5", item.color)}>
+                  <item.icon className="w-5 h-5" />
                 </div>
-                <span className="text-xs text-slate-500 relative z-10">{Math.round(metric.progress)}%</span>
+                <span className="text-xs font-mono text-white/30">{Math.round(item.progress)}%</span>
               </div>
-            ))}
-          </motion.div>
+              <div>
+                <h3 className="text-sm font-medium text-white/90">{item.label}</h3>
+                <p className="text-xs text-white/50 mt-0.5">{item.desc}</p>
+              </div>
 
-          {/* Quit Date Picker */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.25 }}
-            className="space-y-3"
-          >
-            <div className="flex items-center justify-between text-sm">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-blue-400" />
-                <span className="text-slate-400">戒烟起始日</span>
+              {/* Mini Progress Bar */}
+              <div className="h-1 w-full bg-white/5 rounded-full mt-2 overflow-hidden">
+                <motion.div
+                  className={cn("h-full rounded-full opacity-80", item.progress >= 100 ? "bg-white" : "bg-white/40")}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${item.progress}%` }}
+                  transition={{ duration: 1, delay: 0.5 + idx * 0.1 }}
+                />
               </div>
-            </div>
-            <div className="relative">
-              <input
-                type="date"
-                value={startDate ? new Date(startDate).toISOString().split('T')[0] : ''}
-                onChange={handleDateChange}
-                className="w-full py-3 px-4 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-blue-500/50 transition-colors"
-              />
-            </div>
-          </motion.div>
-        </div>
-      </div>
+            </GlassCard>
+          ))}
+        </motion.div>
+      </main>
     </div>
   );
 }

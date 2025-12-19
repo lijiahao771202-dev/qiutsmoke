@@ -85,4 +85,4 @@ export async function GET() {
     }
 }
 
-// export const runtime = 'edge'; // Disabled for stability
+export const runtime = 'edge';

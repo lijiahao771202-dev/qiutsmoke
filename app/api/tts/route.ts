@@ -1,52 +1,62 @@
-import { EdgeTTS } from "node-edge-tts";
-import os from "os";
-import path from "path";
-import fs from "fs";
+/**
+ * TTS Proxy API Route
+ * Proxies TTS requests to Vercel backend since edge-tts requires Node.js
+ */
+
+const VERCEL_BACKEND = 'https://qiutsmoke.vercel.app';
 
 export async function POST(req: Request) {
     try {
-        const { text, voice, rate } = await req.json();
-        if (!text || typeof text !== "string") {
-            return new Response(JSON.stringify({ error: "缺少文本" }), {
-                status: 400,
-                headers: { "Content-Type": "application/json" },
+        const body = await req.json();
+
+        const vercelUrl = `${VERCEL_BACKEND}/api/tts`;
+
+        const response = await fetch(vercelUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            return new Response(JSON.stringify({
+                error: `Vercel proxy error: ${response.status}`,
+                details: errorText
+            }), {
+                status: response.status,
+                headers: { 'Content-Type': 'application/json' },
             });
         }
 
-        const tts = new EdgeTTS({
-            voice: voice || "zh-CN-XiaoxiaoNeural",
-            lang: "zh-CN",
-            outputFormat: "audio-24khz-48kbitrate-mono-mp3",
-            rate: rate || "0%",
-        });
-
-        const tmp = path.join(
-            os.tmpdir(),
-            `tts-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`
-        );
-
-        await tts.ttsPromise(text, tmp);
-        const buf = await fs.promises.readFile(tmp);
-        try {
-            await fs.promises.unlink(tmp);
-        } catch { }
-
-        return new Response(buf, {
+        // Return audio response
+        return new Response(response.body, {
             status: 200,
-            headers: { "Content-Type": "audio/mpeg" },
+            headers: {
+                'Content-Type': 'audio/mpeg',
+                'Access-Control-Allow-Origin': '*',
+            },
         });
-    } catch (e) {
-        console.error("TTS API Error:", e);
+    } catch (error) {
         return new Response(JSON.stringify({
-            error: "TTS 生成失败",
-            details: e instanceof Error ? e.message : String(e),
-            stack: e instanceof Error ? e.stack : undefined
+            error: 'TTS proxy failed',
+            details: error instanceof Error ? error.message : String(error)
         }), {
             status: 500,
-            headers: { "Content-Type": "application/json" },
+            headers: { 'Content-Type': 'application/json' },
         });
     }
 }
 
-// Node.js runtime required for fs/os modules
-// // export const runtime = 'edge'; // Disabled for stability // Disabled
+export async function OPTIONS() {
+    return new Response(null, {
+        headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+        },
+    });
+}
+
+export const runtime = 'edge';

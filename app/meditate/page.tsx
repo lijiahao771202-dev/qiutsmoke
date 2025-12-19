@@ -6,6 +6,7 @@ import { Play, Pause, Wind, CloudRain, Zap, Moon, Droplets, Settings, X, Activit
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import AuthGuard from "@/components/AuthGuard";
+import { GlassCard } from "@/components/ui/GlassCard";
 
 // IP Address from system check
 const LAN_IP = "10.173.165.153:3001";
@@ -861,30 +862,31 @@ export default function MeditatePage() {
                                 key={topic.id}
                                 layoutId={`card-${topic.id}`}
                                 onClick={() => handleCardClick(topic.id)}
-                                className={cn(
-                                    "glass-card p-4 rounded-2xl flex flex-col items-start justify-between aspect-square text-left group relative overflow-hidden w-full transition-all hover:scale-[1.02]",
-                                    activeCard === topic.id ? "opacity-0" : "opacity-100",
-                                    "bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05] border-white/10"
-                                )}
+                                className="group relative w-full aspect-square text-left transition-all hover:scale-[1.02] focus:outline-none rounded-[2rem]"
                             >
-                                <div className={cn("absolute inset-0 opacity-0 group-hover:opacity-30 transition-opacity bg-gradient-to-br from-rose-400 to-pink-400")} />
-                                <div className="absolute top-3 right-3 z-20">
-                                    <div
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingTopicId(topic.id);
-                                            const base = editedPrompts[topic.id] ?? topic.prompt ?? DEFAULT_PROMPT;
-                                            setDraftPrompt(base);
-                                            setShowPromptEdit(true);
-                                        }}
-                                        className="p-1.5 hover:bg-white/10 rounded-full text-white/20 hover:text-white/60 transition-all"
-                                    >
-                                        <Settings className="w-4 h-4" />
-                                    </div>
-                                </div>
+                                <GlassCard
+                                    hoverEffect={true}
+                                    className="h-full p-6 flex flex-col justify-between bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05]"
+                                >
 
-                                {topic.icon ? <topic.icon className="w-6 h-6 mb-2 text-white/80" /> : <Wind className="w-6 h-6 mb-2 text-white/80" />}
-                                <span className="text-sm md:text-base font-medium leading-tight">{topic.title}</span>
+                                    <div className="absolute top-3 right-3 z-20">
+                                        <div
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingTopicId(topic.id);
+                                                const base = editedPrompts[topic.id] ?? topic.prompt ?? DEFAULT_PROMPT;
+                                                setDraftPrompt(base);
+                                                setShowPromptEdit(true);
+                                            }}
+                                            className="p-1.5 hover:bg-white/10 rounded-full text-white/20 hover:text-white/60 transition-all"
+                                        >
+                                            <Settings className="w-4 h-4" />
+                                        </div>
+                                    </div>
+
+                                    {topic.icon ? <topic.icon className="w-8 h-8 mb-2 text-white/80" /> : <Wind className="w-8 h-8 mb-2 text-white/80" />}
+                                    <span className="text-lg font-medium leading-tight z-10">{topic.title}</span>
+                                </GlassCard>
                             </motion.button>
                         ))}
 
@@ -894,36 +896,37 @@ export default function MeditatePage() {
                                 key={topic.id}
                                 layoutId={`card-${topic.id}`}
                                 onClick={() => handleCardClick(topic.id)}
-                                className={cn(
-                                    "glass-card p-4 rounded-2xl flex flex-col items-start justify-between aspect-square text-left group relative overflow-hidden w-full transition-all hover:scale-[1.02]",
-                                    activeCard === topic.id ? "opacity-0" : "opacity-100",
-                                    "bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05] border-white/10"
-                                )}
+                                className="group relative w-full aspect-square text-left transition-all hover:scale-[1.02] focus:outline-none rounded-[2rem]"
                             >
-                                <div className={cn("absolute inset-0 opacity-0 group-hover:opacity-30 transition-opacity bg-gradient-to-br from-rose-400 to-pink-400")} />
-                                <div className="absolute top-3 right-3 z-20 flex gap-2">
-                                    <div
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingTopicId(topic.id);
-                                            const base = editedPrompts[topic.id] ?? topic.prompt ?? DEFAULT_PROMPT;
-                                            setDraftPrompt(base);
-                                            setShowPromptEdit(true);
-                                        }}
-                                        className="p-1.5 hover:bg-white/10 rounded-full text-white/20 hover:text-white/60 transition-all"
-                                    >
-                                        <Settings className="w-4 h-4" />
-                                    </div>
-                                    <div
-                                        onClick={(e) => handleDeleteCard(e, topic.id)}
-                                        className="p-1.5 hover:bg-red-500/20 rounded-full text-white/20 hover:text-red-400 transition-all"
-                                    >
-                                        <Trash2 className="w-3.5 h-3.5 text-red-300" />
-                                    </div>
-                                </div>
+                                <GlassCard
+                                    hoverEffect={true}
+                                    className="h-full p-6 flex flex-col justify-between bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05]"
+                                >
 
-                                {topic.icon ? <topic.icon className="w-6 h-6 mb-2 text-white/80" /> : <Wind className="w-6 h-6 mb-2 text-white/80" />}
-                                <span className="text-sm md:text-base font-medium leading-tight">{topic.title}</span>
+                                    <div className="absolute top-3 right-3 z-20 flex gap-2">
+                                        <div
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingTopicId(topic.id);
+                                                const base = editedPrompts[topic.id] ?? topic.prompt ?? DEFAULT_PROMPT;
+                                                setDraftPrompt(base);
+                                                setShowPromptEdit(true);
+                                            }}
+                                            className="p-1.5 hover:bg-white/10 rounded-full text-white/20 hover:text-white/60 transition-all"
+                                        >
+                                            <Settings className="w-4 h-4" />
+                                        </div>
+                                        <div
+                                            onClick={(e) => handleDeleteCard(e, topic.id)}
+                                            className="p-1.5 hover:bg-red-500/20 rounded-full text-white/20 hover:text-red-400 transition-all"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5 text-red-300" />
+                                        </div>
+                                    </div>
+
+                                    {topic.icon ? <topic.icon className="w-8 h-8 mb-2 text-white/80" /> : <Wind className="w-8 h-8 mb-2 text-white/80" />}
+                                    <span className="text-lg font-medium leading-tight z-10">{topic.title}</span>
+                                </GlassCard>
                             </motion.button>
                         ))}
 
@@ -935,12 +938,14 @@ export default function MeditatePage() {
                                 setNewCardPrompt("");
                                 setShowAddCard(true);
                             }}
-                            className="glass-card p-4 rounded-2xl flex flex-col items-center justify-center aspect-square text-center group border-2 border-dashed border-white/10 hover:border-white/30 hover:bg-white/5 transition-all"
+                            className="group relative w-full aspect-square text-center transition-all hover:scale-[1.02] focus:outline-none rounded-[2rem]"
                         >
-                            <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-2 group-hover:bg-white/10 transition-colors">
-                                <Plus className="w-5 h-5 text-white/50 group-hover:text-white/80" />
-                            </div>
-                            <span className="text-sm text-white/40 group-hover:text-white/70">添加冥想</span>
+                            <GlassCard className="h-full p-4 flex flex-col items-center justify-center border-dashed border-2 border-white/20 hover:border-white/40 bg-transparent">
+                                <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-4 group-hover:bg-white/10 transition-colors">
+                                    <Plus className="w-6 h-6 text-white/50 group-hover:text-white/80" />
+                                </div>
+                                <span className="text-sm text-white/40 group-hover:text-white/70">添加冥想</span>
+                            </GlassCard>
                         </motion.button>
                     </div>
                 </div>

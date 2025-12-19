@@ -33,45 +33,60 @@ export async function POST(req: Request) {
 
     if (!upstream.ok || !upstream.body) {
       const status = upstream.status || 500;
-      return new Response(JSON.stringify({ error: `上游错误: HTTP ${status}` }), {
+      const errorText = await upstream.text().catch(() => "");
+      return new Response(JSON.stringify({ error: `上游错误: HTTP ${status}`, details: errorText }), {
         status,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    const reader = upstream.body.getReader();
-    const decoder = new TextDecoder();
+    // Use TransformStream for Edge Runtime compatibility
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
     const encoder = new TextEncoder();
 
-    const stream = new ReadableStream<Uint8Array>({
-      async pull(controller) {
-        const { done, value } = await reader.read();
-        if (done) {
-          controller.close();
-          return;
-        }
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") continue;
-            try {
-              const json = JSON.parse(data);
-              const content = json?.choices?.[0]?.delta?.content;
-              if (content) controller.enqueue(encoder.encode(content));
-            } catch {}
+    // Process stream in background
+    (async () => {
+      const reader = upstream.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = line.slice(6).trim();
+              if (data === "[DONE]") continue;
+              try {
+                const json = JSON.parse(data);
+                const content = json?.choices?.[0]?.delta?.content;
+                if (content) {
+                  await writer.write(encoder.encode(content));
+                }
+              } catch { }
+            }
           }
         }
-      },
-      cancel() {},
-    });
+      } catch (e) {
+        console.error("Stream processing error:", e);
+      } finally {
+        await writer.close();
+      }
+    })();
 
-    return new Response(stream, {
+    return new Response(readable, {
       status: 200,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (e) {
+    console.error("Request parsing error:", e);
     return new Response(JSON.stringify({ error: "请求解析失败" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
@@ -79,4 +94,4 @@ export async function POST(req: Request) {
   }
 }
 
-// export const runtime = 'edge'; // Disabled for stability
+export const runtime = 'edge';
