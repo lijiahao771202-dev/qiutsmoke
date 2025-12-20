@@ -48,21 +48,34 @@ export async function POST(req: Request) {
             // Backend Retry Logic for edge-tts
             let audioBuffer: Buffer | null = null;
             let lastError: any = null;
-            const maxRetries = 2;
+            const maxRetries = 3; // 🔥 增加到 3 次
+
+            // 🔥 估算最小音频大小：48kbps MP3 约 6000 字节/秒
+            // 中文约 4 字/秒，所以每字约 1500 字节
+            const minExpectedBytes = Math.max(text.length * 800, 5000); // 至少 5KB 或每字 800 字节
 
             for (let i = 0; i <= maxRetries; i++) {
                 try {
-                    console.log(`[TTS] Attempt ${i + 1}/${maxRetries + 1} for text: "${text.substring(0, 20)}..."`);
+                    console.log(`[TTS] Attempt ${i + 1}/${maxRetries + 1} for text: "${text.substring(0, 20)}..." (${text.length}字)`);
                     await tts.ttsPromise(text, tempFile);
                     audioBuffer = fs.readFileSync(tempFile);
-                    if (audioBuffer && audioBuffer.length > 0) break;
+
+                    // 🔥 检查音频是否太短（可能被截断）
+                    if (audioBuffer && audioBuffer.length >= minExpectedBytes) {
+                        console.log(`[TTS] ✅ Success: ${audioBuffer.length} bytes (min expected: ${minExpectedBytes})`);
+                        break;
+                    } else if (audioBuffer) {
+                        console.warn(`[TTS] ⚠️ Audio too short: ${audioBuffer.length} bytes < ${minExpectedBytes} expected, retrying...`);
+                        audioBuffer = null; // 标记为失败，触发重试
+                    }
                 } catch (e) {
                     lastError = e;
                     console.warn(`[TTS] Attempt ${i + 1} failed:`, e instanceof Error ? e.message : e);
-                    if (i < maxRetries) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
                 } finally {
                     try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) { }
                 }
+
+                if (i < maxRetries) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
             }
 
             if (!audioBuffer || audioBuffer.length === 0) {

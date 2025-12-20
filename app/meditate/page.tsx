@@ -12,6 +12,13 @@ import { useMeditationTopics } from "@/lib/hooks/useData";
 // IP Address from system check
 const LAN_IP = "10.173.165.153:3001";
 
+// 🚀 引导模式常量
+const GUIDANCE_LEVELS = {
+    light: { label: "🍃 轻引导", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/20" },
+    medium: { label: "⚖️ 中引导", color: "bg-blue-500/20 text-blue-300 border-blue-500/20" },
+    heavy: { label: "🧘 多引导", color: "bg-purple-500/20 text-purple-300 border-purple-500/20" }
+};
+
 const DEFAULT_PROMPT = "创建一个关于坐在舒适的房间里听着温柔雨声的引导冥想脚本。请用中文回复。";
 
 const DEFAULT_TOPICS = [
@@ -30,32 +37,25 @@ const DEFAULT_TOPICS = [
         prompt: "创建一个身体扫描冥想引导脚本。引导用户从脚趾开始，逐渐向上扫描全身，感受身体的每一个部位，释放紧张感。请用中文回复。"
     },
     {
-        id: "rain-exp",
-        title: "RAIN 体会版",
-        icon: CloudRain,
-        color: "from-blue-400 to-blue-600",
-        prompt: "创建一个RAIN旁观冥想引导脚本。R(Recognize)识别当下情绪，A(Allow)允许它的存在，I(Investigate)带着好奇心探究身体感受，N(Non-identification)不认同情绪即自我。请用中文回复。"
-    },
-    {
-        id: "desensitization",
-        title: "脱敏训练",
-        icon: Shield,
+        id: "loving-kindness",
+        title: "慈悲冥想",
+        icon: Sparkles,
         color: "from-rose-400 to-rose-600",
-        prompt: "创建一个针对烟瘾的脱敏训练冥想引导脚本。引导用户想象诱发吸烟的场景，观察随之而来的冲动，但不付诸行动，像冲浪一样驾驭冲动直到它消退。请用中文回复。"
+        prompt: "创建一个慈悲冥想（Loving-Kindness）引导脚本。引导用户先向自己发送慈悲与爱，然后逐渐扩展到亲人、朋友、陌生人，最后到所有生命。培养无条件的爱与善意。请用中文回复。"
     },
     {
-        id: "rain-quick",
-        title: "RAIN 快速版",
-        icon: Zap,
+        id: "mindful-walking",
+        title: "正念行走",
+        icon: Activity,
+        color: "from-emerald-400 to-emerald-600",
+        prompt: "创建一个正念行走冥想引导脚本。引导用户在缓慢行走中感受脚底与地面的接触，觉察身体的每一个微小动作，将注意力锚定在当下的步伐中。适合室内或安静的户外进行。请用中文回复。"
+    },
+    {
+        id: "positive-mindfulness",
+        title: "积极感受正念",
+        icon: Moon,
         color: "from-amber-400 to-amber-600",
-        prompt: "创建一个快速版RAIN冥想引导脚本。适合在强烈冲动来袭时使用，快速通过识别、允许、探究、不认同四个步骤，找回内心的平静。请用中文回复。"
-    },
-    {
-        id: "rain-full",
-        title: "RAIN 完整版",
-        icon: Droplets,
-        color: "from-violet-400 to-violet-600",
-        prompt: "创建一个完整的RAIN冥想引导脚本。详细引导用户进行识别(Recognize)、允许(Allow)、探究(Investigate)、不认同(Non-identification)的每一个步骤，给予充足的时间进行深度体验和转化。请用中文回复。"
+        prompt: "创建一个积极感受正念冥想引导脚本。引导用户回忆和感受生活中的美好时刻，培养感恩之心，增强积极情绪。帮助用户在日常生活中发现和珍惜简单的快乐。请用中文回复。"
     },
 ];
 
@@ -78,6 +78,31 @@ const VOICES = [
     { id: "zh-CN-YunyangNeural", name: "云野 (男声-专业)", style: "professional" },
 ];
 
+/**
+ * 🧹 清洗 AI 生成的文本，移除所有不适合 TTS 朗读的内容
+ * 解决问题：AI 生成的舞台指示如 "（轻柔地，语速缓慢）" 被 TTS 朗读
+ */
+const sanitizeForTTS = (text: string): string => {
+    let cleaned = text;
+
+    // 1. 移除中文括号内的舞台指示：（轻柔地，语速缓慢）
+    cleaned = cleaned.replace(/（[^）]*）/g, '');
+
+    // 2. 移除英文括号内的舞台指示：(softly, slowly)
+    cleaned = cleaned.replace(/\([^)]*\)/g, '');
+
+    // 3. 移除未闭合的方括号标记：[rate - （流式结束时可能出现）
+    cleaned = cleaned.replace(/\[[^\]]*$/g, '');
+
+    // 4. 移除 Markdown 格式符号：**bold**, *italic*, # headers
+    cleaned = cleaned.replace(/[*_#`~]/g, '');
+
+    // 5. 移除多余的空白和换行（合并为单空格）
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+    return cleaned;
+};
+
 export default function MeditatePage() {
     const [activeCard, setActiveCard] = useState<string | null>(null);
     const [selectedVoice, setSelectedVoice] = useState(VOICES[0].id);
@@ -89,6 +114,16 @@ export default function MeditatePage() {
     const [globalSystemPrompt, setGlobalSystemPrompt] = useState("");
     const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
     const [draftPrompt, setDraftPrompt] = useState("");
+
+    // 🚀 冥想时长控制（分钟）
+    const [meditationDuration, setMeditationDuration] = useState(10);
+    const DURATION_OPTIONS = [3, 5, 10, 15, 20, 30, 40];
+
+    // 🚀 引导模式控制
+    const [guidanceLevel, setGuidanceLevel] = useState<'light' | 'medium' | 'heavy'>('medium');
+
+    // 🚀 每个卡片独立的设置（按卡片ID存储）
+    const [cardSettings, setCardSettings] = useState<Record<string, { duration: number; guidanceLevel: 'light' | 'medium' | 'heavy' }>>({});
 
     // New Card State
     const [newCardTitle, setNewCardTitle] = useState("");
@@ -113,6 +148,31 @@ export default function MeditatePage() {
         try {
             const g = localStorage.getItem("global_system_prompt");
             if (g) setGlobalSystemPrompt(g);
+        } catch { }
+
+        // 🚀 加载保存的冥想时长
+        try {
+            const savedDuration = localStorage.getItem("meditation_duration");
+            if (savedDuration) setMeditationDuration(parseInt(savedDuration, 10));
+        } catch { }
+
+        // 🚀 加载保存的引导模式
+        try {
+            const savedGuidance = localStorage.getItem("meditation_guidance");
+            if (savedGuidance && ['light', 'medium', 'heavy'].includes(savedGuidance)) {
+                setGuidanceLevel(savedGuidance as 'light' | 'medium' | 'heavy');
+            }
+        } catch { }
+
+        // 🚀 加载每个卡片的独立设置
+        try {
+            const savedCardSettings = localStorage.getItem("meditation_card_settings");
+            if (savedCardSettings) {
+                const parsed = JSON.parse(savedCardSettings);
+                if (parsed && typeof parsed === 'object') {
+                    setCardSettings(parsed);
+                }
+            }
         } catch { }
 
         (async () => {
@@ -185,7 +245,7 @@ export default function MeditatePage() {
 
     // Audio Queue Management
     type QueueItem =
-        | { type: 'audio', url?: string, buffer?: AudioBuffer, id: string }
+        | { type: 'audio', url?: string, buffer?: AudioBuffer, id: string, status?: 'loading' | 'ready' | 'error', text?: string }
         | { type: 'pause', duration: number, id: string };
 
     const [isPlaying, setIsPlaying] = useState(false);
@@ -214,10 +274,8 @@ export default function MeditatePage() {
         if (!audioContextRef.current && AC) {
             const ctx = new AC();
             audioContextRef.current = ctx;
-            console.log('[Audio] Context created');
 
             ctx.onstatechange = () => {
-                console.log('[Audio] Context state:', ctx.state);
                 setShowAudioHint(ctx.state === 'suspended');
             };
         }
@@ -315,10 +373,10 @@ export default function MeditatePage() {
     const prefetchIntervalRef = useRef<NodeJS.Timeout | null>(null);
     useEffect(() => {
         if (isPlaying && audioQueue.length > 0) {
-            // ✅ 回调到 1000ms 检查一次
+            // ✅ 加快轮询到 300ms，更积极地检查音频就绪状态，尽快调度
             prefetchIntervalRef.current = setInterval(() => {
-                prefetchAudioItems(audioQueue);
-            }, 1000);
+                prefetchAudioItems(audioQueue, 2);
+            }, 300);
         }
         return () => {
             if (prefetchIntervalRef.current) {
@@ -328,72 +386,165 @@ export default function MeditatePage() {
         };
     }, [isPlaying, audioQueue.length]);
 
-    // === Gapless Scheduler === //
+    // ... (rest of code)
+
+    // === P2: TTS API 重试工具 === //
+    const fetchWithRetry = async (url: string, options: RequestInit, retries = 3): Promise<Response | null> => {
+        for (let i = 0; i < retries; i++) {
+            try {
+                const res = await fetch(url, options);
+                if (res.ok) return res;
+
+                // 🔥 详细记录错误信息
+                const errorText = await res.text().catch(() => "No error details");
+
+                // 如果是 4xx 错误，不重试
+                if (res.status >= 400 && res.status < 500) return null;
+            } catch (e) {
+                if (i === retries - 1) return null;
+                await new Promise(r => setTimeout(r, 1000 * (i + 1))); // 递增延迟
+            }
+        }
+        return null;
+    };
+
+    // === 简单顺序播放器 === //
+    const [isBuffering, setIsBuffering] = useState(false);
+    const isPlayingNextRef = useRef(false); // 防止重复触发
+    const hasStartedRef = useRef(false); // 是否已开始播放（用于首次缓冲检查）
+    const audioQueueRef = useRef(audioQueue);
+    audioQueueRef.current = audioQueue;
+    const MIN_BUFFER_COUNT = 3; // 🔥 至少 3 个音频就绪后才开始播放
+
+    // 播放队列中的下一个项目
+    const playNextInQueue = async () => {
+        // 防止重复调用
+        if (isPlayingNextRef.current) return;
+
+        const queue = audioQueueRef.current;
+        if (queue.length === 0) return;
+
+        // 🔥 持续预加载
+        prefetchAudioItems(queue);
+
+        // 🔥 精确时间调度（复制自 TTS Studio）
+        await ensureAudioContext();
+        const ctx = audioContextRef.current;
+        if (!ctx) return;
+
+        if (ctx.state === 'suspended') {
+            await ctx.resume();
+        }
+
+        // 🔥 首次播放前的预缓冲检查
+        if (!hasStartedRef.current) {
+            const readyCount = queue.filter(q => q.type === 'audio' && q.buffer).length;
+            const hasLoading = queue.some(q => q.type === 'audio' && q.status === 'loading');
+
+            if (readyCount < MIN_BUFFER_COUNT && hasLoading) {
+                setIsBuffering(true);
+                return;
+            }
+            hasStartedRef.current = true;
+        }
+
+        setIsBuffering(false);
+
+        // 🔥 批量调度队列中的项目（精确时间调度）
+        let scheduledCount = 0;
+        const MAX_SCHEDULED = 3; // 最多同时调度 3 个
+
+        for (let i = 0; i < queue.length && scheduledCount < MAX_SCHEDULED; i++) {
+            const item = queue[i];
+
+            // 跳过已调度的
+            if (scheduledIdsRef.current.has(item.id)) continue;
+
+            // 跳过错误的
+            if (item.type === 'audio' && item.status === 'error') {
+                setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+                continue;
+            }
+
+            const start = Math.max(ctx.currentTime, nextStartTimeRef.current);
+
+            if (item.type === 'pause') {
+                // 调度静默
+                const pauseSeconds = item.duration / 1000;
+                nextStartTimeRef.current = start + pauseSeconds;
+                scheduledIdsRef.current.add(item.id);
+
+
+                // 在暂停结束后移除
+                setTimeout(() => {
+                    setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+                    scheduledIdsRef.current.delete(item.id);
+                }, (nextStartTimeRef.current - ctx.currentTime) * 1000 + 100);
+
+                scheduledCount++;
+
+            } else if (item.type === 'audio' && item.buffer) {
+                // 调度音频
+                const source = ctx.createBufferSource();
+                source.buffer = item.buffer;
+                source.connect(ctx.destination);
+
+                const duration = item.buffer.duration;
+
+                // 🔥 用 setTimeout 替代 onended（更可靠）
+                const endTimeMs = ((start - ctx.currentTime) + duration) * 1000 + 1000; // 加 1s 安全边距
+                setTimeout(() => {
+                    setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+                    scheduledIdsRef.current.delete(item.id);
+                    sourceNodesRef.current.delete(item.id);
+                }, endTimeMs);
+
+                source.start(start);
+                nextStartTimeRef.current = start + duration;
+                scheduledIdsRef.current.add(item.id);
+                sourceNodesRef.current.set(item.id, source);
+                currentSourceRef.current = source;
+
+                scheduledCount++;
+
+            } else if (item.type === 'audio' && item.status === 'loading') {
+                // 音频还在加载，停止调度等待
+                setIsBuffering(true);
+                break;
+            }
+        }
+
+        isPlayingNextRef.current = false;
+    };
+
+    // 当 isPlaying 变化时，启动或停止播放循环
     useEffect(() => {
         if (!isPlaying) {
-            // Pause all currently playing sources
-            if (audioContextRef.current?.state === 'running') {
-                audioContextRef.current.suspend();
+            // 停止播放时清理
+            if (currentSourceRef.current) {
+                try { currentSourceRef.current.stop(); } catch { }
+                currentSourceRef.current = null;
             }
+            isPlayingNextRef.current = false;
+            hasStartedRef.current = false;
+            setIsBuffering(false);
             return;
         }
 
-        const runScheduler = async () => {
-            await ensureAudioContext();
-            const ctx = audioContextRef.current;
-            if (!ctx) return;
-
-            if (ctx.state === 'suspended') {
-                await ctx.resume();
+        // 🔥 启动轮询检查（替代依赖 audioQueue 的 useEffect）
+        const checkInterval = setInterval(() => {
+            if (!isPlayingNextRef.current && audioQueueRef.current.length > 0) {
+                playNextInQueue();
             }
+        }, 200);
 
-            // 🔥 关键优化：启动并行预加载
-            prefetchAudioItems(audioQueue);
+        // 立即检查一次
+        if (!isPlayingNextRef.current && audioQueueRef.current.length > 0) {
+            playNextInQueue();
+        }
 
-            // Schedule unscheduled items
-            for (let i = 0; i < audioQueue.length; i++) {
-                const item = audioQueue[i];
-                if (scheduledIdsRef.current.has(item.id)) continue;
-
-                const start = Math.max(ctx.currentTime, nextStartTimeRef.current);
-
-                if (item.type === 'pause') {
-                    // Schedule a "virtual" pause by moving the timeline
-                    const durationInSec = item.duration / 1000;
-                    nextStartTimeRef.current = start + durationInSec;
-                    scheduledIdsRef.current.add(item.id);
-
-                    // Cleanup pause item after it should have passed
-                    setTimeout(() => {
-                        setAudioQueue(prev => prev.filter(q => q.id !== item.id));
-                        scheduledIdsRef.current.delete(item.id);
-                    }, (nextStartTimeRef.current - ctx.currentTime) * 1000 + 100);
-
-                } else if (item.type === 'audio' && item.buffer) {
-                    const source = ctx.createBufferSource();
-                    source.buffer = item.buffer;
-                    source.connect(ctx.destination);
-
-                    source.onended = () => {
-                        setAudioQueue(prev => prev.filter(q => q.id !== item.id));
-                        scheduledIdsRef.current.delete(item.id);
-                        sourceNodesRef.current.delete(item.id);
-                    };
-
-                    source.start(start);
-                    nextStartTimeRef.current = start + item.buffer.duration;
-                    scheduledIdsRef.current.add(item.id);
-                    sourceNodesRef.current.set(item.id, source);
-
-                    // ✅ 回调为 3 个项目的调度缓冲
-                    if (scheduledIdsRef.current.size > 3) break;
-                }
-                // 🔥 移除了同步 URL 解码逻辑，现在由 prefetchAudioItems 并行处理
-            }
-        };
-
-        runScheduler();
-    }, [isPlaying, audioQueue]);
+        return () => clearInterval(checkInterval);
+    }, [isPlaying]);
 
     // Handle Stop / Reset
     const stopAudio = () => {
@@ -489,28 +640,23 @@ export default function MeditatePage() {
         })();
     }, [isPlaying]);
 
-    // === P1: AudioContext 看门狗 - 自动恢复挂起的音频上下文 === //
+    // === P1: AudioContext 看门狗 - 仅用于恢复挂起的音频上下文 === //
     useEffect(() => {
         if (!isPlaying) return;
 
         const watchdog = setInterval(async () => {
-            // 检查 AudioContext 状态
+            // 只检查 AudioContext 状态，不再检查队列
             if (audioContextRef.current?.state === 'suspended') {
                 try {
                     await audioContextRef.current.resume();
-                    console.log('[Watchdog] AudioContext resumed');
                 } catch { }
             }
 
-            // 检查队列是否停滞（有项目但没在播放）
-            if (audioQueue.length > 0 && !currentAudio && !currentItemIdRef.current) {
-                console.log('[Watchdog] Queue stalled, forcing refresh');
-                setAudioQueue(prev => [...prev]);
-            }
+            // 🔥 移除了队列停滞检测，因为新的简单播放器会自动处理
         }, 3000);
 
         return () => clearInterval(watchdog);
-    }, [isPlaying, audioQueue, currentAudio]);
+    }, [isPlaying]);
 
     const generateMeditation = async (prompt: string) => {
         setIsGenerating(true);
@@ -550,10 +696,21 @@ export default function MeditatePage() {
 
                 (window as any).electron.generateMeditation(prompt, apiKey);
             } else {
+                // 🚀 使用当前卡片的独立设置
+                const currentCardSettings = cardSettings[activeCard || 'default'];
+                const cardDuration = currentCardSettings?.duration ?? meditationDuration;
+                const cardGuidance = currentCardSettings?.guidanceLevel ?? guidanceLevel;
+
                 const res = await fetch('/api/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt, apiKey, systemPrompt: globalSystemPrompt })
+                    body: JSON.stringify({
+                        prompt,
+                        apiKey,
+                        systemPrompt: globalSystemPrompt,
+                        duration: cardDuration,  // 🚀 使用该卡片的时长设置
+                        guidanceLevel: cardGuidance  // 🚀 使用该卡片的引导模式
+                    })
                 });
                 if (!res.ok) {
                     try {
@@ -637,10 +794,7 @@ export default function MeditatePage() {
         return URL.createObjectURL(blob);
     };
 
-    // === P2: TTS Buffer Processing Strategy (Tags Only, No Punctuation Splitting) === //
-    // We NO LONGER split on punctuation to avoid choppy audio.
-    // The TTS engine handles natural pauses for periods/commas.
-    // We only split on: 1) Explicit [pause]/[rate] tags, 2) Safety limit (400 chars), 3) Stream end (flush).
+    // === 简化版 processBuffer：按 pause 分段 === //
     const hasStartedSpeakingRef = useRef(false);
 
     const processBuffer = async (flushRemaining = false) => {
@@ -648,90 +802,83 @@ export default function MeditatePage() {
         isProcessingRef.current = true;
 
         try {
-            // Regex to find explicit [pause] or [rate] tags
-            const tagRegex = /((?:\[(?:pause|rate)[^\]]*\]))/;
+            // 匹配 [pause Xs] 或 [rate ±N%] 标签
+            const tagRegex = /\[(pause|rate)\s*[:=]?\s*([^\]]+)\]/i;
 
             while (true) {
-                // 1. Check for Tags First (Highest Priority splits)
-                const tagMatch = processingBuffer.current.match(tagRegex);
+                const buffer = processingBuffer.current;
+                if (!buffer || buffer.trim().length === 0) break;
 
-                let splitIndex = -1;
-                let splitLength = 0;
-                let isTag = false;
+                const tagMatch = buffer.match(tagRegex);
 
-                // Decision Logic
                 if (tagMatch && tagMatch.index !== undefined) {
-                    // Always split on tags immediately
-                    splitIndex = tagMatch.index;
-                    splitLength = tagMatch[0].length;
-                    isTag = true;
-                } else if (processingBuffer.current.length > 400) {
-                    // Safety valve: Buffer is too long, force split at a good point.
-                    // Try to find a sentence-ending punctuation to split cleanly.
-                    const safeBreak = processingBuffer.current.substring(0, 400).lastIndexOf('。');
-                    const safePeriod = processingBuffer.current.substring(0, 400).lastIndexOf('.');
-                    const altBreak = Math.max(safeBreak, safePeriod);
-                    if (altBreak > 100) {
-                        // Found a period within first 400 chars, split after it
-                        splitIndex = altBreak + 1;
-                    } else {
-                        // No good break point, just split at 400
-                        splitIndex = 400;
+                    // 有标签，分段处理
+                    const textBefore = buffer.substring(0, tagMatch.index).trim();
+                    const tagType = tagMatch[1].toLowerCase();
+                    const tagValue = tagMatch[2];
+                    const tagFull = tagMatch[0];
+
+                    // 1. 先处理标签前的文字（如果有）
+                    if (textBefore.length > 0) {
+                        const cleanedText = sanitizeForTTS(textBefore);
+
+                        if (cleanedText.length > 0) {
+                            const itemId = Math.random().toString(36).substr(2, 9);
+                            setAudioQueue(prev => [...prev, {
+                                type: 'audio',
+                                id: itemId,
+                                status: 'loading',
+                                text: cleanedText
+                            }]);
+                            generateAudioWithRetry(cleanedText, itemId);
+                            hasStartedSpeakingRef.current = true;
+                        }
                     }
-                    splitLength = 0;
-                    isTag = false;
-                } else if (flushRemaining && processingBuffer.current.trim().length > 0) {
-                    // Stream has ended, flush all remaining text
-                    splitIndex = processingBuffer.current.length;
-                    splitLength = 0;
-                    isTag = false;
-                }
 
-                // If no valid split found, wait for more data (stream hasn't finished)
-                if (splitIndex === -1) {
-                    break;
-                }
-
-                // EXTRACT TEXT
-                const textTokProcess = processingBuffer.current.substring(0, splitIndex);
-
-                // UPDATE BUFFER
-                if (isTag) {
-                    // Remove text + tag
-                    processingBuffer.current = processingBuffer.current.substring(splitIndex + splitLength);
-                } else {
-                    // Remove text
-                    processingBuffer.current = processingBuffer.current.substring(splitIndex);
-                }
-
-                // PROCESS TEXT
-                if (textTokProcess.trim().length > 0) {
-                    await generateAudio(textTokProcess.trim());
-                    hasStartedSpeakingRef.current = true;
-                }
-
-                // PROCESS TAG
-                if (isTag && tagMatch) {
-                    const token = tagMatch[0];
-                    if (token.includes("pause")) {
-                        const durationMatch = token.match(/pause\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(ms|s)?/i);
+                    // 2. 处理标签
+                    if (tagType === 'pause') {
+                        // 解析 pause 时长
+                        const durationMatch = tagValue.match(/(\d+(?:\.\d+)?)\s*(ms|s)?/i);
                         if (durationMatch) {
                             let val = parseFloat(durationMatch[1]);
                             const unit = (durationMatch[2] || '').toLowerCase();
+                            let durMs = (unit === 's' || (!unit && val < 50)) ? val * 1000 : val;
 
-                            // If unit is 's', or no unit but < 50, assume seconds.
-                            // Otherwise assume milliseconds.
-                            let durMs = val;
-                            if (unit === 's' || (unit === '' && val < 50)) {
-                                durMs = val * 1000;
-                            }
-
-                            setAudioQueue(prev => [...prev, { type: 'pause', duration: durMs, id: Math.random().toString(36).substr(2, 9) }]);
+                            setAudioQueue(prev => [...prev, {
+                                type: 'pause',
+                                duration: durMs,
+                                id: Math.random().toString(36).substr(2, 9)
+                            }]);
                         }
-                    } else if (token.includes("rate")) {
-                        const rateMatch = token.match(/rate\s*[:=]?\s*([+-]?\d+%)/i);
-                        if (rateMatch) currentRate.current = rateMatch[1];
+                    } else if (tagType === 'rate') {
+                        // 更新语速
+                        currentRate.current = tagValue.trim();
                     }
+
+                    // 3. 移除已处理的内容（文字 + 标签）
+                    processingBuffer.current = buffer.substring(tagMatch.index + tagFull.length);
+
+                } else if (flushRemaining) {
+                    // 没有标签，但需要刷新剩余内容
+                    const cleanedText = sanitizeForTTS(buffer.trim());
+
+                    if (cleanedText.length > 0) {
+                        const itemId = Math.random().toString(36).substr(2, 9);
+                        setAudioQueue(prev => [...prev, {
+                            type: 'audio',
+                            id: itemId,
+                            status: 'loading',
+                            text: cleanedText
+                        }]);
+                        generateAudioWithRetry(cleanedText, itemId);
+                        hasStartedSpeakingRef.current = true;
+                    }
+                    processingBuffer.current = '';
+                    break;
+
+                } else {
+                    // 没有标签，等待更多数据
+                    break;
                 }
             }
         } finally {
@@ -739,32 +886,15 @@ export default function MeditatePage() {
         }
     };
 
-    // === P2: TTS API 重试工具 === //
-    const fetchWithRetry = async (url: string, options: RequestInit, retries = 3): Promise<Response | null> => {
-        for (let i = 0; i < retries; i++) {
-            try {
-                const res = await fetch(url, options);
-                if (res.ok) return res;
-                // 如果是 4xx 错误，不重试
-                if (res.status >= 400 && res.status < 500) return null;
-            } catch (e) {
-                console.warn(`[TTS] Retry ${i + 1}/${retries}`, e);
-                if (i === retries - 1) return null;
-                await new Promise(r => setTimeout(r, 1000 * (i + 1))); // 递增延迟
-            }
-        }
-        return null;
-    };
+    // 🚀 带重试的 TTS 生成函数
+    const generateAudioWithRetry = async (text: string, itemId: string, retryCount = 0) => {
 
-    const generateAudio = async (text: string) => {
         try {
             if (typeof window !== 'undefined' && (window as any).electron) {
                 const url = await (window as any).electron.generateTTS(text, selectedVoice, currentRate.current);
-                setAudioQueue(prev => [...prev, {
-                    type: 'audio',
-                    url,
-                    id: Math.random().toString(36).substr(2, 9)
-                }]);
+                setAudioQueue(prev => prev.map(item =>
+                    item.id === itemId ? { ...item, url, status: 'ready' } : item
+                ));
             } else {
                 // 使用重试逻辑
                 const resp = await fetchWithRetry('/api/tts', {
@@ -772,6 +902,7 @@ export default function MeditatePage() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text, voice: selectedVoice, rate: currentRate.current })
                 });
+
                 if (resp && resp.ok) {
                     const blob = await resp.blob();
                     try {
@@ -780,36 +911,60 @@ export default function MeditatePage() {
                         if (ctx) {
                             const arr = await blob.arrayBuffer();
                             const buf = await ctx.decodeAudioData(arr);
-                            setAudioQueue(prev => [...prev, {
-                                type: 'audio',
-                                buffer: buf,
-                                id: Math.random().toString(36).substr(2, 9)
-                            }]);
+
+                            // 🔍 检查音频时长是否匹配文本长度
+                            const expectedDuration = text.length / 4; // 约 4 字/秒
+                            const actualDuration = buf.duration;
+                            const ratio = actualDuration / expectedDuration;
+
+                            if (ratio < 0.5 && retryCount < 2) {
+                                // 🔥 音频被截断，用更慢语速重试
+                                const slowerRate = "-20%"; // 降低语速可能更稳定
+                                await new Promise(r => setTimeout(r, 1000));
+                                // 临时用慢速重试
+                                const prevRate = currentRate.current;
+                                currentRate.current = slowerRate;
+                                await generateAudioWithRetry(text, itemId, retryCount + 1);
+                                currentRate.current = prevRate;
+                                return;
+                            }
+
+                            if (ratio < 0.5) {
+                            } else {
+                            }
+
+                            // 更新队列中的 item 为 ready
+                            setAudioQueue(prev => prev.map(item =>
+                                item.id === itemId ? { ...item, buffer: buf, status: 'ready' } : item
+                            ));
+
                         } else {
-                            // Fallback to URL if context fails
+                            // Fallback
                             const url = URL.createObjectURL(blob);
-                            setAudioQueue(prev => [...prev, {
-                                type: 'audio',
-                                url,
-                                id: Math.random().toString(36).substr(2, 9)
-                            }]);
+                            setAudioQueue(prev => prev.map(item =>
+                                item.id === itemId ? { ...item, url, status: 'ready' } : item
+                            ));
                         }
                     } catch (e) {
                         console.error('[Audio] Decode failed', e);
                         const url = URL.createObjectURL(blob);
-                        setAudioQueue(prev => [...prev, {
-                            type: 'audio',
-                            url,
-                            id: Math.random().toString(36).substr(2, 9)
-                        }]);
+                        setAudioQueue(prev => prev.map(item =>
+                            item.id === itemId ? { ...item, url, status: 'ready' } : item
+                        ));
                     }
                 }
                 else {
-                    console.error('[TTS] Failed after retries');
+                    // 标记为错误，避免 scheduler 卡死
+                    setAudioQueue(prev => prev.map(item =>
+                        item.id === itemId ? { ...item, status: 'error' } : item
+                    ));
                 }
             }
         } catch (e) {
             console.error("TTS failed", e);
+            setAudioQueue(prev => prev.map(item =>
+                item.id === itemId ? { ...item, status: 'error' } : item
+            ));
         }
     };
 
@@ -927,6 +1082,19 @@ export default function MeditatePage() {
 
                                     {topic.icon ? <topic.icon className="w-8 h-8 mb-2 text-white/80" /> : <Wind className="w-8 h-8 mb-2 text-white/80" />}
                                     <span className="text-lg font-medium leading-tight z-10">{topic.title}</span>
+
+                                    {/* 🚀 显示该卡片的设置：时长 + 引导模式 */}
+                                    <div className="flex gap-1.5 mt-2 flex-wrap">
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/60">
+                                            {cardSettings[topic.id]?.duration ?? meditationDuration}分钟
+                                        </span>
+                                        <span className={cn(
+                                            "text-[10px] px-2 py-0.5 rounded-full",
+                                            GUIDANCE_LEVELS[cardSettings[topic.id]?.guidanceLevel ?? guidanceLevel].color
+                                        )}>
+                                            {GUIDANCE_LEVELS[cardSettings[topic.id]?.guidanceLevel ?? guidanceLevel].label}
+                                        </span>
+                                    </div>
                                 </GlassCard>
                             </motion.button>
                         ))}
@@ -967,6 +1135,19 @@ export default function MeditatePage() {
 
                                     {topic.icon ? <topic.icon className="w-8 h-8 mb-2 text-white/80" /> : <Wind className="w-8 h-8 mb-2 text-white/80" />}
                                     <span className="text-lg font-medium leading-tight z-10">{topic.title}</span>
+
+                                    {/* 🚀 显示该卡片的设置：时长 + 引导模式 */}
+                                    <div className="flex gap-1.5 mt-2 flex-wrap">
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/60">
+                                            {cardSettings[topic.id]?.duration ?? meditationDuration}分钟
+                                        </span>
+                                        <span className={cn(
+                                            "text-[10px] px-2 py-0.5 rounded-full",
+                                            GUIDANCE_LEVELS[cardSettings[topic.id]?.guidanceLevel ?? guidanceLevel].color
+                                        )}>
+                                            {GUIDANCE_LEVELS[cardSettings[topic.id]?.guidanceLevel ?? guidanceLevel].label}
+                                        </span>
+                                    </div>
                                 </GlassCard>
                             </motion.button>
                         ))}
@@ -1060,38 +1241,112 @@ export default function MeditatePage() {
                                         </div>
                                     </div>
 
-                                    {/* Global System Prompt */}
-                                    {!editingTopicId && (
-                                        <div>
-                                            <div className="flex justify-between items-center mb-2">
-                                                <label className="text-sm font-medium text-slate-300 block">
-                                                    全局编导角色 (AI System Prompt)
-                                                </label>
-                                                <button
-                                                    onClick={async () => {
-                                                        try {
-                                                            const res = await fetch('/api/system-prompt', {
-                                                                method: 'POST',
-                                                                headers: { 'Content-Type': 'application/json' },
-                                                                body: JSON.stringify({ prompt: globalSystemPrompt })
-                                                            });
-                                                            if (res.ok) alert("已保存到服务器");
-                                                        } catch (e) { alert("保存失败"); }
-                                                    }}
-                                                    className="text-xs text-rose-400 hover:text-rose-300"
-                                                >
-                                                    保存到服务器
-                                                </button>
-                                            </div>
-                                            <textarea
-                                                value={globalSystemPrompt}
-                                                onChange={(e) => setGlobalSystemPrompt(e.target.value)}
-                                                className="w-full h-40 bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-slate-300 focus:outline-none focus:border-rose-500/50 resize-none"
-                                                placeholder="设置 AI 生成冥想脚本的全局指令..."
-                                            />
-                                            <p className="text-[10px] text-slate-500 mt-1">设置后将影响所有冥想内容的生成逻辑和节奏控制。</p>
+                                    {/* 🚀 时长选择器 */}
+                                    <div>
+                                        <label className="text-sm font-medium text-slate-300 mb-2 block">
+                                            冥想时长
+                                        </label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {DURATION_OPTIONS.map((dur) => {
+                                                const currentCardId = editingTopicId || 'default';
+                                                const currentDuration = cardSettings[currentCardId]?.duration ?? meditationDuration;
+                                                return (
+                                                    <button
+                                                        key={dur}
+                                                        onClick={() => {
+                                                            const newSettings = {
+                                                                ...cardSettings,
+                                                                [currentCardId]: {
+                                                                    ...cardSettings[currentCardId],
+                                                                    duration: dur,
+                                                                    guidanceLevel: cardSettings[currentCardId]?.guidanceLevel ?? guidanceLevel
+                                                                }
+                                                            };
+                                                            setCardSettings(newSettings);
+                                                            localStorage.setItem("meditation_card_settings", JSON.stringify(newSettings));
+                                                        }}
+                                                        className={cn(
+                                                            "px-3 py-1.5 rounded-xl border text-sm transition-all",
+                                                            currentDuration === dur
+                                                                ? "bg-rose-500 border-rose-400 text-white"
+                                                                : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
+                                                        )}
+                                                    >
+                                                        {dur}分钟
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
-                                    )}
+                                        <p className="text-[10px] text-slate-500 mt-1">选择该卡片的冥想时长</p>
+                                    </div>
+
+                                    {/* 🚀 引导模式选择器 */}
+                                    <div>
+                                        <label className="text-sm font-medium text-slate-300 mb-2 block">
+                                            引导强度
+                                        </label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {(Object.entries(GUIDANCE_LEVELS) as [keyof typeof GUIDANCE_LEVELS, typeof GUIDANCE_LEVELS[keyof typeof GUIDANCE_LEVELS]][]).map(([key, { label, color }]) => {
+                                                const currentCardId = editingTopicId || 'default';
+                                                const currentGuidance = cardSettings[currentCardId]?.guidanceLevel ?? guidanceLevel;
+                                                return (
+                                                    <button
+                                                        key={key}
+                                                        onClick={() => {
+                                                            const newSettings = {
+                                                                ...cardSettings,
+                                                                [currentCardId]: {
+                                                                    ...cardSettings[currentCardId],
+                                                                    duration: cardSettings[currentCardId]?.duration ?? meditationDuration,
+                                                                    guidanceLevel: key
+                                                                }
+                                                            };
+                                                            setCardSettings(newSettings);
+                                                            localStorage.setItem("meditation_card_settings", JSON.stringify(newSettings));
+                                                        }}
+                                                        className={cn(
+                                                            "px-3 py-2 rounded-xl border text-sm transition-all",
+                                                            currentGuidance === key ? color : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
+                                                        )}
+                                                    >
+                                                        {label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <p className="text-[10px] text-slate-500 mt-1">轻引导适合老手，多引导适合新手</p>
+                                    </div>
+
+                                    {/* Global System Prompt - 始终显示 */}
+                                    <div>
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="text-sm font-medium text-slate-300 block">
+                                                全局编导角色 (AI System Prompt)
+                                            </label>
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const res = await fetch('/api/system-prompt', {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ prompt: globalSystemPrompt })
+                                                        });
+                                                        if (res.ok) alert("已保存到服务器");
+                                                    } catch (e) { alert("保存失败"); }
+                                                }}
+                                                className="text-xs text-rose-400 hover:text-rose-300"
+                                            >
+                                                保存到服务器
+                                            </button>
+                                        </div>
+                                        <textarea
+                                            value={globalSystemPrompt}
+                                            onChange={(e) => setGlobalSystemPrompt(e.target.value)}
+                                            className="w-full h-40 bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-slate-300 focus:outline-none focus:border-rose-500/50 resize-none"
+                                            placeholder="设置 AI 生成冥想脚本的全局指令..."
+                                        />
+                                        <p className="text-[10px] text-slate-500 mt-1">设置后将影响所有冥想内容的生成逻辑和节奏控制。</p>
+                                    </div>
 
                                     {/* Per-card or Global Prompt Edit */}
                                     <div>
@@ -1254,7 +1509,9 @@ export default function MeditatePage() {
                                         <div className="flex items-center justify-center h-full min-h-[300px]">
                                             <div className="flex flex-col items-center gap-4 animate-pulse">
                                                 <div className="w-12 h-12 rounded-full border-2 border-white/20 border-t-white/80 animate-spin" />
-                                                <div className="text-white/40 font-light">正在生成冥想引导...</div>
+                                                <div className="text-white/40 font-light">
+                                                    {isBuffering ? '正在缓冲音频...' : '正在生成冥想引导...'}
+                                                </div>
                                             </div>
                                         </div>
                                     )}

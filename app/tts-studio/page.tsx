@@ -458,6 +458,11 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             try {
                 const res = await fetch(url, options);
                 if (res.ok) return res;
+
+                // 🔥 详细记录错误信息
+                const errorText = await res.text().catch(() => "No error details");
+                console.warn(`[TTS] Request failed (Attempt ${i + 1}/${retries}): ${res.status} - ${errorText}`);
+
                 // 如果是 4xx 错误（除 408/429 外），不重试
                 if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) return null;
             } catch (e) {
@@ -666,7 +671,17 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 } else if (item.type === 'text' && item.buffer) {
                     const source = ctx.createBufferSource();
                     source.buffer = item.buffer;
-                    source.connect(ctx.destination);
+
+                    const gainNode = ctx.createGain();
+                    source.connect(gainNode);
+                    gainNode.connect(ctx.destination);
+
+                    gainNode.gain.setValueAtTime(0, start);
+                    gainNode.gain.linearRampToValueAtTime(1, start + 0.01);
+
+                    const endTime = start + item.buffer.duration;
+                    gainNode.gain.setValueAtTime(1, endTime - 0.01);
+                    gainNode.gain.linearRampToValueAtTime(0, endTime);
 
                     source.onended = () => {
                         setAudioQueue(prev => prev.filter(q => q.id !== item.id));
@@ -1033,6 +1048,30 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         setAudioQueue(segments);
         setIsPlaying(true);
         isPlayingRef.current = true;
+
+        // 🚀 关键优化：立即开始播放第一个片段，不等待 useEffect 的渲染周期
+        const ctx = audioContextRef.current;
+        if (ctx && segments.length > 0) {
+            const firstItem = segments[0];
+            if (firstItem.type === 'text' && firstItem.buffer) {
+                const source = ctx.createBufferSource();
+                source.buffer = firstItem.buffer;
+                source.connect(ctx.destination);
+
+                const startTime = ctx.currentTime;
+                source.onended = () => {
+                    setAudioQueue(prev => prev.filter(q => q.id !== firstItem.id));
+                    scheduledIdsRef.current.delete(firstItem.id);
+                    sourceNodesRef.current.delete(firstItem.id);
+                };
+
+                source.start(startTime);
+                nextStartTimeRef.current = startTime + firstItem.buffer.duration;
+                scheduledIdsRef.current.add(firstItem.id);
+                sourceNodesRef.current.set(firstItem.id, source);
+                console.log('[TTS] 🎵 第一个片段已立即开始播放');
+            }
+        }
     };
 
     // 从指定位置开始播放缓存音频
