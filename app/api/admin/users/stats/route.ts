@@ -4,6 +4,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 
 // 辅助函数：格式化日期
 const formatDate = (dateStr: string | null | undefined) => {

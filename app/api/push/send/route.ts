@@ -3,6 +3,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 
 // Vercel 后端地址
 const VERCEL_BACKEND = "https://qiutsmoke.vercel.app";

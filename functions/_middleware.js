@@ -5,7 +5,7 @@
  * while serving static content from CF Pages.
  */
 
-const VERCEL_BACKEND = 'https://qiutsmoke-pqigduqoe-lijiahaos-projects-210f5ddd.vercel.app';
+const VERCEL_BACKEND = 'https://qiutsmoke.vercel.app';
 
 // Routes that need to be proxied to Vercel (Node.js runtime)
 const PROXY_ROUTES = [

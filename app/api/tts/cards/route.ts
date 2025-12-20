@@ -1,19 +1,26 @@
 /**
- * TTS Cards API Route
- * CRUD operations for TTS cards using Supabase
- * Works locally and on all deployment platforms
+ * TTS Cards API Route (Node.js Direct Implementation)
+ * 
+ * Simplified for Vercel deployment stability.
+ * Uses Node.js runtime to ensure stable Supabase connection and environment variable access.
  */
 
 import { createClient } from '@supabase/supabase-js';
 
+// Force Node.js runtime for stability
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Create Supabase client for API routes
 function getSupabaseClient() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseKey) {
+        console.error('[TTS Cards] Missing configuration:', {
+            hasUrl: !!supabaseUrl,
+            hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+            hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        });
         throw new Error('Missing Supabase configuration');
     }
 
@@ -23,21 +30,14 @@ function getSupabaseClient() {
 export async function GET(req: Request) {
     try {
         const supabase = getSupabaseClient();
-
         const { data, error } = await supabase
             .from('tts_cards')
             .select('*')
             .order('created_at', { ascending: false });
 
         if (error) {
-            console.error('[TTS Cards GET] Supabase error:', error);
-            return new Response(JSON.stringify({
-                error: 'Failed to fetch TTS cards',
-                details: error.message
-            }), {
-                status: 500,
-                headers: { 'Content-Type': 'application/json' },
-            });
+            console.error('[TTS Cards GET] DB Error:', error);
+            throw error;
         }
 
         return new Response(JSON.stringify(data || []), {
@@ -45,16 +45,17 @@ export async function GET(req: Request) {
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
-            },
+                'Cache-Control': 'no-store, max-age=0'
+            }
         });
     } catch (error) {
-        console.error('[TTS Cards GET]', error);
+        console.error('[TTS Cards GET] System Error:', error);
         return new Response(JSON.stringify({
-            error: 'Failed to fetch TTS cards',
+            error: 'Failed to fetch cards',
             details: error instanceof Error ? error.message : String(error)
         }), {
             status: 500,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' }
         });
     }
 }
@@ -65,12 +66,8 @@ export async function POST(req: Request) {
         const body = await req.json();
         const { content, voiceId, rate } = body;
 
-        if (!content) {
-            return new Response(JSON.stringify({ error: 'Content is required' }), {
-                status: 400,
-                headers: { 'Content-Type': 'application/json' },
-            });
-        }
+        // Validation
+        if (!content) return new Response(JSON.stringify({ error: 'Content is required' }), { status: 400 });
 
         const { data, error } = await supabase
             .from('tts_cards')
@@ -83,31 +80,25 @@ export async function POST(req: Request) {
             .single();
 
         if (error) {
-            console.error('[TTS Cards POST] Supabase error:', error);
-            return new Response(JSON.stringify({
-                error: 'Failed to create TTS card',
-                details: error.message
-            }), {
-                status: 500,
-                headers: { 'Content-Type': 'application/json' },
-            });
+            console.error('[TTS Cards POST] DB Error:', error);
+            throw error;
         }
 
         return new Response(JSON.stringify(data), {
             status: 201,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-            },
+                'Access-Control-Allow-Origin': '*'
+            }
         });
     } catch (error) {
-        console.error('[TTS Cards POST]', error);
+        console.error('[TTS Cards POST] System Error:', error);
         return new Response(JSON.stringify({
-            error: 'Failed to create TTS card',
+            error: 'Failed to create card',
             details: error instanceof Error ? error.message : String(error)
         }), {
             status: 500,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' }
         });
     }
 }
@@ -118,44 +109,30 @@ export async function DELETE(req: Request) {
         const url = new URL(req.url);
         const id = url.searchParams.get('id');
 
-        if (!id) {
-            return new Response(JSON.stringify({ error: 'ID is required' }), {
-                status: 400,
-                headers: { 'Content-Type': 'application/json' },
-            });
-        }
+        if (!id) return new Response(JSON.stringify({ error: 'ID is required' }), { status: 400 });
 
-        const { error } = await supabase
-            .from('tts_cards')
-            .delete()
-            .eq('id', id);
+        const { error } = await supabase.from('tts_cards').delete().eq('id', id);
 
         if (error) {
-            console.error('[TTS Cards DELETE] Supabase error:', error);
-            return new Response(JSON.stringify({
-                error: 'Failed to delete TTS card',
-                details: error.message
-            }), {
-                status: 500,
-                headers: { 'Content-Type': 'application/json' },
-            });
+            console.error('[TTS Cards DELETE] DB Error:', error);
+            throw error;
         }
 
         return new Response(JSON.stringify({ success: true }), {
             status: 200,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-            },
+                'Access-Control-Allow-Origin': '*'
+            }
         });
     } catch (error) {
-        console.error('[TTS Cards DELETE]', error);
+        console.error('[TTS Cards DELETE] System Error:', error);
         return new Response(JSON.stringify({
-            error: 'Failed to delete TTS card',
+            error: 'Failed to delete card',
             details: error instanceof Error ? error.message : String(error)
         }), {
             status: 500,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' }
         });
     }
 }
@@ -166,12 +143,7 @@ export async function PATCH(req: Request) {
         const body = await req.json();
         const { id, title, content, voiceId, rate } = body;
 
-        if (!id) {
-            return new Response(JSON.stringify({ error: 'ID is required' }), {
-                status: 400,
-                headers: { 'Content-Type': 'application/json' },
-            });
-        }
+        if (!id) return new Response(JSON.stringify({ error: 'ID is required' }), { status: 400 });
 
         const updates: any = {};
         if (title !== undefined) updates.title = title;
@@ -187,31 +159,25 @@ export async function PATCH(req: Request) {
             .single();
 
         if (error) {
-            console.error('[TTS Cards PATCH] Supabase error:', error);
-            return new Response(JSON.stringify({
-                error: 'Failed to update TTS card',
-                details: error.message
-            }), {
-                status: 500,
-                headers: { 'Content-Type': 'application/json' },
-            });
+            console.error('[TTS Cards PATCH] DB Error:', error);
+            throw error;
         }
 
         return new Response(JSON.stringify(data), {
             status: 200,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-            },
+                'Access-Control-Allow-Origin': '*'
+            }
         });
     } catch (error) {
-        console.error('[TTS Cards PATCH]', error);
+        console.error('[TTS Cards PATCH] System Error:', error);
         return new Response(JSON.stringify({
-            error: 'Failed to update TTS card',
+            error: 'Failed to update card',
             details: error instanceof Error ? error.message : String(error)
         }), {
             status: 500,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' }
         });
     }
 }
@@ -225,6 +191,3 @@ export async function OPTIONS() {
         },
     });
 }
-
-// Edge runtime for broader compatibility
-export const runtime = 'edge';

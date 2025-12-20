@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 
 /**
- * TTS API Route
- * - On Vercel (Node.js): Implements TTS using node-edge-tts
- * - On Cloudflare (Edge): Proxies to Vercel backend
+ * TTS API Route - Edge Runtime Version
+ * 
+ * This route runs on Edge Runtime for Cloudflare compatibility.
+ * - On Vercel: It should proxy to a Node.js serverless function
+ * - On Cloudflare: It proxies to the Vercel backend
+ * 
+ * The actual TTS implementation is in /api/tts-impl (Node.js only)
  */
 
 const VERCEL_BACKEND = 'https://qiutsmoke.vercel.app';
@@ -13,112 +17,70 @@ export async function POST(req: Request) {
         const body = await req.json();
         const { text, voice, rate } = body;
 
-        // Loop prevention check: Did we send this request from our own proxy?
+        // Check environment
+        const isVercel = !!process.env.VERCEL;
         const isProxied = req.headers.get('x-tts-proxy') === 'true';
 
-        // 1. Check if we should run implementation
-        // Force implementation if already proxied or if we are on Vercel Node runtime
-        const isNodejs = process.env.NEXT_RUNTIME === 'nodejs' || typeof window === 'undefined';
-        const isVercel = !!process.env.VERCEL;
+        console.log(`[TTS Edge] Request: vercel=${isVercel}, proxied=${isProxied}`);
 
-        // Detailed logging to help debug in production
-        console.log(`[TTS] Request: proxied=${isProxied}, runtime=${process.env.NEXT_RUNTIME}, vercel=${isVercel}`);
-
-        // If it's already a proxied request, we MUST implement it here (no more proxying!)
-        // Or if we're in a Node.js environment where we can run edge-tts
-        if (isProxied || (isNodejs && !process.env.FORCE_TTS_PROXY)) {
-            console.log(`[TTS] Implementing TTS for: "${text.substring(0, 20)}..."`);
-
-            // Dynamic import to avoid edge runtime errors on Cloudflare build
-            const { EdgeTTS } = await import('node-edge-tts');
-            const fs = await import('fs');
-            const path = await import('path');
-            const os = await import('os');
-
-            const tts = new EdgeTTS({
-                voice: voice || "zh-CN-XiaohanNeural",
-                lang: "zh-CN",
-                outputFormat: "audio-24khz-48kbitrate-mono-mp3",
-                rate: rate || "0%",
+        // If we're on Vercel and this is a proxied request, use the implementation
+        if (isVercel && isProxied) {
+            // Forward to the Node.js implementation internally
+            const implUrl = new URL('/api/tts-impl', req.url);
+            const implResponse = await fetch(implUrl.toString(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
             });
 
-            const tempDir = os.tmpdir();
-            const tempFile = path.join(tempDir, `tts-${Date.now()}.mp3`);
-
-            // Backend Retry Logic for edge-tts
-            let audioBuffer: Buffer | null = null;
-            let lastError: any = null;
-            const maxRetries = 3; // 🔥 增加到 3 次
-
-            // 🔥 估算最小音频大小：48kbps MP3 约 6000 字节/秒
-            // 中文约 4 字/秒，所以每字约 1500 字节
-            const minExpectedBytes = Math.max(text.length * 800, 5000); // 至少 5KB 或每字 800 字节
-
-            for (let i = 0; i <= maxRetries; i++) {
-                try {
-                    console.log(`[TTS] Attempt ${i + 1}/${maxRetries + 1} for text: "${text.substring(0, 20)}..." (${text.length}字)`);
-                    await tts.ttsPromise(text, tempFile);
-                    audioBuffer = fs.readFileSync(tempFile);
-
-                    // 🔥 检查音频是否太短（可能被截断）
-                    if (audioBuffer && audioBuffer.length >= minExpectedBytes) {
-                        console.log(`[TTS] ✅ Success: ${audioBuffer.length} bytes (min expected: ${minExpectedBytes})`);
-                        break;
-                    } else if (audioBuffer) {
-                        console.warn(`[TTS] ⚠️ Audio too short: ${audioBuffer.length} bytes < ${minExpectedBytes} expected, retrying...`);
-                        audioBuffer = null; // 标记为失败，触发重试
-                    }
-                } catch (e) {
-                    lastError = e;
-                    console.warn(`[TTS] Attempt ${i + 1} failed:`, e instanceof Error ? e.message : e);
-                } finally {
-                    try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) { }
-                }
-
-                if (i < maxRetries) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-            }
-
-            if (!audioBuffer || audioBuffer.length === 0) {
-                throw lastError || new Error("Failed to generate audio buffer after retries");
-            }
-
-            return new Response(audioBuffer as any, {
-                status: 200,
+            return new Response(implResponse.body, {
+                status: implResponse.status,
                 headers: {
-                    'Content-Type': 'audio/mpeg',
+                    'Content-Type': implResponse.headers.get('Content-Type') || 'audio/mpeg',
                     'Access-Control-Allow-Origin': '*',
-                    'X-TTS-Handler': 'nodejs-edge-tts',
-                    'X-TTS-Attempts': String(maxRetries + 1)
+                    'X-TTS-Handler': 'vercel-impl',
                 },
             });
         }
 
-        // 2. Otherwise Proxy to Vercel (Cloudflare/Edge case)
+        // Otherwise, proxy to Vercel backend
         const vercelUrl = `${VERCEL_BACKEND}/api/tts`;
 
-        // Extra safety check for hostname
+        // Safety: prevent loop if we're already on Vercel
         const url = new URL(req.url);
-        if (url.hostname.includes('vercel.app')) {
-            return new Response(JSON.stringify({
-                error: 'Loop Detected: Vercel attempting to proxy to itself',
-                info: { isProxied, isNodejs, isVercel }
-            }), { status: 508 });
+        if (url.hostname.includes('vercel.app') && !isProxied) {
+            // We're on Vercel, forward to implementation
+            const implUrl = new URL('/api/tts-impl', req.url);
+            const implResponse = await fetch(implUrl.toString(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+
+            return new Response(implResponse.body, {
+                status: implResponse.status,
+                headers: {
+                    'Content-Type': implResponse.headers.get('Content-Type') || 'audio/mpeg',
+                    'Access-Control-Allow-Origin': '*',
+                    'X-TTS-Handler': 'vercel-direct',
+                },
+            });
         }
 
-        console.log(`[TTS Proxy] Forwarding request to: ${vercelUrl}`);
+        console.log(`[TTS Edge] Proxying to: ${vercelUrl}`);
 
         const response = await fetch(vercelUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-TTS-Proxy': 'true' // Flag to prevent infinite loop
+                'X-TTS-Proxy': 'true',
             },
             body: JSON.stringify(body),
         });
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error(`[TTS Proxy] Backend error ${response.status}: ${errorText}`);
+            console.error(`[TTS Edge] Backend error ${response.status}: ${errorText}`);
             return new Response(JSON.stringify({
                 error: `Backend error: ${response.status}`,
                 details: errorText
@@ -130,12 +92,13 @@ export async function POST(req: Request) {
             headers: {
                 'Content-Type': 'audio/mpeg',
                 'Access-Control-Allow-Origin': '*',
+                'X-TTS-Handler': 'edge-proxy',
             },
         });
     } catch (error) {
-        console.error("[TTS API Error]", error);
+        console.error("[TTS Edge Error]", error);
         return new Response(JSON.stringify({
-            error: 'TTS internal failure',
+            error: 'TTS proxy failure',
             details: error instanceof Error ? error.message : String(error)
         }), { status: 500 });
     }
@@ -151,6 +114,5 @@ export async function OPTIONS() {
     });
 }
 
-// Default to nodejs to enable full feature on Vercel. 
-// Cloudflare builds will still treat this as Edge due to their build system (next-on-pages).
-export const runtime = 'nodejs';
+// Edge runtime for Cloudflare compatibility
+export const runtime = 'edge';
