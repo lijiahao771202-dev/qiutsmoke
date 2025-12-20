@@ -1,12 +1,12 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, Clock, Calendar as CalendarIcon, Trophy, Activity, Flame } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { cn } from "@/lib/utils";
+import { useMeditationStats, useMeditationSessions } from "@/lib/hooks/useData";
 
 interface StatsData {
     totalSessions: number;
@@ -27,44 +27,21 @@ interface Session {
 const MONTH_NAMES = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
 
 export default function StatsPage() {
-    const [stats, setStats] = useState<StatsData | null>(null);
-    const [sessions, setSessions] = useState<Session[]>([]);
-    const [loading, setLoading] = useState(true);
-
     // Calendar State
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState(new Date());
 
-    useEffect(() => {
-        // Load Overview Stats
-        fetch('/api/meditation/stats')
-            .then(res => res.json())
-            .then(data => {
-                if (!data.error) setStats(data);
-            })
-            .catch(console.error);
-    }, []);
+    // 使用 SWR 缓存数据
+    const { stats } = useMeditationStats();
 
-    useEffect(() => {
-        // Load Sessions for current month
+    // 计算当前月份字符串
+    const monthStr = useMemo(() => {
         const y = currentDate.getFullYear();
         const m = currentDate.getMonth() + 1;
-        const monthStr = `${y}-${String(m).padStart(2, '0')}`;
-
-        setLoading(true);
-        fetch(`/api/meditation/sessions?month=${monthStr}`)
-            .then(res => res.json())
-            .then(data => {
-                if (Array.isArray(data)) {
-                    setSessions(data);
-                }
-                setLoading(false);
-            })
-            .catch(e => {
-                console.error(e);
-                setLoading(false);
-            });
+        return `${y}-${String(m).padStart(2, '0')}`;
     }, [currentDate]);
+
+    const { sessions, isLoading: loading } = useMeditationSessions(monthStr);
 
     // Calendar Logic
     const getDaysInMonth = (date: Date) => {
@@ -133,9 +110,7 @@ export default function StatsPage() {
                 <div className="grid md:grid-cols-3 gap-8">
                     {/* Calendar */}
                     <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.5 }}
+                        layout
                         className="md:col-span-2"
                     >
                         <GlassCard className="h-full p-6 relative overflow-hidden bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02]">
@@ -212,9 +187,7 @@ export default function StatsPage() {
 
                     {/* Daily List */}
                     <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.6 }}
+                        layout
                         className="md:h-full min-h-[300px]"
                     >
                         <GlassCard className="h-full p-6 relative bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02]">

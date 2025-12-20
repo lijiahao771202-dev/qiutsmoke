@@ -20,17 +20,22 @@ function AuthContent() {
 
     // 监听认证状态变化，登录成功后自动跳转
     useEffect(() => {
+        let redirected = false;
+
+        const handleRedirect = (targetPath: string) => {
+            if (redirected) return;
+            redirected = true;
+            console.log('[Auth] Redirecting to:', targetPath);
+            // 使用 window.location 确保完全刷新页面状态
+            window.location.href = targetPath;
+        };
+
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             console.log('[Auth] State changed:', event, session?.user?.email);
 
             if (event === 'SIGNED_IN' && session) {
                 // 登录成功，自动跳转到目标页面
-                console.log('[Auth] Signed in! Redirecting to:', next);
-
-                // 使用 setTimeout 确保状态更新完成
-                setTimeout(() => {
-                    router.replace(next);
-                }, 100);
+                handleRedirect(next);
             }
         });
 
@@ -39,7 +44,7 @@ function AuthContent() {
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
                 console.log('[Auth] Already signed in, redirecting to:', next);
-                router.replace(next);
+                handleRedirect(next);
             }
         };
         checkSession();
@@ -47,7 +52,7 @@ function AuthContent() {
         return () => {
             subscription.unsubscribe();
         };
-    }, [supabase, router, next]);
+    }, [supabase, next]);
 
     // Convert relative URL to absolute URL for OAuth redirection
     const getRedirectUrl = () => {

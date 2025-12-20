@@ -13,33 +13,43 @@ const AuthContext = createContext<AuthContextType>({ user: null, loading: true }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
+    // 初始化为 true，等 session 检查完成后设为 false
     const [loading, setLoading] = useState(true);
     const supabase = createClient();
 
     useEffect(() => {
+        let isMounted = true;
+
         const initAuth = async () => {
             try {
-                // 1. Get initial session
+                // 使用 getSession 读取本地 cookie
                 const { data: { session } } = await supabase.auth.getSession();
-                setUser(session?.user ?? null);
+                if (isMounted) {
+                    setUser(session?.user ?? null);
+                    setLoading(false);
+                }
             } catch (error) {
                 console.error("Auth initialization failed:", error);
-            } finally {
-                setLoading(false);
+                if (isMounted) {
+                    setLoading(false);
+                }
             }
-
-            // 2. Listen for changes
-            const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
-                setUser(session?.user ?? null);
-                setLoading(false);
-            });
-
-            return () => {
-                subscription.unsubscribe();
-            };
         };
 
         initAuth();
+
+        // 监听认证状态变化
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
+            if (isMounted) {
+                setUser(session?.user ?? null);
+                setLoading(false);
+            }
+        });
+
+        return () => {
+            isMounted = false;
+            subscription.unsubscribe();
+        };
     }, [supabase]);
 
     return (
@@ -50,3 +60,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
+

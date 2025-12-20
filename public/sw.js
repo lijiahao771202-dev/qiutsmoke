@@ -49,6 +49,7 @@ self.addEventListener('fetch', (event) => {
 // ==================== Push Notifications ====================
 
 self.addEventListener('push', (event) => {
+  console.log('[SW] Push Received:', event);
   const defaultData = {
     title: '🧘 该冥想了',
     body: '来一场心灵放松吧',
@@ -62,22 +63,25 @@ self.addEventListener('push', (event) => {
   try {
     if (event.data) {
       data = { ...defaultData, ...event.data.json() };
+      console.log('[SW] Push Data:', data);
     }
   } catch (e) {
-    // Use default data
+    console.error('[SW] Parse Error:', e);
   }
 
-  event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: data.icon,
-      badge: data.badge,
-      tag: data.tag,
-      data: data.data,
-      vibrate: [200, 100, 200],
-      requireInteraction: true
-    })
-  );
+  const promise = self.registration.showNotification(data.title, {
+    body: data.body,
+    icon: data.icon,
+    badge: data.badge,
+    tag: data.tag, // iOS might collapse if tag is same?
+    data: data.data,
+    vibrate: [200, 100, 200],
+    requireInteraction: true
+  }).then(() => {
+    console.log('[SW] Notification Shown');
+  });
+
+  event.waitUntil(promise);
 });
 
 self.addEventListener('notificationclick', (event) => {

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, BellOff, Clock, X, Plus, Trash2, Send, AlertTriangle, Shield } from "lucide-react";
+import { Bell, BellOff, Clock, X, Plus, Trash2, Send, AlertTriangle, Shield, Radio, CheckCircle } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 interface DangerTime {
     id: string;
@@ -29,7 +30,11 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
     const [newDangerTime, setNewDangerTime] = useState("14:00");
     const [newDangerLabel, setNewDangerLabel] = useState("");
     const [dangerLoading, setDangerLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<"daily" | "danger">("daily");
+    const [activeTab, setActiveTab] = useState<"daily" | "danger" | "push">("daily");
+
+    // 推送订阅状态
+    const [isPushSubscribed, setIsPushSubscribed] = useState(false);
+    const [pushLoading, setPushLoading] = useState(false);
 
     // 加载高危时段
     const loadDangerTimes = useCallback(async () => {
@@ -50,6 +55,8 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
 
         if (supported) {
             setPermission(Notification.permission);
+            // 检查推送订阅状态
+            checkPushSubscription();
         }
 
         // Load from localStorage
@@ -65,6 +72,143 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
         // 加载高危时段
         loadDangerTimes();
     }, [loadDangerTimes]);
+
+    // 检查推送订阅状态
+    const checkPushSubscription = async () => {
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            const sub = await registration.pushManager.getSubscription();
+            setIsPushSubscribed(!!sub);
+        } catch (e) {
+            console.error("Check push subscription error:", e);
+        }
+    };
+
+    // 订阅推送通知（保存到数据库）
+    const subscribePush = async () => {
+        setPushLoading(true);
+        setMessage("");
+
+        try {
+            // 检查浏览器支持
+            if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+                setMessage("❌ 此浏览器不支持推送通知");
+                setPushLoading(false);
+                return;
+            }
+
+            // 请求通知权限
+            if (Notification.permission === "default") {
+                const result = await Notification.requestPermission();
+                setPermission(result);
+                if (result !== "granted") {
+                    setMessage("❌ 需要通知权限才能订阅推送");
+                    setPushLoading(false);
+                    return;
+                }
+            } else if (Notification.permission === "denied") {
+                setMessage("❌ 通知权限被阻止，请在浏览器设置中允许");
+                setPushLoading(false);
+                return;
+            }
+
+            // 首先注册 Service Worker
+            console.log("[Push] 注册 Service Worker...");
+            let registration: ServiceWorkerRegistration;
+            try {
+                const existingReg = await navigator.serviceWorker.getRegistration("/sw.js");
+                if (existingReg) {
+                    registration = existingReg;
+                    console.log("[Push] 使用已存在的 Service Worker");
+                } else {
+                    registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+                    console.log("[Push] Service Worker 注册成功");
+                }
+            } catch (e) {
+                setMessage("❌ Service Worker 注册失败: " + (e instanceof Error ? e.message : String(e)));
+                setPushLoading(false);
+                return;
+            }
+
+            // 等待 Service Worker 激活
+            if (registration.installing || registration.waiting) {
+                console.log("[Push] 等待 Service Worker 激活...");
+                await new Promise<void>((resolve) => {
+                    const sw = registration.installing || registration.waiting;
+                    if (sw) {
+                        sw.addEventListener("statechange", () => {
+                            if (sw.state === "activated") resolve();
+                        });
+                    }
+                    setTimeout(resolve, 5000);
+                });
+            }
+
+            // 获取 VAPID 公钥
+            const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+            if (!vapidPublicKey) {
+                setMessage("❌ 推送服务配置错误（VAPID 未配置）");
+                setPushLoading(false);
+                return;
+            }
+
+            // 转换 VAPID key
+            const urlBase64ToUint8Array = (base64String: string) => {
+                const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+                const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+                const rawData = window.atob(base64);
+                const outputArray = new Uint8Array(rawData.length);
+                for (let i = 0; i < rawData.length; ++i) {
+                    outputArray[i] = rawData.charCodeAt(i);
+                }
+                return outputArray;
+            };
+
+            // 订阅推送
+            console.log("[Push] Subscribing with VAPID key...");
+            const subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+            });
+            console.log("[Push] Subscription created:", subscription.endpoint);
+
+            // 保存到数据库
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (!user) {
+                setMessage("❌ 用户未登录，请先登录");
+                setPushLoading(false);
+                return;
+            }
+
+            console.log("[Push] Saving subscription to database...");
+            const subJson = subscription.toJSON();
+            const { error } = await supabase.from("push_subscriptions").upsert({
+                user_id: user.id,
+                endpoint: subJson.endpoint,
+                p256dh: subJson.keys?.p256dh || "",
+                auth: subJson.keys?.auth || "",
+                updated_at: new Date().toISOString(),
+            }, {
+                onConflict: "user_id"
+            });
+
+            if (error) {
+                console.error("[Push] Database error:", error);
+                setMessage("❌ 保存订阅失败: " + error.message);
+            } else {
+                console.log("[Push] Subscription saved successfully");
+                setMessage("✅ 推送通知已开启！");
+                setIsPushSubscribed(true);
+            }
+        } catch (e) {
+            console.error("[Push] Subscribe error:", e);
+            setMessage("❌ 订阅失败: " + (e instanceof Error ? e.message : String(e)));
+        }
+
+        setPushLoading(false);
+    };
 
     const requestPermission = async () => {
         if (!isSupported) return false;
@@ -257,23 +401,33 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
             <div className="flex gap-2 mb-4">
                 <button
                     onClick={() => setActiveTab("daily")}
-                    className={`flex-1 py-2 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${activeTab === "daily"
-                            ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                            : "bg-white/5 text-white/50 hover:bg-white/10"
+                    className={`flex-1 py-2 px-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${activeTab === "daily"
+                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                        : "bg-white/5 text-white/50 hover:bg-white/10"
                         }`}
                 >
-                    <Clock className="w-4 h-4" />
+                    <Clock className="w-3.5 h-3.5" />
                     每日提醒
                 </button>
                 <button
                     onClick={() => setActiveTab("danger")}
-                    className={`flex-1 py-2 px-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${activeTab === "danger"
-                            ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                            : "bg-white/5 text-white/50 hover:bg-white/10"
+                    className={`flex-1 py-2 px-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${activeTab === "danger"
+                        ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                        : "bg-white/5 text-white/50 hover:bg-white/10"
                         }`}
                 >
-                    <Shield className="w-4 h-4" />
+                    <Shield className="w-3.5 h-3.5" />
                     高危时段
+                </button>
+                <button
+                    onClick={() => setActiveTab("push")}
+                    className={`flex-1 py-2 px-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${activeTab === "push"
+                        ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                        : "bg-white/5 text-white/50 hover:bg-white/10"
+                        }`}
+                >
+                    <Radio className="w-3.5 h-3.5" />
+                    推送通知
                 </button>
             </div>
 
@@ -325,8 +479,8 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
                         onClick={isSubscribed ? unsubscribe : subscribe}
                         disabled={loading}
                         className={`w-full py-3.5 rounded-2xl font-medium transition-all ${isSubscribed
-                                ? "bg-white/10 text-white/70 hover:bg-white/15"
-                                : "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/20"
+                            ? "bg-white/10 text-white/70 hover:bg-white/15"
+                            : "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/20"
                             }`}
                     >
                         {loading ? (
@@ -428,6 +582,72 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
                             )}
                         </button>
                     </div>
+                </div>
+            )}
+
+            {/* 推送通知 Tab */}
+            {activeTab === "push" && (
+                <div className="space-y-4">
+                    <p className="text-white/40 text-xs flex items-center gap-2">
+                        <Radio className="w-3 h-3 text-cyan-400" />
+                        开启后可接收跨设备推送通知（即使关闭浏览器也能收到）
+                    </p>
+
+                    {/* 订阅状态 */}
+                    <div className={`p-4 rounded-xl border ${isPushSubscribed
+                        ? "bg-green-500/10 border-green-500/20"
+                        : "bg-white/5 border-white/10"
+                        }`}>
+                        <div className="flex items-center gap-3">
+                            {isPushSubscribed ? (
+                                <>
+                                    <CheckCircle className="w-6 h-6 text-green-400" />
+                                    <div>
+                                        <p className="text-green-400 font-medium">推送已开启</p>
+                                        <p className="text-white/40 text-xs">此设备可以接收跨设备推送通知</p>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <BellOff className="w-6 h-6 text-white/30" />
+                                    <div>
+                                        <p className="text-white/70 font-medium">推送未开启</p>
+                                        <p className="text-white/40 text-xs">点击下方按钮开启推送通知</p>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    {!isPushSubscribed && (
+                        <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={subscribePush}
+                            disabled={pushLoading}
+                            className="w-full py-3.5 rounded-2xl font-medium bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/20"
+                        >
+                            {pushLoading ? (
+                                <span className="flex items-center justify-center gap-2">
+                                    <motion.div
+                                        animate={{ rotate: 360 }}
+                                        transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                                        className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+                                    />
+                                    订阅中...
+                                </span>
+                            ) : (
+                                <span className="flex items-center justify-center gap-2">
+                                    <Radio className="w-5 h-5" />
+                                    开启推送通知
+                                </span>
+                            )}
+                        </motion.button>
+                    )}
+
+                    <p className="text-white/30 text-xs text-center">
+                        💡 在每个设备上都需要单独开启推送
+                    </p>
                 </div>
             )}
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, Wind, CloudRain, Zap, Moon, Droplets, Settings, X, Activity, Shield, Trash2, Plus, Network } from "lucide-react";
+import { Play, Pause, Wind, CloudRain, Zap, Moon, Droplets, Settings, X, Activity, Shield, Trash2, Plus, Network, Sparkles, Edit2, Check, ArrowLeft, Save } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import AuthGuard from "@/components/AuthGuard";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { useMeditationTopics } from "@/lib/hooks/useData";
 
 // IP Address from system check
 const LAN_IP = "10.173.165.153:3001";
@@ -65,7 +66,9 @@ const ICONS_MAP: Record<string, any> = {
     shield: Shield,
     zap: Zap,
     droplets: Droplets,
-    moon: Moon
+    moon: Moon,
+    sparkles: Sparkles,
+    network: Network,
 };
 
 const VOICES = [
@@ -90,25 +93,11 @@ export default function MeditatePage() {
     // New Card State
     const [newCardTitle, setNewCardTitle] = useState("");
     const [newCardPrompt, setNewCardPrompt] = useState("");
-    const [customTopics, setCustomTopics] = useState<any[]>([]);
 
-    // Load settings from localStorage and fetch topics on mount
+    // Load settings from localStorage
     useEffect(() => {
         const savedPrompt = localStorage.getItem("meditation_prompt");
         if (savedPrompt) setCustomPrompt(savedPrompt);
-
-        // Fetch custom topics
-        fetch('/api/meditation/cards')
-            .then(res => res.json())
-            .then(data => {
-                if (Array.isArray(data)) {
-                    setCustomTopics(data.map(t => ({
-                        ...t,
-                        icon: ICONS_MAP[t.icon_name?.toLowerCase()] || Wind
-                    })));
-                }
-            })
-            .catch(err => console.error("Failed to load topics", err));
 
         try {
             const savedPrompts = localStorage.getItem("meditation_prompts");
@@ -171,6 +160,17 @@ export default function MeditatePage() {
         })();
     }, []);
 
+    // 使用 SWR 缓存数据
+    const { topics, addTopic: apiAddTopic, deleteTopic: apiDeleteTopic, isLoading: isLoadingTopics } = useMeditationTopics();
+
+    // 当 topics 原型更新时同步到本地状态（如果需要额外处理）
+    const customTopics = useMemo(() => {
+        return topics.map(t => ({
+            ...t,
+            icon: ICONS_MAP[t.icon_name?.toLowerCase() as keyof typeof ICONS_MAP] || Wind
+        }));
+    }, [topics]);
+
     // Save settings to localStorage when changed
     useEffect(() => {
         localStorage.setItem("meditation_prompt", customPrompt);
@@ -204,25 +204,29 @@ export default function MeditatePage() {
     const isPausingRef = useRef(false);
     const currentItemIdRef = useRef<string | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
+    const nextStartTimeRef = useRef<number>(0);
+    const scheduledIdsRef = useRef<Set<string>>(new Set());
+    const sourceNodesRef = useRef<Map<string, AudioBufferSourceNode>>(new Map());
 
     const ensureAudioContext = async () => {
+        if (typeof window === 'undefined') return;
         const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
         if (!audioContextRef.current && AC) {
             const ctx = new AC();
             audioContextRef.current = ctx;
-            try {
-                ctx.onstatechange = () => {
-                    const st = ctx.state;
-                    if (st === 'suspended') {
-                        setShowAudioHint(true);
-                    } else if (st === 'running') {
-                        setShowAudioHint(false);
-                    }
-                };
-            } catch { }
+            console.log('[Audio] Context created');
+
+            ctx.onstatechange = () => {
+                console.log('[Audio] Context state:', ctx.state);
+                setShowAudioHint(ctx.state === 'suspended');
+            };
         }
         if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-            await audioContextRef.current.resume();
+            try {
+                await audioContextRef.current.resume();
+            } catch (e) {
+                console.warn('[Audio] Resume failed, needs user gesture', e);
+            }
         }
     };
 
@@ -251,140 +255,167 @@ export default function MeditatePage() {
         await playSilence(0.05);
     };
 
-    // Play next item in queue
-    useEffect(() => {
-        // Handle global pause/play toggle
-        if (!isPlaying) {
-            if (currentAudio) currentAudio.pause();
-            if (currentSourceRef.current) {
-                try { currentSourceRef.current.stop(); } catch { }
-                currentSourceRef.current = null;
+    // === 预加载音频项目（并行解码） ===
+    // 🚨 用于跟踪正在请求中的项目，防止重复请求
+    const fetchingIdsRef = useRef<Set<string>>(new Set());
+
+    // 🚀 支持进度回调用于初始缓冲 UI
+    const prefetchAudioItems = async (
+        queue: QueueItem[],
+        maxConcurrent: number = 2,
+        onProgress?: (loaded: number, total: number) => void
+    ) => {
+        await ensureAudioContext();
+        const ctx = audioContextRef.current;
+        if (!ctx) return;
+
+        // 收集需要获取的项目
+        const itemsToFetch: QueueItem[] = [];
+        for (let i = 0; i < queue.length && itemsToFetch.length < maxConcurrent; i++) {
+            const item = queue[i];
+            // ✅ 检查是否已在请求中，避免重复发起
+            if (item.type === 'audio' && item.url && !item.buffer && !scheduledIdsRef.current.has(item.id) && !fetchingIdsRef.current.has(item.id)) {
+                itemsToFetch.push(item);
             }
-            if (timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-                timeoutRef.current = null;
-                isPausingRef.current = false;
-                currentItemIdRef.current = null; // Reset so we can resume correctly
-            }
-            return;
         }
 
-        // If currently playing audio, do nothing (wait for onended)
-        if (currentAudio && !currentAudio.paused) return;
+        // 标记为正在获取
+        itemsToFetch.forEach(item => fetchingIdsRef.current.add(item.id));
 
-        // If currently pausing, do nothing (wait for timeout)
-        if (isPausingRef.current) return;
+        let completedCount = 0;
+        const totalToFetch = itemsToFetch.length;
 
-        // If we have a current audio that is paused (and we are isPlaying=true), resume it
-        if (currentAudio && currentAudio.paused) {
-            currentAudio.play().catch(e => console.error("Resume failed", e));
-            return;
-        }
+        // 并行获取和解码
+        await Promise.all(itemsToFetch.map(async (item) => {
+            if (item.type !== 'audio' || !item.url) return;
+            try {
+                const res = await fetch(item.url);
+                if (!res.ok) throw new Error('Fetch failed');
+                const arrayBuffer = await res.arrayBuffer();
+                const buffer = await ctx.decodeAudioData(arrayBuffer);
+                setAudioQueue(prev => prev.map(q =>
+                    q.id === item.id ? { ...q, buffer } : q
+                ));
 
-        // Process next item in queue
-        if (audioQueue.length > 0) {
-            const item = audioQueue[0];
-
-            // Prevent double-processing the same item (Fix for skipping/jumping)
-            if (currentItemIdRef.current === item.id) return;
-            currentItemIdRef.current = item.id;
-
-            if (item.type === 'pause') {
-                isPausingRef.current = true;
-                (async () => {
-                    await playSilence(item.duration);
-                    isPausingRef.current = false;
-                    setAudioQueue(prev => prev.slice(1));
-                    currentItemIdRef.current = null;
-                })();
-            } else {
-                // Start audio
-                if (item.buffer) {
-                    (async () => {
-                        await ensureAudioContext();
-                        const ctx = audioContextRef.current;
-                        if (!ctx) {
-                            setAudioQueue(prev => prev.slice(1));
-                            currentItemIdRef.current = null;
-                            return;
-                        }
-                        const source = ctx.createBufferSource();
-                        source.buffer = item.buffer || null;
-                        source.connect(ctx.destination);
-                        source.onended = () => {
-                            setAudioQueue(prev => prev.slice(1));
-                            currentSourceRef.current = null;
-                            currentItemIdRef.current = null;
-                        };
-                        currentSourceRef.current = source;
-                        try {
-                            await ctx.resume();
-                            source.start();
-                        } catch (e) {
-                            console.error('WebAudio play failed', e);
-                            currentSourceRef.current = null;
-                            setAudioQueue(prev => prev.slice(1));
-                            currentItemIdRef.current = null;
-                        }
-                    })();
-                } else if (item.url) {
-                    const audio = new Audio(item.url);
-                    (audio as any).playsInline = true;
-                    audio.preload = 'auto';
-                    try {
-                        const nav: any = navigator as any;
-                        if (nav && 'mediaSession' in nav) {
-                            try {
-                                nav.mediaSession.metadata = new (window as any).MediaMetadata({
-                                    title: 'Rain 冥想',
-                                    artist: 'Rain'
-                                });
-                                nav.mediaSession.setActionHandler('play', async () => { setIsPlaying(true); });
-                                nav.mediaSession.setActionHandler('pause', async () => { setIsPlaying(false); });
-                                nav.mediaSession.setActionHandler('seekforward', async () => { try { audio.currentTime += 30; } catch { } });
-                                nav.mediaSession.setActionHandler('seekbackward', async () => { try { audio.currentTime -= 15; } catch { } });
-                            } catch { }
-                        }
-                    } catch { }
-                    audio.onended = () => {
-                        if (item.url!.startsWith('blob:')) {
-                            URL.revokeObjectURL(item.url!);
-                        }
-                        setAudioQueue(prev => prev.slice(1));
-                        setCurrentAudio(null);
-                        currentItemIdRef.current = null; // Reset for next item
-                    };
-                    audio.onerror = (e) => {
-                        if (item.url!.startsWith('blob:')) {
-                            URL.revokeObjectURL(item.url!);
-                        }
-                        console.error("Audio playback error", e);
-                        setAudioQueue(prev => prev.slice(1));
-                        setCurrentAudio(null);
-                        currentItemIdRef.current = null;
-                    };
-                    (async () => {
-                        try {
-                            await ensureAudioContext();
-                            await audio.play();
-                        } catch (e) {
-                            console.error("Playback failed", e);
-                            try {
-                                await ensureAudioContext();
-                                await audio.play();
-                            } catch (err) {
-                                console.error('Retry play failed', err);
-                            }
-                        }
-                    })();
-                    setCurrentAudio(audio);
-                } else {
-                    setAudioQueue(prev => prev.slice(1));
-                    currentItemIdRef.current = null;
+                completedCount++;
+                if (onProgress) {
+                    onProgress(completedCount, totalToFetch);
                 }
+            } catch (e) {
+                console.warn('[Prefetch] Failed for', item.id, e);
+                setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+            } finally {
+                // ✅ 请求完成后移除标记
+                fetchingIdsRef.current.delete(item.id);
             }
+        }));
+    };
+
+    // 🔥 持续预加载轮询（回调为 1000ms，避免过多请求）
+    const prefetchIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    useEffect(() => {
+        if (isPlaying && audioQueue.length > 0) {
+            // ✅ 回调到 1000ms 检查一次
+            prefetchIntervalRef.current = setInterval(() => {
+                prefetchAudioItems(audioQueue);
+            }, 1000);
         }
-    }, [isPlaying, audioQueue, currentAudio]);
+        return () => {
+            if (prefetchIntervalRef.current) {
+                clearInterval(prefetchIntervalRef.current);
+                prefetchIntervalRef.current = null;
+            }
+        };
+    }, [isPlaying, audioQueue.length]);
+
+    // === Gapless Scheduler === //
+    useEffect(() => {
+        if (!isPlaying) {
+            // Pause all currently playing sources
+            if (audioContextRef.current?.state === 'running') {
+                audioContextRef.current.suspend();
+            }
+            return;
+        }
+
+        const runScheduler = async () => {
+            await ensureAudioContext();
+            const ctx = audioContextRef.current;
+            if (!ctx) return;
+
+            if (ctx.state === 'suspended') {
+                await ctx.resume();
+            }
+
+            // 🔥 关键优化：启动并行预加载
+            prefetchAudioItems(audioQueue);
+
+            // Schedule unscheduled items
+            for (let i = 0; i < audioQueue.length; i++) {
+                const item = audioQueue[i];
+                if (scheduledIdsRef.current.has(item.id)) continue;
+
+                const start = Math.max(ctx.currentTime, nextStartTimeRef.current);
+
+                if (item.type === 'pause') {
+                    // Schedule a "virtual" pause by moving the timeline
+                    const durationInSec = item.duration / 1000;
+                    nextStartTimeRef.current = start + durationInSec;
+                    scheduledIdsRef.current.add(item.id);
+
+                    // Cleanup pause item after it should have passed
+                    setTimeout(() => {
+                        setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+                        scheduledIdsRef.current.delete(item.id);
+                    }, (nextStartTimeRef.current - ctx.currentTime) * 1000 + 100);
+
+                } else if (item.type === 'audio' && item.buffer) {
+                    const source = ctx.createBufferSource();
+                    source.buffer = item.buffer;
+                    source.connect(ctx.destination);
+
+                    source.onended = () => {
+                        setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+                        scheduledIdsRef.current.delete(item.id);
+                        sourceNodesRef.current.delete(item.id);
+                    };
+
+                    source.start(start);
+                    nextStartTimeRef.current = start + item.buffer.duration;
+                    scheduledIdsRef.current.add(item.id);
+                    sourceNodesRef.current.set(item.id, source);
+
+                    // ✅ 回调为 3 个项目的调度缓冲
+                    if (scheduledIdsRef.current.size > 3) break;
+                }
+                // 🔥 移除了同步 URL 解码逻辑，现在由 prefetchAudioItems 并行处理
+            }
+        };
+
+        runScheduler();
+    }, [isPlaying, audioQueue]);
+
+    // Handle Stop / Reset
+    const stopAudio = () => {
+        setIsPlaying(false);
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio.currentTime = 0;
+            setCurrentAudio(null);
+        }
+
+        // Stop all WebAudio nodes
+        sourceNodesRef.current.forEach(node => {
+            try { node.stop(); } catch { }
+        });
+        sourceNodesRef.current.clear();
+        scheduledIdsRef.current.clear();
+        nextStartTimeRef.current = 0;
+
+        setAudioQueue([]);
+        currentItemIdRef.current = null;
+        processingBuffer.current = "";
+    };
 
 
     const isProcessingRef = useRef(false);
@@ -512,8 +543,8 @@ export default function MeditatePage() {
                 });
 
                 (window as any).electron.onMeditationDone(async () => {
-                    // Process any remaining text in buffer
-                    await processBuffer();
+                    // Process any remaining text in buffer - FLUSH all remaining
+                    await processBuffer(true);
                     setIsGenerating(false);
                 });
 
@@ -553,7 +584,8 @@ export default function MeditatePage() {
                         processingBuffer.current += chunk;
                         await processBuffer();
                     }
-                    await processBuffer();
+                    // Stream ended - flush ALL remaining text
+                    await processBuffer(true);
                     setIsGenerating(false);
                 }
             }
@@ -605,85 +637,105 @@ export default function MeditatePage() {
         return URL.createObjectURL(blob);
     };
 
-    const processBuffer = async () => {
+    // === P2: TTS Buffer Processing Strategy (Tags Only, No Punctuation Splitting) === //
+    // We NO LONGER split on punctuation to avoid choppy audio.
+    // The TTS engine handles natural pauses for periods/commas.
+    // We only split on: 1) Explicit [pause]/[rate] tags, 2) Safety limit (400 chars), 3) Stream end (flush).
+    const hasStartedSpeakingRef = useRef(false);
+
+    const processBuffer = async (flushRemaining = false) => {
         if (isProcessingRef.current) return;
         isProcessingRef.current = true;
 
         try {
-            // Regex to find tags or sentence endings
-            // Matches: [pause 5s], [pause:5s], [rate -10%], or sentence endings (.!?)
-            const tokenRegex = /((?:\[(?:pause|rate)[^\]]*\])|(?:[.!?\n。！？，,]+))/;
+            // Regex to find explicit [pause] or [rate] tags
+            const tagRegex = /((?:\[(?:pause|rate)[^\]]*\]))/;
 
             while (true) {
-                const match = processingBuffer.current.match(tokenRegex);
-                if (!match) break;
+                // 1. Check for Tags First (Highest Priority splits)
+                const tagMatch = processingBuffer.current.match(tagRegex);
 
-                const index = match.index!;
-                const token = match[0];
-                const textBefore = processingBuffer.current.substring(0, index);
+                let splitIndex = -1;
+                let splitLength = 0;
+                let isTag = false;
 
-                // Remove processed part from buffer immediately to prevent re-processing
-                processingBuffer.current = processingBuffer.current.substring(index + token.length);
-
-                if (token.startsWith("[")) {
-                    // Tag found
-                    if (textBefore.trim().length > 0) {
-                        await generateAudio(textBefore.trim());
+                // Decision Logic
+                if (tagMatch && tagMatch.index !== undefined) {
+                    // Always split on tags immediately
+                    splitIndex = tagMatch.index;
+                    splitLength = tagMatch[0].length;
+                    isTag = true;
+                } else if (processingBuffer.current.length > 400) {
+                    // Safety valve: Buffer is too long, force split at a good point.
+                    // Try to find a sentence-ending punctuation to split cleanly.
+                    const safeBreak = processingBuffer.current.substring(0, 400).lastIndexOf('。');
+                    const safePeriod = processingBuffer.current.substring(0, 400).lastIndexOf('.');
+                    const altBreak = Math.max(safeBreak, safePeriod);
+                    if (altBreak > 100) {
+                        // Found a period within first 400 chars, split after it
+                        splitIndex = altBreak + 1;
+                    } else {
+                        // No good break point, just split at 400
+                        splitIndex = 400;
                     }
+                    splitLength = 0;
+                    isTag = false;
+                } else if (flushRemaining && processingBuffer.current.trim().length > 0) {
+                    // Stream has ended, flush all remaining text
+                    splitIndex = processingBuffer.current.length;
+                    splitLength = 0;
+                    isTag = false;
+                }
 
+                // If no valid split found, wait for more data (stream hasn't finished)
+                if (splitIndex === -1) {
+                    break;
+                }
+
+                // EXTRACT TEXT
+                const textTokProcess = processingBuffer.current.substring(0, splitIndex);
+
+                // UPDATE BUFFER
+                if (isTag) {
+                    // Remove text + tag
+                    processingBuffer.current = processingBuffer.current.substring(splitIndex + splitLength);
+                } else {
+                    // Remove text
+                    processingBuffer.current = processingBuffer.current.substring(splitIndex);
+                }
+
+                // PROCESS TEXT
+                if (textTokProcess.trim().length > 0) {
+                    await generateAudio(textTokProcess.trim());
+                    hasStartedSpeakingRef.current = true;
+                }
+
+                // PROCESS TAG
+                if (isTag && tagMatch) {
+                    const token = tagMatch[0];
                     if (token.includes("pause")) {
-                        // Match: pause 5s, pause:5s, etc.
-                        const durationMatch = token.match(/pause\s*[:=]?\s*(\d+)/i);
+                        const durationMatch = token.match(/pause\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(ms|s)?/i);
                         if (durationMatch) {
-                            const dur = parseInt(durationMatch[1]);
-                            const url = createSilenceWavURL(dur);
-                            setAudioQueue(prev => [...prev, {
-                                type: 'audio',
-                                url,
-                                id: Math.random().toString(36).substr(2, 9)
-                            }]);
+                            let val = parseFloat(durationMatch[1]);
+                            const unit = (durationMatch[2] || '').toLowerCase();
+
+                            // If unit is 's', or no unit but < 50, assume seconds.
+                            // Otherwise assume milliseconds.
+                            let durMs = val;
+                            if (unit === 's' || (unit === '' && val < 50)) {
+                                durMs = val * 1000;
+                            }
+
+                            setAudioQueue(prev => [...prev, { type: 'pause', duration: durMs, id: Math.random().toString(36).substr(2, 9) }]);
                         }
                     } else if (token.includes("rate")) {
-                        // Match: rate 10%, rate:-10%
                         const rateMatch = token.match(/rate\s*[:=]?\s*([+-]?\d+%)/i);
-                        if (rateMatch) {
-                            currentRate.current = rateMatch[1];
-                        }
-                    }
-                } else {
-                    // Punctuation found
-                    // Include punctuation in the text
-                    const textToGen = textBefore + token;
-                    if (textToGen.trim().length > 0) {
-                        await generateAudio(textToGen.trim());
-
-                        // Add natural pause based on punctuation type
-                        if (token.match(/[.!?。！？\n]+/)) {
-                            const url = createSilenceWavURL(1.2);
-                            setAudioQueue(prev => [...prev, {
-                                type: 'audio',
-                                url,
-                                id: Math.random().toString(36).substr(2, 9)
-                            }]);
-                        } else if (token.match(/[,，]+/)) {
-                            const url = createSilenceWavURL(0.4);
-                            setAudioQueue(prev => [...prev, {
-                                type: 'audio',
-                                url,
-                                id: Math.random().toString(36).substr(2, 9)
-                            }]);
-                        }
+                        if (rateMatch) currentRate.current = rateMatch[1];
                     }
                 }
             }
         } finally {
             isProcessingRef.current = false;
-            // Check if more data arrived while we were processing
-            // If so, trigger processing again
-            const tokenRegex = /((?:\[(?:pause|rate)[^\]]*\])|(?:[.!?\n。！？，,]+))/;
-            if (processingBuffer.current.match(tokenRegex)) {
-                processBuffer();
-            }
         }
     };
 
@@ -723,36 +775,27 @@ export default function MeditatePage() {
                 if (resp && resp.ok) {
                     const blob = await resp.blob();
                     try {
-                        const isIOS = typeof navigator !== 'undefined' && ((/iPad|iPhone|iPod/.test(navigator.userAgent)) || ((navigator.platform === 'MacIntel') && (navigator.maxTouchPoints > 1)));
-                        if (isIOS) {
+                        await ensureAudioContext();
+                        const ctx = audioContextRef.current;
+                        if (ctx) {
+                            const arr = await blob.arrayBuffer();
+                            const buf = await ctx.decodeAudioData(arr);
+                            setAudioQueue(prev => [...prev, {
+                                type: 'audio',
+                                buffer: buf,
+                                id: Math.random().toString(36).substr(2, 9)
+                            }]);
+                        } else {
+                            // Fallback to URL if context fails
                             const url = URL.createObjectURL(blob);
                             setAudioQueue(prev => [...prev, {
                                 type: 'audio',
                                 url,
                                 id: Math.random().toString(36).substr(2, 9)
                             }]);
-                        } else {
-                            await ensureAudioContext();
-                            const arr = await blob.arrayBuffer();
-                            const ctx = audioContextRef.current;
-                            if (ctx) {
-                                const buf = await ctx.decodeAudioData(arr);
-                                setAudioQueue(prev => [...prev, {
-                                    type: 'audio',
-                                    buffer: buf,
-                                    id: Math.random().toString(36).substr(2, 9)
-                                }]);
-                            } else {
-                                const url = URL.createObjectURL(blob);
-                                setAudioQueue(prev => [...prev, {
-                                    type: 'audio',
-                                    url,
-                                    id: Math.random().toString(36).substr(2, 9)
-                                }]);
-                            }
                         }
-                    } catch {
-                        // Fallback: use blob URL if decoding fails
+                    } catch (e) {
+                        console.error('[Audio] Decode failed', e);
                         const url = URL.createObjectURL(blob);
                         setAudioQueue(prev => [...prev, {
                             type: 'audio',
@@ -760,7 +803,8 @@ export default function MeditatePage() {
                             id: Math.random().toString(36).substr(2, 9)
                         }]);
                     }
-                } else {
+                }
+                else {
                     console.error('[TTS] Failed after retries');
                 }
             }
@@ -803,29 +847,26 @@ export default function MeditatePage() {
         if (!confirm("确定要删除这张冥想卡片吗？")) return;
 
         try {
-            const res = await fetch(`/api/meditation/cards?id=${id}`, { method: 'DELETE' });
-            if (res.ok) {
-                setCustomTopics(prev => prev.filter(t => t.id !== id));
-            }
+            await apiDeleteTopic(id);
         } catch (err) {
-            console.error("Delete failed", err);
+            console.error("Failed to delete topic", err);
         }
     };
 
     const handleSaveAddCard = async () => {
-        if (!newCardTitle.trim()) return;
+        if (!newCardTitle.trim() || !newCardPrompt.trim()) return;
 
         try {
-            const res = await fetch('/api/meditation/cards', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title: newCardTitle, prompt: newCardPrompt, icon_name: 'Wind' })
+            const res = await apiAddTopic({
+                title: newCardTitle,
+                prompt: newCardPrompt,
+                icon_name: 'wind'
             });
 
             if (res.ok) {
-                const newCard = await res.json();
-                setCustomTopics(prev => [...prev, { ...newCard, icon: Wind }]);
                 setShowAddCard(false);
+                setNewCardTitle("");
+                setNewCardPrompt("");
             }
         } catch (err) {
             console.error("Add failed", err);
@@ -1065,6 +1106,27 @@ export default function MeditatePage() {
                                         />
                                     </div>
 
+                                    {/* DeepSeek API Key Input */}
+                                    {!editingTopicId && (
+                                        <div className="pt-2 border-t border-white/5">
+                                            <label className="text-sm font-medium text-slate-300 mb-2 block">
+                                                DeepSeek API Key
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="password"
+                                                    value={apiKey}
+                                                    onChange={(e) => setApiKey(e.target.value)}
+                                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50"
+                                                    placeholder="sk-..."
+                                                />
+                                            </div>
+                                            <p className="text-[10px] text-slate-500 mt-1">
+                                                Key 将加密存储在本地。不输入则默认使用服务器内置 Key。
+                                            </p>
+                                        </div>
+                                    )}
+
                                     <div className="flex gap-2">
                                         <button
                                             onClick={() => setShowPromptEdit(false)}
@@ -1157,40 +1219,61 @@ export default function MeditatePage() {
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[60] flex flex-col bg-slate-950/80 backdrop-blur-2xl p-6 md:p-12 overflow-hidden"
+                            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-hidden"
+                            onClick={() => {
+                                // Click backdrop to close
+                                stopAudio();
+                                setActiveCard(null);
+                                hasStartedSpeakingRef.current = false;
+                            }}
                         >
                             <motion.div
                                 layoutId={`card-${activeCard}`}
-                                className="flex-1 max-w-2xl mx-auto w-full flex flex-col"
+                                onClick={(e) => e.stopPropagation()}
+                                className="relative w-full max-w-2xl bg-white/10 backdrop-blur-2xl border border-white/20 rounded-[2.5rem] p-8 md:p-12 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] flex flex-col max-h-[85vh]"
+                                style={{
+                                    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px 0 0 rgba(255,255,255,0.5), 0 8px 32px rgba(0,0,0,0.37)"
+                                }}
                             >
                                 <button
                                     onClick={() => {
+                                        stopAudio();
                                         setActiveCard(null);
-                                        setIsPlaying(false);
-                                        if (currentAudio) currentAudio.pause();
-                                        setAudioQueue([]);
+                                        hasStartedSpeakingRef.current = false; // Reset First Packet logic
                                     }}
-                                    className="self-end p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors mb-4"
+                                    className="absolute top-6 right-6 p-3 hover:bg-white/10 rounded-full transition-colors z-20"
+                                    aria-label="关闭冥想"
                                 >
-                                    <X className="w-6 h-6" />
+                                    <X className="w-6 h-6 text-white/50 hover:text-white" />
                                 </button>
 
-                                <div className="flex-1 overflow-y-auto space-y-4 mt-8 custom-scrollbar relative">
+                                <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar relative pr-2">
                                     {text ? (
-                                        <p className="text-lg leading-relaxed text-slate-200 whitespace-pre-wrap">{text}</p>
+                                        <p className="text-xl md:text-2xl leading-relaxed text-slate-100 font-light tracking-wide whitespace-pre-wrap drop-shadow-sm">{text}</p>
                                     ) : (
-                                        <div className="flex items-center justify-center h-full">
-                                            <div className="animate-pulse text-slate-500">吸气...</div>
+                                        <div className="flex items-center justify-center h-full min-h-[300px]">
+                                            <div className="flex flex-col items-center gap-4 animate-pulse">
+                                                <div className="w-12 h-12 rounded-full border-2 border-white/20 border-t-white/80 animate-spin" />
+                                                <div className="text-white/40 font-light">正在生成冥想引导...</div>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
 
-                                <div className="mt-6 flex justify-center">
+                                <div className="mt-8 flex justify-center pt-6 border-t border-white/5">
                                     <button
-                                        onClick={async () => { await ensureAudioContext(); await primeAudio(); setIsPlaying(!isPlaying); }}
-                                        className="p-4 bg-white text-slate-900 rounded-full hover:scale-105 transition-transform"
+                                        onClick={async () => {
+                                            await ensureAudioContext();
+                                            await primeAudio();
+                                            if (!isPlaying && audioContextRef.current?.state === 'suspended') {
+                                                await audioContextRef.current.resume();
+                                            }
+                                            setIsPlaying(!isPlaying);
+                                        }}
+                                        className="p-5 pl-6 bg-white text-slate-900 rounded-full hover:scale-105 hover:bg-slate-100 hover:shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-all active:scale-95"
+                                        aria-label={isPlaying ? "暂停" : "播放"}
                                     >
-                                        {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
+                                        {isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current" />}
                                     </button>
                                 </div>
                             </motion.div>

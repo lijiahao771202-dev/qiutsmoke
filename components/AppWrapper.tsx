@@ -1,13 +1,15 @@
 "use client";
 
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BackgroundProvider, useBackground, WALLPAPERS } from './BackgroundContext';
-import { BackgroundSwitcher } from './BackgroundSwitcher';
 import NavBar from './NavBar';
 import UserProfile from './UserProfile';
 import { AuthProvider } from './AuthProvider';
 import { AnimatePresence, motion } from 'framer-motion';
-import { DarkFluidBackground } from './DarkFluidBackground';
+import { PushSubscriber } from './PushSubscriber';
+
+// 懒加载重量级组件
+const DarkFluidBackground = lazy(() => import('./DarkFluidBackground').then(mod => ({ default: mod.DarkFluidBackground })));
 
 function BackgroundLayer() {
     const { currentWallpaper, wallpaperId } = useBackground();
@@ -29,7 +31,7 @@ function BackgroundLayer() {
             />
 
             <AnimatePresence mode="popLayout">
-                {/* 动态背景：深色流体 */}
+                {/* 动态背景：深色流体 - 懒加载 */}
                 {isDynamicBackground && wallpaperId === 'dark-fluid' && (
                     <motion.div
                         key="dark-fluid"
@@ -38,7 +40,9 @@ function BackgroundLayer() {
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.8 }}
                     >
-                        <DarkFluidBackground />
+                        <Suspense fallback={<div className="fixed inset-0 bg-black" />}>
+                            <DarkFluidBackground />
+                        </Suspense>
                     </motion.div>
                 )}
 
@@ -106,18 +110,22 @@ function IOS26CompatLayer() {
     );
 }
 
+import { usePathname } from 'next/navigation';
+
 export default function AppWrapper({ children }: { children: React.ReactNode }) {
+    const pathname = usePathname();
+    const isAdmin = pathname?.startsWith('/admin');
+
     return (
         <BackgroundProvider>
             <AuthProvider>
-                <BackgroundLayer />
-                <IOS26CompatLayer />
+                <PushSubscriber />
+                {!isAdmin && <BackgroundLayer />}
+                {!isAdmin && <IOS26CompatLayer />}
                 {children}
-                <NavBar />
-                <UserProfile />
-                <BackgroundSwitcher />
+                {!isAdmin && <NavBar />}
+                {!isAdmin && <UserProfile />}
             </AuthProvider>
         </BackgroundProvider>
     );
 }
-

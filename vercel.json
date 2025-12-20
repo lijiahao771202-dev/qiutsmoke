@@ -1,3 +1,5 @@
 {
-    "crons": []
+    "framework": "nextjs",
+    "rewrites": [],
+    "installCommand": "npm install --legacy-peer-deps"
 }

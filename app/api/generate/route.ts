@@ -2,7 +2,10 @@ export async function POST(req: Request) {
   try {
     const { prompt, apiKey, systemPrompt } = await req.json();
     const key = apiKey || process.env.DEEPSEEK_API_KEY;
+    console.log("[Generate API] Key present:", !!key);
+
     if (!key) {
+      console.error("[Generate API] Missing API Key");
       return new Response(JSON.stringify({ error: "缺少 API Key" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -34,6 +37,7 @@ export async function POST(req: Request) {
     if (!upstream.ok || !upstream.body) {
       const status = upstream.status || 500;
       const errorText = await upstream.text().catch(() => "");
+      console.error(`[Generate API] Upstream Error: HTTP ${status}`, errorText);
       return new Response(JSON.stringify({ error: `上游错误: HTTP ${status}`, details: errorText }), {
         status,
         headers: { "Content-Type": "application/json" },

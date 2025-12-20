@@ -2,25 +2,19 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 /**
- * 优化的 Middleware - 最小化延迟版本
- * - 使用 getSession() 代替 getUser()（只读 Cookie，不发网络请求）
- * - 只在首次访问和需要认证的请求时验证
+ * 超轻量级 Middleware
+ * - 只在需要认证的页面才检查 session
+ * - 其他页面直接放行
  */
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
-    // 快速跳过不需要处理的路径（无需创建Supabase客户端）
-    const skipPaths = [
-        '/auth',           // 登录页本身
-        '/api/',           // API 路由
-        '/_next/',         // Next.js 内部资源
-        '/favicon',        // 图标
-        '/manifest',       // PWA manifest
-        '/sw.js',          // Service Worker
-        '/icon-',          // PWA icons
-    ];
+    // 需要认证的页面
+    const protectedPaths = ['/meditate', '/stats', '/tts-studio', '/push-test'];
+    const needsAuth = protectedPaths.some(path => pathname === path || pathname.startsWith(path + '/'));
 
-    if (skipPaths.some(path => pathname.startsWith(path))) {
+    // 不需要认证的页面直接放行
+    if (!needsAuth) {
         return NextResponse.next();
     }
 
@@ -47,8 +41,7 @@ export async function middleware(request: NextRequest) {
         }
     )
 
-    // 使用 getSession() 而不是 getUser()
-    // getSession() 只读取 Cookie，不发网络请求，速度更快
+    // 使用 getSession() 只读取 Cookie，不发网络请求
     const { data: { session } } = await supabase.auth.getSession()
 
     // 如果没有 session，重定向到登录页
@@ -63,7 +56,9 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
     matcher: [
-        // 只匹配页面路由，排除所有静态资源
-        '/((?!_next/static|_next/image|favicon.ico|api|auth|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf|js|css|json)$).*)',
+        // 匹配所有页面路由，排除静态资源和 API
+        '/((?!_next/static|_next/image|favicon.ico|api|manifest.json|sw.js|icon-|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf|js|css|json)$).*)',
     ],
 }
+
+

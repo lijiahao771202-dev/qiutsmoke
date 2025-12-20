@@ -2,23 +2,16 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, Trash2, Plus, Sparkles, RotateCcw, RotateCw, Pencil, Edit2, X, Download, Music, Check } from "lucide-react";
+import { Plus, Play, Trash2, Clock, Volume2, Sparkles, ChevronRight, Settings, Info, Save, X, Edit2, Check, ArrowRight, Music, RotateCcw, Download, Pencil, RotateCw, Pause } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AuthGuard from "@/components/AuthGuard";
 import { saveAudioCache, getAudioCache, hasAudioCache, deleteAudioCache } from "@/lib/audioCache";
 import { GlassCard } from "@/components/ui/GlassCard";
-// Removed Server Actions import
-// import { createCard, getCards, deleteCard, type TTSCard } from "./actions";
+import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
 
-export interface TTSCard {
-    id: string;
-    title: string;
-    content: string;
-    voice_id: string;
-    rate: string;
-    guidance_level?: 'light' | 'medium' | 'heavy';
-    created_at: Date;
-}
+// TTSCard interface moved to lib/hooks/useData.ts
+// Re-export for backwards compatibility
+export type { TTSCard } from "@/lib/hooks/useData";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -185,8 +178,7 @@ ${densityRule}
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            layout
             className="relative w-full max-w-2xl mx-auto mb-12"
         >
             <GlassCard className="p-1 rounded-[2rem] bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02] border-rose-200/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
@@ -358,7 +350,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     // Queue State
     type QueueItem =
         | { type: 'pause', duration: number, id: string }
-        | { type: 'text', content: string, rate: string, voiceId: string, id: string, url?: string };
+        | { type: 'text', content: string, rate: string, voiceId: string, id: string, url?: string, buffer?: AudioBuffer };
 
     const [audioQueue, setAudioQueue] = useState<QueueItem[]>([]);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -378,6 +370,12 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
     // 播放进度状态 (用于缓存音频)
     const [playbackProgress, setPlaybackProgress] = useState({ currentTime: 0, duration: 0 });
+
+    // 🚀 流式优化：初始缓冲状态
+    const [isBuffering, setIsBuffering] = useState(false);
+    const [bufferProgress, setBufferProgress] = useState({ loaded: 0, total: 0 });
+    const INITIAL_BUFFER_COUNT = 3; // 初始缓冲数量
+    const MIN_BUFFER_COUNT = 2; // 最小安全缓冲
 
     // 检查缓存状态
     useEffect(() => {
@@ -407,6 +405,9 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     const pausedAtRef = useRef<number>(0); // 暂停位置（秒）
     const isPausedRef = useRef<boolean>(false); // 是否处于暂停状态
     const isPlayingRef = useRef<boolean>(false); // 同步跟踪播放状态
+    const nextStartTimeRef = useRef<number>(0);
+    const scheduledIdsRef = useRef<Set<string>>(new Set());
+    const sourceNodesRef = useRef<Map<string, AudioBufferSourceNode>>(new Map());
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     // -------------------------------------------------------------------------
@@ -421,13 +422,15 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     };
 
     const ensureAudioContext = async () => {
+        if (typeof window === 'undefined') return;
         const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
         if (!audioContextRef.current && AC) {
             const ctx = new AC();
             audioContextRef.current = ctx;
+            console.log('[Studio] AudioContext created');
         }
         if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-            await audioContextRef.current.resume();
+            await audioContextRef.current.resume().catch(() => { });
         }
     };
 
@@ -450,11 +453,33 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         return () => { releaseWakeLock(); };
     }, [isPlaying]);
 
+    const fetchWithRetry = async (url: string, options: RequestInit, retries = 3): Promise<Response | null> => {
+        for (let i = 0; i < retries; i++) {
+            try {
+                const res = await fetch(url, options);
+                if (res.ok) return res;
+                // 如果是 4xx 错误（除 408/429 外），不重试
+                if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) return null;
+            } catch (e) {
+                console.warn(`[TTS] Retry ${i + 1}/${retries}`, e);
+                if (i === retries - 1) return null;
+                await new Promise(r => setTimeout(r, 1000 * (i + 1))); // 递增延迟
+            }
+        }
+        return null;
+    };
+
     // Cleanup
     useEffect(() => {
         return () => {
+            stopLivePlayback();
             if (currentAudio) currentAudio.pause();
-            setAudioQueue([]);
+            if (cachedSourceRef.current) {
+                try { cachedSourceRef.current.stop(); } catch (e) { }
+            }
+            if (progressIntervalRef.current) {
+                clearInterval(progressIntervalRef.current);
+            }
         };
     }, []);
 
@@ -515,23 +540,42 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     // Queue Consumer with PREFETCH (预加载机制)
     // -------------------------------------------------------------------------
 
-    // 预加载多个 text 项（并行）
-    const prefetchNextTextItems = async (queue: QueueItem[]) => {
-        // 找到队列中前5个没有 url 的 text 项并并行预加载
+    // === 预加载音频项目（并行解码） ===
+    // 🚨 用于跟踪正在请求中的项目，防止重复请求
+    const fetchingIdsRef = useRef<Set<string>>(new Set());
+
+    // 预加载多个 text 项（并行）并解码为 Buffer
+    // 🚀 支持进度回调用于初始缓冲 UI
+    const prefetchNextTextItems = async (
+        queue: QueueItem[],
+        maxConcurrent: number = 2,
+        onProgress?: (loaded: number, total: number) => void
+    ) => {
+        await ensureAudioContext();
+        const ctx = audioContextRef.current;
+        if (!ctx) return;
+
+        // 收集需要获取的项目
         const itemsToFetch: QueueItem[] = [];
-        for (let i = 1; i < queue.length && itemsToFetch.length < 3; i++) {
+        for (let i = 0; i < queue.length && itemsToFetch.length < maxConcurrent; i++) {
             const item = queue[i];
-            // 跳过 pause 项，只处理没有 url 的 text 项
-            if (item.type === 'text' && !item.url) {
+            // ✅ 检查是否已在请求中，避免重复发起
+            if (item.type === 'text' && !item.buffer && !scheduledIdsRef.current.has(item.id) && !fetchingIdsRef.current.has(item.id)) {
                 itemsToFetch.push(item);
             }
         }
 
-        // 并行预加载所有项
+        // 标记为正在获取
+        itemsToFetch.forEach(item => fetchingIdsRef.current.add(item.id));
+
+        let completedCount = 0;
+        const totalToFetch = itemsToFetch.length;
+
+        // 并行获取和解码
         await Promise.all(itemsToFetch.map(async (item) => {
             if (item.type !== 'text') return;
             try {
-                const res = await fetch("/api/tts", {
+                const res = await fetchWithRetry("/api/tts", {
                     method: "POST",
                     body: JSON.stringify({
                         text: item.content,
@@ -539,95 +583,128 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                         rate: item.rate
                     }),
                 });
-                if (res.ok) {
+                if (res && res.ok) {
                     const blob = await res.blob();
-                    const url = URL.createObjectURL(blob);
-                    // 更新队列中该项的 url
+                    const arrayBuffer = await blob.arrayBuffer();
+                    const buffer = await ctx.decodeAudioData(arrayBuffer);
+
                     setAudioQueue(prev => prev.map(q =>
-                        q.id === item.id ? { ...q, url } : q
+                        q.id === item.id ? { ...q, buffer } : q
                     ));
-                    console.log(`[Prefetch] ✅ 预加载完成: ${item.content.substring(0, 20)}...`);
+
+                    completedCount++;
+                    if (onProgress) {
+                        onProgress(completedCount, totalToFetch);
+                    }
                 }
             } catch (e) {
                 console.warn("[Prefetch] Failed", e);
+            } finally {
+                // ✅ 请求完成后移除标记
+                fetchingIdsRef.current.delete(item.id);
             }
         }));
     };
 
+    // 🔥 持续预加载轮询（防止队列饥饿）
+    const prefetchIntervalRef = useRef<NodeJS.Timeout | null>(null);
     useEffect(() => {
-        // 1. Global Stop/Pause Check
+        if (isPlaying && audioQueue.length > 0) {
+            // ✅ 回调到 1000ms 检查一次
+            prefetchIntervalRef.current = setInterval(() => {
+                prefetchNextTextItems(audioQueue);
+            }, 1000);
+        }
+        return () => {
+            if (prefetchIntervalRef.current) {
+                clearInterval(prefetchIntervalRef.current);
+                prefetchIntervalRef.current = null;
+            }
+        };
+    }, [isPlaying, audioQueue.length]);
+
+    // Gapless Scheduler Effect
+    useEffect(() => {
         if (!isPlaying) {
-            if (currentAudio) currentAudio.pause();
-            currentItemIdRef.current = null;
+            if (audioContextRef.current?.state === 'running') {
+                audioContextRef.current.suspend();
+            }
             return;
         }
 
-        // 2. Queue Empty Check - 但如果正在使用缓存播放则跳过
-        if (audioQueue.length === 0 && !cachedSourceRef.current && !isPlayingRef.current) {
+        if (audioQueue.length === 0 && scheduledIdsRef.current.size === 0) {
             setIsPlaying(false);
             return;
         }
 
-        // 如果正在使用缓存播放，不需要处理队列
-        if (cachedSourceRef.current) {
-            return;
-        }
+        const runScheduler = async () => {
+            await ensureAudioContext();
+            const ctx = audioContextRef.current;
+            if (!ctx) return;
 
-        const item = audioQueue[0];
+            if (ctx.state === 'suspended') {
+                await ctx.resume();
+            }
 
-        // 3. Prevent Re-entry for same item
-        if (currentItemIdRef.current === item.id) return;
-        currentItemIdRef.current = item.id;
+            // Start prefetching
+            prefetchNextTextItems(audioQueue);
 
-        // 4. Process Item
-        const process = async () => {
-            try {
-                // 🚀 预加载下一个 text 项（在处理当前项时并行进行）
-                prefetchNextTextItems(audioQueue);
+            for (let i = 0; i < audioQueue.length; i++) {
+                const item = audioQueue[i];
+                if (scheduledIdsRef.current.has(item.id)) continue;
+
+                const start = Math.max(ctx.currentTime, nextStartTimeRef.current);
 
                 if (item.type === 'pause') {
-                    // Play Silence（同时预加载在后台进行）
-                    await playSilence(item.duration);
-                } else if (item.type === 'text') {
-                    // Fetch & Play
-                    let url = item.url;
+                    nextStartTimeRef.current = start + (item.duration / 1000);
+                    scheduledIdsRef.current.add(item.id);
 
-                    if (!url) {
+                    setTimeout(() => {
+                        setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+                        scheduledIdsRef.current.delete(item.id);
+                    }, (nextStartTimeRef.current - ctx.currentTime) * 1000 + 100);
+                } else if (item.type === 'text' && item.buffer) {
+                    const source = ctx.createBufferSource();
+                    source.buffer = item.buffer;
+                    source.connect(ctx.destination);
+
+                    source.onended = () => {
+                        setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+                        scheduledIdsRef.current.delete(item.id);
+                        sourceNodesRef.current.delete(item.id);
+                    };
+
+                    source.start(start);
+                    nextStartTimeRef.current = start + item.buffer.duration;
+                    scheduledIdsRef.current.add(item.id);
+                    sourceNodesRef.current.set(item.id, source);
+
+                    // ✅ 回调为 3 个项目的调度缓冲
+                    if (scheduledIdsRef.current.size > 3) break;
+                } else if (item.type === 'text' && !item.buffer) {
+                    // Item not ready, let prefetch handle it or fetch it now if it's the first one
+                    if (i === 0) {
                         setIsLoadingAudio(true);
                         try {
-                            const res = await fetch("/api/tts", {
+                            const res = await fetchWithRetry("/api/tts", {
                                 method: "POST",
-                                body: JSON.stringify({
-                                    text: item.content,
-                                    voice: item.voiceId,
-                                    rate: item.rate
-                                }),
+                                body: JSON.stringify({ text: item.content, voice: item.voiceId, rate: item.rate }),
                             });
-                            if (res.ok) {
+                            if (res && res.ok) {
                                 const blob = await res.blob();
-                                url = URL.createObjectURL(blob);
+                                const ab = await blob.arrayBuffer();
+                                const buffer = await ctx.decodeAudioData(ab);
+                                setAudioQueue(prev => prev.map(q => q.id === item.id ? { ...q, buffer } : q));
                             }
-                        } catch (e) {
-                            console.error("Fetch failed", e);
-                        }
+                        } catch (e) { console.error(e); }
                         setIsLoadingAudio(false);
                     }
-
-                    if (url) {
-                        await playAudioElement(url);
-                    }
+                    break;
                 }
-            } catch (err) {
-                console.error("Process error", err);
-            } finally {
-                // 5. Advance Queue
-                setAudioQueue(prev => prev.slice(1));
-                currentItemIdRef.current = null; // Allow next item
             }
         };
 
-        process();
-
+        runScheduler();
     }, [isPlaying, audioQueue]);
 
 
@@ -686,7 +763,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 } else {
                     // 请求 TTS
                     try {
-                        const res = await fetch("/api/tts", {
+                        const res = await fetchWithRetry("/api/tts", {
                             method: "POST",
                             body: JSON.stringify({
                                 text: seg.content,
@@ -694,7 +771,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                 rate: seg.rate
                             }),
                         });
-                        if (res.ok) {
+                        if (res && res.ok) {
                             const arrayBuffer = await res.arrayBuffer();
                             const decoded = await ctx.decodeAudioData(arrayBuffer);
                             // 使用第一个 TTS 的采样率
@@ -835,13 +912,34 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     // Controls
     // -------------------------------------------------------------------------
 
-    const startNewPlayback = () => {
-        // Reset
+    const stopLivePlayback = () => {
+        setIsPlaying(false);
+        isPlayingRef.current = false;
+
         if (currentAudio) {
             currentAudio.pause();
             setCurrentAudio(null);
         }
+
+        // Stop all WebAudio nodes
+        sourceNodesRef.current.forEach(node => {
+            try { node.stop(); } catch { }
+        });
+        sourceNodesRef.current.clear();
+        scheduledIdsRef.current.clear();
+        nextStartTimeRef.current = 0;
+
+        setAudioQueue([]);
         currentItemIdRef.current = null;
+    };
+
+    const startNewPlayback = async () => {
+        // Clean up any existing playback
+        stopLivePlayback();
+        if (cachedSourceRef.current) {
+            try { cachedSourceRef.current.stop(); } catch { }
+            cachedSourceRef.current = null;
+        }
 
         const segments: QueueItem[] = [];
         let currentRate = card.rate || "0%";
@@ -853,11 +951,18 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             if (!part.trim()) continue;
             if (part.startsWith("[")) {
                 if (part.includes("pause")) {
-                    const match = part.match(/pause\s*[:=]?\s*(\d+)/i);
+                    const match = part.match(/pause\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(ms|s)?/i);
                     if (match) {
+                        let val = parseFloat(match[1]);
+                        const unit = (match[2] || '').toLowerCase();
+                        let durMs = val;
+                        if (unit === 's' || (unit === '' && val < 50)) {
+                            durMs = val * 1000;
+                        }
+
                         segments.push({
                             type: 'pause',
-                            duration: parseInt(match[1]),
+                            duration: durMs,
                             id: Math.random().toString(36).substr(2, 9)
                         });
                     }
@@ -876,8 +981,58 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             }
         }
 
+        // 🚀 初始缓冲：在设置 state 之前先获取前 N 个音频
+        const textSegments = segments.filter(s => s.type === 'text') as Extract<QueueItem, { type: 'text' }>[];
+        const bufferTarget = Math.min(INITIAL_BUFFER_COUNT, textSegments.length);
+
+        if (bufferTarget > 0) {
+            setIsBuffering(true);
+            setBufferProgress({ loaded: 0, total: bufferTarget });
+            console.log(`[TTS] 🚀 开始初始缓冲，目标: ${bufferTarget} 个片段`);
+
+            await ensureAudioContext();
+            const ctx = audioContextRef.current;
+
+            if (ctx) {
+                let loaded = 0;
+                // 🔥 关键修复：直接修改 segments 数组中的对象，而不是通过 setState
+                await Promise.all(textSegments.slice(0, bufferTarget).map(async (item) => {
+                    try {
+                        fetchingIdsRef.current.add(item.id);
+                        const res = await fetchWithRetry("/api/tts", {
+                            method: "POST",
+                            body: JSON.stringify({
+                                text: item.content,
+                                voice: item.voiceId,
+                                rate: item.rate
+                            }),
+                        });
+                        if (res && res.ok) {
+                            const blob = await res.blob();
+                            const arrayBuffer = await blob.arrayBuffer();
+                            const buffer = await ctx.decodeAudioData(arrayBuffer);
+                            // 直接修改原始对象
+                            (item as any).buffer = buffer;
+                            loaded++;
+                            setBufferProgress({ loaded, total: bufferTarget });
+                            console.log(`[TTS] 缓冲进度: ${loaded}/${bufferTarget}`);
+                        }
+                    } catch (e) {
+                        console.warn("[Initial Buffer] Failed", e);
+                    } finally {
+                        fetchingIdsRef.current.delete(item.id);
+                    }
+                }));
+            }
+
+            setIsBuffering(false);
+            console.log('[TTS] ✅ 初始缓冲完成，开始播放');
+        }
+
+        // 🔥 现在设置 state 时，segments 中的前 N 个项目已经有 buffer 了
         setAudioQueue(segments);
         setIsPlaying(true);
+        isPlayingRef.current = true;
     };
 
     // 从指定位置开始播放缓存音频
@@ -1015,7 +1170,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             if (!cachedBlob) {
                 console.warn("[Play] 缓存不存在，回退到流式播放");
                 setIsLoadingAudio(false);
-                startNewPlayback();
+                await startNewPlayback();
                 return;
             }
 
@@ -1059,6 +1214,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     };
 
     const togglePlay = async () => {
+        await ensureAudioContext();
         console.log("[Play] togglePlay 调用, isPlayingRef:", isPlayingRef.current, "isPlaying:", isPlaying);
 
         if (isPlayingRef.current) {
@@ -1069,11 +1225,11 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             if (hasCachedAudio && useCachedPlayback && playbackProgress.duration > 0) {
                 pausedAtRef.current = playbackProgress.currentTime;
                 isPausedRef.current = true;
-                console.log("[Play] ⏸ 暂停于:", pausedAtRef.current.toFixed(1), "s");
             }
 
-            isPlayingRef.current = false; // 同步更新
+            isPlayingRef.current = false;
             setIsPlaying(false);
+
             if (currentAudio) currentAudio.pause();
 
             // 停止缓存音频播放
@@ -1083,6 +1239,9 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 } catch (e) { /* ignore */ }
                 cachedSourceRef.current = null;
             }
+
+            // Web Audio Scheduler handled by useEffect observing isPlaying=false
+
             // 清理进度定时器（但不重置进度）
             if (progressIntervalRef.current) {
                 clearInterval(progressIntervalRef.current);
@@ -1096,14 +1255,18 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             }
 
             // RESUME or START (流式播放)
+            if (audioContextRef.current?.state === 'suspended') {
+                await audioContextRef.current.resume();
+            }
+
             if (audioQueue.length > 0) {
                 setIsPlaying(true);
-                // Resume Logic:
+                isPlayingRef.current = true;
                 if (currentAudio && currentAudio.paused) {
                     currentAudio.play();
                 }
             } else {
-                startNewPlayback();
+                await startNewPlayback();
             }
         }
     };
@@ -1132,9 +1295,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     return (
         <motion.div
             layout
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
+            layoutId={`tts-card-${card.id}`}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
             className="group relative"
         >
@@ -1316,14 +1477,19 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
                         <button
                             onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                            disabled={isBuffering}
                             className={cn(
                                 "flex items-center justify-center w-10 h-10 rounded-full transition-all border",
-                                isPlaying
-                                    ? "bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/30"
-                                    : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20"
+                                isBuffering
+                                    ? "bg-amber-500/20 border-amber-400/50 text-amber-300 cursor-wait"
+                                    : isPlaying
+                                        ? "bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/30"
+                                        : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20"
                             )}
                         >
-                            {isLoadingAudio ? (
+                            {isBuffering ? (
+                                <span className="animate-spin w-4 h-4 border-2 border-amber-300/30 border-t-amber-300 rounded-full" />
+                            ) : isLoadingAudio ? (
                                 <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
                             ) : isPlaying ? (
                                 <Pause className="w-4 h-4 fill-current" />
@@ -1331,6 +1497,14 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                 <Play className="w-4 h-4 fill-current ml-0.5" />
                             )}
                         </button>
+
+                        {/* 🚀 缓冲进度显示 */}
+                        {isBuffering && (
+                            <div className="flex items-center gap-2 text-xs text-amber-300/80 animate-pulse">
+                                <span className="font-medium">准备中...</span>
+                                <span className="font-mono">{bufferProgress.loaded}/{bufferProgress.total}</span>
+                            </div>
+                        )}
 
                         <div className="flex-1 space-y-1.5">
                             <div className="flex justify-between text-xs text-white/40 font-mono">
@@ -1429,70 +1603,53 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 // Page Component
 // -----------------------------------------------------------------------------
 export default function TTSStudioPage() {
-    const [cards, setCards] = useState<TTSCard[]>([]);
+    // 使用 SWR 缓存数据
+    const { cards: ttsCards, addCard: apiAddCard, deleteCard: apiDeleteCard, isLoading: isLoadingCards } = useTTSCards();
+
     const [editingCard, setEditingCard] = useState<TTSCard | null>(null);
     const [editTitle, setEditTitle] = useState("");
     const [editContent, setEditContent] = useState("");
     const [editVoiceId, setEditVoiceId] = useState(VOICES[0].id);
     const [isSaving, setIsSaving] = useState(false);
 
-    // AI 生成相关状态
-    const [aiPrompt, setAiPrompt] = useState("");
-    const [aiGenerating, setAiGenerating] = useState(false);
-    const [aiDuration, setAiDuration] = useState<number>(5); // 目标时长（分钟）
-    const [guidanceLevel, setGuidanceLevel] = useState<'light' | 'medium' | 'heavy'>('medium');
-
-    const fetchCards = useCallback(async () => {
-        try {
-            const res = await fetch("/api/tts/cards?t=" + Date.now(), {
-                cache: "no-store",
-                headers: { "Pragma": "no-cache" }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setCards(data);
-            }
-        } catch (e) {
-            console.error("Failed to fetch cards", e);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchCards();
-    }, [fetchCards]);
+    // AI 生成相关状态 (for edit modal)
+    const [aiPromptEdit, setAiPromptEdit] = useState("");
+    const [aiGeneratingEdit, setAiGeneratingEdit] = useState(false);
+    const [aiDurationEdit, setAiDurationEdit] = useState<number>(5); // 目标时长（分钟）
+    const [guidanceLevelEdit, setGuidanceLevelEdit] = useState<'light' | 'medium' | 'heavy'>('medium');
 
     const handleDelete = async (id: string) => {
         if (!confirm('确定要删除这张卡片吗？')) return;
-
-        try {
-            await fetch(`/api/tts/cards?id=${id}`, { method: "DELETE" });
-            fetchCards();
-        } catch (e) {
-            console.error(e);
-        }
+        await apiDeleteCard(id);
     };
 
     const handleEdit = (card: TTSCard) => {
         setEditingCard(card);
-        setEditTitle(card.title);
+        setEditTitle(card.title || "");
         setEditContent(card.content);
         setEditVoiceId(card.voice_id);
+        setAiPromptEdit(""); // Clear AI prompt when opening edit modal
+        setAiDurationEdit(5); // Reset AI duration
+
+        // Ensure guidanceLevel is one of the allowed literal types
+        const level = card.guidance_level as 'light' | 'medium' | 'heavy';
+        setGuidanceLevelEdit(level || 'medium');
     };
 
-    // AI 生成冥想文本
-    const handleAIGenerate = async () => {
-        if (!aiPrompt.trim() || aiGenerating) return;
+    // AI 生成冥想文本 (for edit modal)
+    const handleAIGenerateEdit = async () => {
+        if (!aiPromptEdit.trim() || aiGeneratingEdit) return;
 
-        setAiGenerating(true);
+        setAiGeneratingEdit(true);
         setEditContent(""); // 清空现有内容
 
         // 按 280 字/分钟计算
         // 动态计算目标字数和停顿时间
-        const totalSeconds = aiDuration * 60;
+        const totalSeconds = aiDurationEdit * 60;
         let textRatio = 0.5; // medium default
 
-        if (guidanceLevel === 'light') textRatio = 0.1; // 10% text, 90% pause
-        if (guidanceLevel === 'heavy') textRatio = 0.7; // 70% text, 30% pause
+        if (guidanceLevelEdit === 'light') textRatio = 0.1; // 10% text, 90% pause
+        if (guidanceLevelEdit === 'heavy') textRatio = 0.7; // 70% text, 30% pause
 
         const targetTextSeconds = Math.round(totalSeconds * textRatio);
         const targetPauseSeconds = Math.round(totalSeconds * (1 - textRatio));
@@ -1500,13 +1657,13 @@ export default function TTSStudioPage() {
 
         // Auto-fill title if empty
         if (!editTitle.trim()) {
-            setEditTitle(aiPrompt);
+            setEditTitle(aiPromptEdit);
         }
 
         // 简化的统一 prompt
         // 根据引导强度调整 Prompt
         let densityRule = "";
-        switch (guidanceLevel) {
+        switch (guidanceLevelEdit) {
             case 'light':
                 densityRule = `
 【核心策略：轻引导 (Silence Dominant)】
@@ -1558,7 +1715,7 @@ ${densityRule}
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    prompt: `${aiPrompt}（目标时长：${aiDuration}分钟）`,
+                    prompt: `${aiPromptEdit}（目标时长：${aiDurationEdit}分钟）`,
                     systemPrompt
                 }),
             });
@@ -1583,7 +1740,7 @@ ${densityRule}
             console.error("AI 生成失败:", e);
             setEditContent("生成失败，请重试...");
         } finally {
-            setAiGenerating(false);
+            setAiGeneratingEdit(false);
         }
     };
 
@@ -1599,11 +1756,11 @@ ${densityRule}
                     title: editTitle,
                     content: editContent,
                     voiceId: editVoiceId,
+                    guidanceLevel: guidanceLevelEdit, // Save guidance level
                 })
             });
             if (res.ok) {
                 setEditingCard(null);
-                fetchCards();
             }
         } catch (e) {
             console.error("Update failed", e);
@@ -1620,27 +1777,34 @@ ${densityRule}
                         <h1 className="text-2xl font-medium tracking-tight text-white/90">声波工坊</h1>
                         <p className="text-rose-200/60 text-sm mt-1">Text to Speech Studio</p>
                     </div>
-                    <GlassInput onAdd={fetchCards} />
+                    <GlassInput onAdd={() => { }} />
 
                     <div className="mt-16">
                         <div className="flex items-center gap-4 mb-8">
                             <h3 className="text-xl font-medium text-white/90">我的语料库</h3>
                             <span className="px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-200 text-xs border border-rose-500/10">
-                                {cards.length}
+                                {ttsCards.length}
                             </span>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             <AnimatePresence>
-                                {cards.length > 0 && cards.map(card => (
-                                    <TTSCardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} />
-                                ))}
+                                {isLoadingCards ? (
+                                    <div className="col-span-full flex flex-col items-center justify-center py-20 text-white/20">
+                                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mb-4" />
+                                        <p className="text-sm font-light">正在加载语料库...</p>
+                                    </div>
+                                ) : ttsCards.length === 0 ? (
+                                    <div className="col-span-full text-center py-20 text-white/20 border border-dashed border-rose-200/10 rounded-3xl">
+                                        <Volume2 className="w-12 h-12 mx-auto mb-4 opacity-10" />
+                                        <p className="text-sm font-light">这里空空如也，试着创建一个新的语音卡片吧。</p>
+                                    </div>
+                                ) : (
+                                    ttsCards.map((card: TTSCard) => (
+                                        <TTSCardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} />
+                                    ))
+                                )}
                             </AnimatePresence>
-                            {cards.length === 0 && (
-                                <div className="col-span-full py-20 text-center text-rose-200/40 border border-dashed border-rose-200/10 rounded-3xl">
-                                    <p>这里空空如也，试着创建一个新的语音卡片吧。</p>
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>
@@ -1695,46 +1859,46 @@ ${densityRule}
                                                 <span className="text-rose-400">✨</span>
                                                 <span>AI 生成助手</span>
                                             </div>
-                                            <div className="flex gap-2">
+                                            <div className="flex gap-2 flex-wrap">
                                                 <input
-                                                    value={aiPrompt}
-                                                    onChange={(e) => setAiPrompt(e.target.value)}
-                                                    className="flex-1 bg-slate-800 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:ring-2 focus:ring-rose-500 outline-none"
+                                                    value={aiPromptEdit}
+                                                    onChange={(e) => setAiPromptEdit(e.target.value)}
+                                                    className="flex-1 min-w-[200px] bg-slate-800 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:ring-2 focus:ring-rose-500 outline-none"
                                                     placeholder="描述您想要的内容，如：正念呼吸练习、身体扫描、助眠引导..."
-                                                    disabled={aiGenerating}
+                                                    disabled={aiGeneratingEdit}
                                                 />
                                                 <select
-                                                    value={guidanceLevel}
-                                                    onChange={(e) => setGuidanceLevel(e.target.value as any)}
+                                                    value={guidanceLevelEdit}
+                                                    onChange={(e) => setGuidanceLevelEdit(e.target.value as any)}
                                                     className="bg-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-rose-500 outline-none cursor-pointer"
-                                                    disabled={aiGenerating}
+                                                    disabled={aiGeneratingEdit}
                                                     title="选择引导强度"
                                                 >
-                                                    <option value="light">🍃 轻引导</option>
-                                                    <option value="medium">⚖️ 中引导</option>
-                                                    <option value="heavy">🧘 多引导</option>
+                                                    <option value="light" className="bg-zinc-800">🍃 轻引导</option>
+                                                    <option value="medium" className="bg-zinc-800">⚖️ 中引导</option>
+                                                    <option value="heavy" className="bg-zinc-800">🧘 多引导</option>
                                                 </select>
                                                 <select
-                                                    value={aiDuration}
-                                                    onChange={(e) => setAiDuration(Number(e.target.value))}
+                                                    value={aiDurationEdit}
+                                                    onChange={(e) => setAiDurationEdit(Number(e.target.value))}
                                                     className="bg-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-rose-500 outline-none"
-                                                    disabled={aiGenerating}
+                                                    disabled={aiGeneratingEdit}
                                                     title="选择目标时长"
                                                 >
-                                                    <option value={3}>3分钟</option>
-                                                    <option value={5}>5分钟</option>
-                                                    <option value={10}>10分钟</option>
-                                                    <option value={15}>15分钟</option>
-                                                    <option value={20}>20分钟</option>
-                                                    <option value={30}>30分钟</option>
+                                                    <option value={3} className="bg-zinc-800">3分钟</option>
+                                                    <option value={5} className="bg-zinc-800">5分钟</option>
+                                                    <option value={10} className="bg-zinc-800">10分钟</option>
+                                                    <option value={15} className="bg-zinc-800">15分钟</option>
+                                                    <option value={20} className="bg-zinc-800">20分钟</option>
+                                                    <option value={30} className="bg-zinc-800">30分钟</option>
                                                 </select>
                                             </div>
                                             <button
-                                                onClick={handleAIGenerate}
-                                                disabled={!aiPrompt.trim() || aiGenerating}
+                                                onClick={handleAIGenerateEdit}
+                                                disabled={!aiPromptEdit.trim() || aiGeneratingEdit}
                                                 className="w-full py-2 bg-gradient-to-r from-rose-500 to-orange-500 text-white text-sm rounded-lg hover:from-rose-400 hover:to-orange-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                             >
-                                                {aiGenerating ? (
+                                                {aiGeneratingEdit ? (
                                                     <>
                                                         <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
                                                         <span>生成中...</span>
