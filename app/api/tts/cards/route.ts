@@ -1,186 +1,72 @@
+import { NextResponse } from 'next/server';
+
 /**
- * TTS Cards API Route (Node.js Direct Implementation)
+ * TTS Cards API Route - Edge Runtime Proxy
  * 
- * Simplified for Vercel deployment stability.
- * Uses Node.js runtime to ensure stable Supabase connection and environment variable access.
+ * Proxies requests to:
+ * - /api/tts/cards-impl (Node.js) when running on Vercel
+ * - Vercel Backend when running on Cloudflare
  */
 
-import { createClient } from '@supabase/supabase-js';
+const VERCEL_BACKEND = 'https://qiutsmoke.vercel.app';
 
-// Force Node.js runtime for stability
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 
-function getSupabaseClient() {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+async function handleRequest(req: Request) {
+    const isVercel = !!process.env.VERCEL;
+    const url = new URL(req.url); // Original URL (e.g. .../api/tts/cards?id=123)
 
-    if (!supabaseUrl || !supabaseKey) {
-        console.error('[TTS Cards] Missing configuration:', {
-            hasUrl: !!supabaseUrl,
-            hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-            hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    // 1. If on Vercel: Forward internally to implementation
+    if (isVercel) {
+        const implUrl = new URL('/api/tts/cards-impl' + url.search, req.url);
+
+        console.log(`[TTS Cards Edge] Forwarding internal to: ${implUrl.pathname}`);
+
+        const response = await fetch(implUrl.toString(), {
+            method: req.method,
+            headers: req.headers,
+            body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
         });
-        throw new Error('Missing Supabase configuration');
+
+        // Mirror the response
+        return new Response(response.body, {
+            status: response.status,
+            headers: response.headers
+        });
     }
 
-    return createClient(supabaseUrl, supabaseKey);
-}
+    // 2. If on Cloudflare: Proxy to Vercel
+    const targetUrl = `${VERCEL_BACKEND}/api/tts/cards${url.search}`;
+    console.log(`[TTS Cards Edge] Proxying to Vercel: ${targetUrl}`);
 
-export async function GET(req: Request) {
+    const headers = new Headers(req.headers);
+    headers.set('x-tts-proxy', 'true'); // Just a flag, though Vercel logic is mainly based on env
+
     try {
-        const supabase = getSupabaseClient();
-        const { data, error } = await supabase
-            .from('tts_cards')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-        if (error) {
-            console.error('[TTS Cards GET] DB Error:', error);
-            throw error;
-        }
-
-        return new Response(JSON.stringify(data || []), {
-            status: 200,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Cache-Control': 'no-store, max-age=0'
-            }
+        const response = await fetch(targetUrl, {
+            method: req.method,
+            headers: headers,
+            body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
         });
+
+        // Clone response to safely read it or modify headers
+        const newRes = new Response(response.body, response);
+        // Ensure CORS allows Cloudflare domain
+        newRes.headers.set('Access-Control-Allow-Origin', '*');
+        return newRes;
     } catch (error) {
-        console.error('[TTS Cards GET] System Error:', error);
-        return new Response(JSON.stringify({
-            error: 'Failed to fetch cards',
-            details: error instanceof Error ? error.message : String(error)
-        }), {
-            status: 500,
+        console.error('[TTS Cards Edge] Proxy Error:', error);
+        return new Response(JSON.stringify({ error: 'Proxy Failed', details: String(error) }), {
+            status: 502,
             headers: { 'Content-Type': 'application/json' }
         });
     }
 }
 
-export async function POST(req: Request) {
-    try {
-        const supabase = getSupabaseClient();
-        const body = await req.json();
-        const { content, voiceId, rate } = body;
-
-        // Validation
-        if (!content) return new Response(JSON.stringify({ error: 'Content is required' }), { status: 400 });
-
-        const { data, error } = await supabase
-            .from('tts_cards')
-            .insert({
-                content,
-                voice_id: voiceId || 'zh-CN-XiaohanNeural',
-                rate: rate || '0%'
-            })
-            .select()
-            .single();
-
-        if (error) {
-            console.error('[TTS Cards POST] DB Error:', error);
-            throw error;
-        }
-
-        return new Response(JSON.stringify(data), {
-            status: 201,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            }
-        });
-    } catch (error) {
-        console.error('[TTS Cards POST] System Error:', error);
-        return new Response(JSON.stringify({
-            error: 'Failed to create card',
-            details: error instanceof Error ? error.message : String(error)
-        }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' }
-        });
-    }
-}
-
-export async function DELETE(req: Request) {
-    try {
-        const supabase = getSupabaseClient();
-        const url = new URL(req.url);
-        const id = url.searchParams.get('id');
-
-        if (!id) return new Response(JSON.stringify({ error: 'ID is required' }), { status: 400 });
-
-        const { error } = await supabase.from('tts_cards').delete().eq('id', id);
-
-        if (error) {
-            console.error('[TTS Cards DELETE] DB Error:', error);
-            throw error;
-        }
-
-        return new Response(JSON.stringify({ success: true }), {
-            status: 200,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            }
-        });
-    } catch (error) {
-        console.error('[TTS Cards DELETE] System Error:', error);
-        return new Response(JSON.stringify({
-            error: 'Failed to delete card',
-            details: error instanceof Error ? error.message : String(error)
-        }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' }
-        });
-    }
-}
-
-export async function PATCH(req: Request) {
-    try {
-        const supabase = getSupabaseClient();
-        const body = await req.json();
-        const { id, title, content, voiceId, rate } = body;
-
-        if (!id) return new Response(JSON.stringify({ error: 'ID is required' }), { status: 400 });
-
-        const updates: any = {};
-        if (title !== undefined) updates.title = title;
-        if (content !== undefined) updates.content = content;
-        if (voiceId !== undefined) updates.voice_id = voiceId;
-        if (rate !== undefined) updates.rate = rate;
-
-        const { data, error } = await supabase
-            .from('tts_cards')
-            .update(updates)
-            .eq('id', id)
-            .select()
-            .single();
-
-        if (error) {
-            console.error('[TTS Cards PATCH] DB Error:', error);
-            throw error;
-        }
-
-        return new Response(JSON.stringify(data), {
-            status: 200,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            }
-        });
-    } catch (error) {
-        console.error('[TTS Cards PATCH] System Error:', error);
-        return new Response(JSON.stringify({
-            error: 'Failed to update card',
-            details: error instanceof Error ? error.message : String(error)
-        }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' }
-        });
-    }
-}
+export const GET = handleRequest;
+export const POST = handleRequest;
+export const DELETE = handleRequest;
+export const PATCH = handleRequest;
 
 export async function OPTIONS() {
     return new Response(null, {
