@@ -47,53 +47,17 @@ export function useBackgroundAudio(): BackgroundAudioReturn {
     const silentAudioRef = useRef<HTMLAudioElement | null>(null);
     const isActiveRef = useRef(false);
 
-    // 创建静默音频元素（用于保活和触发 Media Session）
+    // 🎵 10秒静默 MP3 (Base64) - 比动态生成更稳定
+    const SILENT_MP3 = "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAAFAAAAZAAKCg4OExMTFhYWGhoaHBwcIiIiJycnKSkpLy8vMzMzOTk5Ozs7Q0NDR0dHS0tLTExMVFRUWFhYWlpaXFxcYGBgZGRkaGhoeHh4fX19g4ODiIiIjY2NkZGRlZWVmZmZnZ2doaGhpqamq6urr6+vsLCwtLS0vb29wMDAvr6+xMTExsbGysrKzMzM0tLS1dXV2tra3Nzc4ODg5OTk5+fn6urq7u7u8vLy9/f3+/v7////AAAAAHAABAAAAABQAABAAAAAAAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA";
+
+    // 创建静默音频元素
     const createSilentAudio = useCallback((): HTMLAudioElement => {
-        // 创建较长的静默 WAV（10秒）以便系统能识别为正在播放
-        const sampleRate = 44100;
-        const duration = 10; // 10秒 - 足够长让系统识别
-        const samples = Math.floor(sampleRate * duration);
-        const buffer = new ArrayBuffer(44 + samples * 2);
-        const view = new DataView(buffer);
-
-        // WAV 头
-        const writeStr = (offset: number, s: string) => {
-            for (let i = 0; i < s.length; i++) {
-                view.setUint8(offset + i, s.charCodeAt(i));
-            }
-        };
-
-        writeStr(0, 'RIFF');
-        view.setUint32(4, 36 + samples * 2, true);
-        writeStr(8, 'WAVE');
-        writeStr(12, 'fmt ');
-        view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true);
-        view.setUint16(22, 1, true);
-        view.setUint32(24, sampleRate, true);
-        view.setUint32(28, sampleRate * 2, true);
-        view.setUint16(32, 2, true);
-        view.setUint16(34, 16, true);
-        writeStr(36, 'data');
-        view.setUint32(40, samples * 2, true);
-
-        // 🔥 [iOS Fix] 填充极低音量噪音 (Dither)
-        const dataOffset = 44;
-        for (let i = 0; i < samples; i++) {
-            const signal = Math.random() < 0.5 ? 1 : -1;
-            view.setInt16(dataOffset + i * 2, signal, true);
-        }
-
-        const blob = new Blob([view], { type: 'audio/wav' });
-        const url = URL.createObjectURL(blob);
-
-        const audio = new Audio(url);
+        const audio = new Audio(SILENT_MP3);
         audio.loop = true;
-        audio.volume = 0.01; // 足够低但能被系统检测到
+        audio.volume = 0.01; // 微小音量保活
         // @ts-ignore
         audio.playsInline = true;
         audio.preload = 'auto';
-
         return audio;
     }, []);
 
@@ -102,6 +66,7 @@ export function useBackgroundAudio(): BackgroundAudioReturn {
         if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) return;
 
         try {
+            // @ts-ignore
             const lock = await navigator.wakeLock.request('screen');
             wakeLockRef.current = lock;
 
@@ -180,86 +145,62 @@ export function useBackgroundAudio(): BackgroundAudioReturn {
         });
     }, []);
 
-    // 启动保活定时器（所有平台都启用）
+    // 启动保活
     const startKeepAlive = useCallback(() => {
-        // 创建静默音频
         if (!silentAudioRef.current) {
             silentAudioRef.current = createSilentAudio();
         }
 
-        // 开始播放静默音频（音量极低但足以被系统检测）
         const audio = silentAudioRef.current;
-        audio.volume = 0.01; // 稍微提高音量确保系统能检测到
+        // 尝试播放
         audio.play().catch((e) => {
-            console.warn('[BackgroundAudio] 静默音频播放失败:', e);
+            console.warn('[BackgroundAudio] 保活启动失败 (可能需要用户手势):', e);
         });
 
-        // 每 5 秒重新播放一次（防止系统暂停）
+        // 定期检查播放状态，如果暂停了就恢复
         keepAliveIntervalRef.current = setInterval(() => {
-            if (silentAudioRef.current && isActiveRef.current) {
-                silentAudioRef.current.currentTime = 0;
+            // 只有在 isActive 为 true 且音频暂停时才干预
+            if (activeRef.current && silentAudioRef.current && silentAudioRef.current.paused) {
+                console.log('[BackgroundAudio] 检测到保活暂停，尝试恢复...');
                 silentAudioRef.current.play().catch(() => { });
             }
-        }, 5000);
+        }, 2000);
 
-        console.log('[BackgroundAudio] 保活音频已启动（所有平台）');
+        console.log('[BackgroundAudio] 保活机制已启动');
     }, [createSilentAudio]);
 
-    // 停止保活定时器
+    // 停止保活
     const stopKeepAlive = useCallback(() => {
         if (keepAliveIntervalRef.current) {
             clearInterval(keepAliveIntervalRef.current);
             keepAliveIntervalRef.current = null;
         }
-
         if (silentAudioRef.current) {
             silentAudioRef.current.pause();
-            silentAudioRef.current = null;
         }
     }, []);
 
+    const activeRef = useRef(false);
+
     // 激活后台音频
     const activate = useCallback(async (config: BackgroundAudioConfig) => {
-        if (isActiveRef.current) return;
+        activeRef.current = true;
         isActiveRef.current = true;
 
-        // 🔥 关键：先启动保活音频播放，这样系统才知道有音频在播放
-        // 必须在设置 Media Session 之前完成
-        if (!silentAudioRef.current) {
-            silentAudioRef.current = createSilentAudio();
-        }
+        // 1. 启动保活音频 (这是最核心的)
+        startKeepAlive();
 
-        const audio = silentAudioRef.current;
-        audio.volume = 0.01;
-
-        try {
-            await audio.play();
-            console.log('[BackgroundAudio] 保活音频已开始播放');
-        } catch (e) {
-            console.warn('[BackgroundAudio] 保活音频播放失败:', e);
-        }
-
-        // 2. 启动保活定时器（在音频播放后）
-        keepAliveIntervalRef.current = setInterval(() => {
-            if (silentAudioRef.current && isActiveRef.current) {
-                silentAudioRef.current.currentTime = 0;
-                silentAudioRef.current.play().catch(() => { });
-            }
-        }, 5000);
-
-        // 3. 设置 Media Session（在音频播放后设置）
+        // 2. 设置 Media Session
         setupMediaSession(config);
 
-        // 4. 请求 Wake Lock
+        // 3. 请求 Wake Lock
         await requestWakeLock();
 
-        // 5. 设置播放状态
+        // 4. 设置状态
         if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'playing';
         }
-
-        console.log('[BackgroundAudio] ✅ 后台音频已激活');
-    }, [setupMediaSession, requestWakeLock, createSilentAudio]);
+    }, [setupMediaSession, requestWakeLock, startKeepAlive]);
 
     // 停用后台音频
     const deactivate = useCallback(async () => {

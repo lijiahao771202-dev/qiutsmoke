@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    // ☁️ Conditional Export: Only for Cloudflare Pages
+    // Vercel needs default output for API routes to work
+    output: process.env.IS_CLOUDFLARE ? 'export' : undefined,
     images: {
         unoptimized: true,
     },

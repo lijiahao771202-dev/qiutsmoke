@@ -3,6 +3,7 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useHaptics } from "@/lib/hooks/useHaptics";
+import { useHapticBreathing } from "@/lib/hooks/useHapticBreathing";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, Wind, CloudRain, Zap, Moon, Droplets, Settings, X, Activity, Shield, Trash2, Plus, Network, Sparkles, Edit2, Check, ArrowLeft, Save } from "lucide-react";
 import Link from "next/link";
@@ -11,6 +12,7 @@ import AuthGuard from "@/components/AuthGuard";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useMeditationTopics } from "@/lib/hooks/useData";
 import { useBackgroundAudio } from "@/hooks/useBackgroundAudio";
+import { getApiUrl } from "@/lib/config";
 
 // IP Address from system check
 const LAN_IP = "10.173.165.153:3001";
@@ -175,7 +177,7 @@ export default function MeditatePage() {
 
         (async () => {
             try {
-                const res = await fetch('/api/prompts');
+                const res = await fetch(getApiUrl('/api/prompts'));
                 if (res.ok) {
                     const serverObj = await res.json();
                     if (serverObj && typeof serverObj === 'object' && Object.keys(serverObj).length > 0) {
@@ -184,7 +186,7 @@ export default function MeditatePage() {
                 }
             } catch { }
             try {
-                const res = await fetch('/api/system-prompt');
+                const res = await fetch(getApiUrl('/api/system-prompt'));
                 if (res.ok) {
                     const text = await res.text();
                     if (text && text.trim().length > 0) {
@@ -251,6 +253,7 @@ export default function MeditatePage() {
     const [audioQueue, setAudioQueue] = useState<QueueItem[]>([]);
     const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
     const { triggerSuccess, triggerLight, triggerHeavy } = useHaptics();
+    const { triggerInhale, triggerExhale, triggerHold } = useHapticBreathing();
     const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
     const [showAudioHint, setShowAudioHint] = useState(false);
     const [text, setText] = useState("");
@@ -519,6 +522,17 @@ export default function MeditatePage() {
 
                 // 🔥 立即锁定，防止轮询再次调用
                 isPlayingNextRef.current = true;
+
+                // 🌟 [Haptic Breathing] Analyze text for breathing cues
+                if (item.text) {
+                    if (/(吸气|吸入|inhal)/i.test(item.text)) {
+                        triggerInhale();
+                    } else if (/(呼气|呼出|吐气|exhal)/i.test(item.text)) {
+                        triggerExhale();
+                    } else if (/(屏住|屏息|保持|hold)/i.test(item.text)) {
+                        triggerHold();
+                    }
+                }
 
                 const audio = new Audio(item.url);
                 (audio as any).playsInline = true;
@@ -959,7 +973,7 @@ export default function MeditatePage() {
                 const cardDuration = currentCardSettings?.duration ?? meditationDuration;
                 const cardGuidance = currentCardSettings?.guidanceLevel ?? guidanceLevel;
 
-                const res = await fetch('/api/generate', {
+                const res = await fetch(getApiUrl('/api/generate'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1236,13 +1250,26 @@ export default function MeditatePage() {
     const handleCardClick = async (id: string) => {
         triggerLight(); // 立即触发轻触震动
         console.log('[Haptics] 🔔 Card clicked, triggerLight called');
+
+        // 🚀 Auto-play Logic
+        try {
+            await ensureAudioContext();
+            primeAudio();
+            if (audioContextRef.current?.state === 'suspended') {
+                await audioContextRef.current.resume();
+            }
+            setIsPlaying(true);
+        } catch (e) {
+            console.error("Auto-play failed", e);
+        }
+
         setActiveCard(id);
         const topic = DEFAULT_TOPICS.find(t => t.id === id) || customTopics.find(t => t.id === id);
         const promptToUse = (editedPrompts[id] ?? topic?.prompt ?? customPrompt);
 
         // Record Session Start
         try {
-            fetch('/api/meditation/sessions', {
+            fetch(getApiUrl('/api/meditation/sessions'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1302,7 +1329,7 @@ export default function MeditatePage() {
         setEditedPrompts(prev => ({ ...prev, [editingTopicId]: draftPrompt }));
 
         try {
-            await fetch('/api/prompts', {
+            await fetch(getApiUrl('/api/prompts'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ [editingTopicId]: draftPrompt })
@@ -1317,7 +1344,7 @@ export default function MeditatePage() {
         <AuthGuard>
             <div className="min-h-screen text-slate-200">
                 {/* Main Content */}
-                <div className="flex-1 w-full max-w-4xl mx-auto z-10 overflow-y-auto pb-32 px-4 scrollbar-hide pt-24 min-h-screen">
+                <div className="flex-1 w-full max-w-4xl mx-auto z-10 overflow-y-auto pb-48 px-4 scrollbar-hide pt-24 min-h-screen">
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-8">
                         {/* Default Topics */}
                         {DEFAULT_TOPICS.map((topic) => (
@@ -1446,13 +1473,13 @@ export default function MeditatePage() {
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
                         >
                             <motion.div
                                 initial={{ scale: 0.9, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}
                                 exit={{ scale: 0.9, opacity: 0 }}
-                                className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto scrollbar-hide"
+                                className="w-full max-w-md bg-slate-900 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-6 max-h-[80vh] overflow-y-auto scrollbar-hide pb-24"
                             >
                                 <div className="flex justify-between items-center">
                                     <h3 className="text-lg font-medium">
@@ -1591,7 +1618,7 @@ export default function MeditatePage() {
                                             <button
                                                 onClick={async () => {
                                                     try {
-                                                        const res = await fetch('/api/system-prompt', {
+                                                        const res = await fetch(getApiUrl('/api/system-prompt'), {
                                                             method: 'POST',
                                                             headers: { 'Content-Type': 'application/json' },
                                                             body: JSON.stringify({ prompt: globalSystemPrompt })
@@ -1750,7 +1777,7 @@ export default function MeditatePage() {
                             <motion.div
                                 layoutId={`card-${activeCard}`}
                                 onClick={(e) => e.stopPropagation()}
-                                className="relative w-full max-w-2xl bg-white/10 backdrop-blur-2xl border border-white/20 rounded-[2.5rem] p-8 md:p-12 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] flex flex-col max-h-[85vh]"
+                                className="relative w-full max-w-2xl bg-white/10 backdrop-blur-2xl border border-white/20 rounded-[2.5rem] p-8 md:p-12 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] flex flex-col h-[65vh]"
                                 style={{
                                     boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px 0 0 rgba(255,255,255,0.5), 0 8px 32px rgba(0,0,0,0.37)"
                                 }}
@@ -1803,7 +1830,7 @@ export default function MeditatePage() {
                     )}
                 </AnimatePresence>
                 <div className="fixed bottom-1 left-0 right-0 text-center pointer-events-none opacity-20 text-[10px] text-white z-50">
-                    v1.0.4 (Revert Silence)
+                    v1.1.4 (Cron Window Fix)
                 </div>
             </div>
         </AuthGuard >

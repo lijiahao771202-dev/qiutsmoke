@@ -10,9 +10,9 @@
     "lint": "eslint",
     "electron:dev": "electron .",
     "electron:build": "npm run build && electron-builder",
-    "pages:build": "npx @cloudflare/next-on-pages --skip-build && echo 'Note: Some Node.js-only routes are skipped'",
-    "pages:preview": "wrangler pages dev .vercel/output/static",
-    "pages:deploy": "wrangler pages deploy .vercel/output/static"
+    "pages:build": "npx @cloudflare/next-on-pages --skip-build",
+    "build:cf": "IS_CLOUDFLARE=true next build",
+    "pages:deploy": "wrangler pages deploy out"
   },
   "build": {
     "appId": "com.rain.meditation",

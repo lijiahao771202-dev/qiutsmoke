@@ -1,0 +1,73 @@
+name: 🚀 Deploy to Vercel + Cloudflare
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install Dependencies
+        run: npm ci --legacy-peer-deps
+
+      # ========== VERCEL DEPLOYMENT ==========
+      - name: ▲ Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: ▲ Pull Vercel Environment
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: ▲ Build for Vercel
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: ▲ Deploy to Vercel
+        id: vercel_deploy
+        run: |
+          DEPLOYMENT_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+          echo "✅ Vercel deployed to: $DEPLOYMENT_URL"
+
+      # ========== UPDATE PROXY ==========
+      - name: 🔀 Update Cloudflare Proxy URL
+        run: |
+          VERCEL_URL="${{ steps.vercel_deploy.outputs.url }}"
+          sed -i "s|const VERCEL_API_HOST = '.*';|const VERCEL_API_HOST = '$VERCEL_URL';|" functions/api/\[\[catchall\]\].ts
+          echo "✅ Proxy updated to: $VERCEL_URL"
+
+      # ========== CLOUDFLARE DEPLOYMENT ==========
+      - name: ☁️ Build for Cloudflare
+        run: |
+          chmod +x scripts/build-cf.sh
+          NEXT_PUBLIC_API_URL="" ./scripts/build-cf.sh
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+
+      - name: ☁️ Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy out --project-name=rain-meditation --commit-dirty=true
+
+      - name: ✅ Deployment Complete
+        run: |
+          echo "🎉 Deployment Complete!"
+          echo "Frontend: https://rain-meditation.pages.dev"
+          echo "Backend: ${{ steps.vercel_deploy.outputs.url }}"

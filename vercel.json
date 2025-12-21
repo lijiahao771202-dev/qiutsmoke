@@ -1,5 +1,11 @@
 {
     "framework": "nextjs",
     "rewrites": [],
-    "installCommand": "npm install --legacy-peer-deps"
+    "installCommand": "npm install --legacy-peer-deps",
+    "crons": [
+        {
+            "path": "/api/cron/reminders",
+            "schedule": "*/10 * * * *"
+        }
+    ]
 }

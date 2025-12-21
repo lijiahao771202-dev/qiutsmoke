@@ -99,17 +99,14 @@ export const useNotifications = () => {
             const options: ScheduleOptions = {
                 notifications: [
                     {
-                        id: 1001,
-                        title: '🧘 冥想时刻',
-                        body: '现在是您预定的冥想时间，让我们一起开始吧！',
+                        id: 1001, // Daily Reminder Fixed ID
+                        title: "冥想提醒",
+                        body: "新的一天，花几分钟与自己独处吧 🧘",
                         schedule: {
-                            at: scheduledDate,
-                            repeats: true,
-                            every: 'day',
+                            on: { hour, minute },
+                            allowWhileIdle: true
                         },
-                        sound: 'default',
-                        actionTypeId: 'OPEN_MEDITATE',
-                        extra: { page: '/meditate' }
+                        extra: { url: "/meditate" }
                     }
                 ]
             };
@@ -118,10 +115,56 @@ export const useNotifications = () => {
             console.log('[Notifications] ✅ Daily reminder scheduled for', hour, ':', minute);
             return true;
         } catch (e) {
-            console.error('[Notifications] Schedule failed', e);
+            console.error('[Notifications] Schedule daily failed', e);
             return false;
         }
     }, [permissionGranted, requestPermission]);
+
+    /**
+     * 调度高危时段提醒 (支持多个)
+     */
+    const scheduleDangerReminders = useCallback(async (times: { id: string, time: string, label: string }[]): Promise<boolean> => {
+        try {
+            if (!permissionGranted) {
+                const granted = await requestPermission();
+                if (!granted) return false;
+            }
+
+            // Cancel all existing danger reminders (IDs 2000+)
+            // Note: In a real app we might track IDs better, here we blindly cancel a range or use a group
+            // For simplicity, we assume we just reschedule all active ones.
+            // Capacitor doesn't support 'cancel by group' easily without tracking IDs.
+            // We'll trust the caller to manage or we cancel a known set if possible.
+            // For MVP: We cancel ALL triggers? No, just danger ones.
+            // Risk: We might leak IDs if we don't track them.
+            // Better: Use a fixed hashing for IDs or stored list.
+
+            // Just schedule new ones. The user handles "enable/disable" by passing the current active list.
+            // We should cancel old ones corresponding to these? 
+            // Let's assume we cancel specific IDs if we knew them.
+            // Strategy: Use hash of time string for ID? Or simple counter?
+
+        } catch (e) {
+            return false;
+        }
+        return true;
+    }, [permissionGranted, requestPermission]);
+
+    const scheduleSingleNotification = useCallback(async (id: number, title: string, body: string, hour: number, minute: number) => {
+        try {
+            await LocalNotifications.schedule({
+                notifications: [{
+                    id,
+                    title,
+                    body,
+                    schedule: { on: { hour, minute }, allowWhileIdle: true },
+                    extra: { url: "/meditate" }
+                }]
+            });
+        } catch (e) {
+            console.error("Schedule single failed", e);
+        }
+    }, []);
 
     /**
      * 取消所有提醒
@@ -146,15 +189,17 @@ export const useNotifications = () => {
             if (!permissionGranted) {
                 await requestPermission();
             }
-            await LocalNotifications.schedule({
-                notifications: [
-                    {
-                        id: 9999,
-                        title: '🔔 测试通知',
-                        body: '如果您看到这条通知，说明推送已正常工作！',
-                        schedule: { at: new Date(Date.now() + 3000) }, // 3秒后
-                    }
-                ]
+            const notifs = await LocalNotifications.schedule({
+                notifications: [{
+                    title: "测试通知",
+                    body: "这是一条来自本地的测试通知 👋",
+                    id: 999,
+                    schedule: { at: new Date(Date.now() + 1000) },
+                    sound: undefined,
+                    attachments: undefined,
+                    actionTypeId: "",
+                    extra: null
+                }]
             });
             console.log('[Notifications] Test notification scheduled');
         } catch (e) {
@@ -167,6 +212,7 @@ export const useNotifications = () => {
         permissionGranted,
         requestPermission,
         scheduleDailyReminder,
+        scheduleSingleNotification, // Exposed for generic use
         cancelAllReminders,
         sendTestNotification
     };

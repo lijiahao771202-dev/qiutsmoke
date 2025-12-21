@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Bell, BellOff, Clock, X, Plus, Trash2, Send, AlertTriangle, Shield, Radio, CheckCircle, Smartphone } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useNotifications } from "@/lib/hooks/useNotifications";
+import { getApiUrl } from "@/lib/config";
 
 interface DangerTime {
     id: string;
@@ -24,6 +25,7 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
         permissionGranted: nativePermission,
         requestPermission: requestNativePermission,
         scheduleDailyReminder,
+        scheduleSingleNotification,
         cancelAllReminders,
         sendTestNotification: sendNativeTestNotification
     } = useNotifications();
@@ -50,10 +52,30 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
     // 加载高危时段
     const loadDangerTimes = useCallback(async () => {
         try {
-            const res = await fetch("/api/danger-times");
+            const res = await fetch(getApiUrl("/api/danger-times"));
             if (res.ok) {
                 const data = await res.json();
                 setDangerTimes(data);
+
+                // 📱 Native: Sync to Local Notifications
+                if (isNative && scheduleSingleNotification) {
+                    // 1. Cancel existing generic (we might need a smarter way, but for now just overwrite IDs)
+                    // Assuming IDs 2000-2020 reserved
+
+                    data.forEach((dt: DangerTime, idx: number) => {
+                        if (dt.enabled && dt.time_slot) {
+                            const [h, m] = dt.time_slot.split(":").map(Number);
+                            scheduleSingleNotification(
+                                2000 + idx,
+                                "⚡️ 高危时段提醒",
+                                dt.label ? `现在是"${dt.label}"时段，注意防范诱惑` : "到了高危时段，来做个冥想吧",
+                                h,
+                                m
+                            );
+                        }
+                    });
+                    console.log(`[Native] Scheduled ${data.length} danger reminders`);
+                }
             }
         } catch (err) {
             console.error("Failed to load danger times:", err);
@@ -108,14 +130,19 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
         setMessage("");
 
         try {
-            // 检查浏览器支持
-            if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-                setMessage("❌ 此浏览器不支持推送通知");
+            // 检查浏览器支持 (尝试宽容模式)
+            const isServiceWorkerSupported = "serviceWorker" in navigator;
+            const isPushSupported = "PushManager" in window;
+
+            if (!isServiceWorkerSupported) {
+                setMessage("❌ 此环境不支持推送 (无 ServiceWorker)");
                 setPushLoading(false);
                 return;
             }
+            // iOS PWA 16.4+ Support Checks
+            // 注意: 在 iOS PWA 中，PushManager 有时需要用户手势触发后才可用
 
-            // 请求通知权限
+            // 请求通知权限 (iOS 必须在点击事件中请求)
             if (Notification.permission === "default") {
                 const result = await Notification.requestPermission();
                 setPermission(result);
@@ -235,11 +262,46 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
         return result === "granted";
     };
 
+    // 🚀 Sync Daily Reminders to Server (for iOS Push)
+    const syncDailyRemindersToServer = async (times: string[]) => {
+        try {
+            // 1. Fetch existing dangerous times
+            const res = await fetch(getApiUrl("/api/danger-times"));
+            if (!res.ok) return;
+            const existing: DangerTime[] = await res.json();
+
+            // 2. Identify "Daily Reminder" entries (Label="每日提醒")
+            const oldReminders = existing.filter(t => t.label === "每日提醒");
+
+            // 3. Delete old entries
+            await Promise.all(oldReminders.map(t => fetch(getApiUrl(`/api/danger-times?id=${t.id}`), { method: "DELETE" })));
+
+            // 4. Create new entries
+            await Promise.all(times.map(time => {
+                return fetch(getApiUrl("/api/danger-times"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        time_slot: time,
+                        label: "每日提醒"
+                    })
+                });
+            }));
+
+            // Refresh local danger list if needed (optional)
+            loadDangerTimes();
+
+        } catch (e) {
+            console.error("Failed to sync daily reminders:", e);
+        }
+    };
+
     const subscribe = async () => {
         setLoading(true);
         setMessage("");
 
         try {
+            // ... (keep native logic) ...
             // 原生环境使用 Capacitor Local Notifications
             if (isNative) {
                 if (!nativePermission) {
@@ -270,7 +332,17 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
                         return;
                     }
                 }
-                setMessage("✅ 提醒已开启");
+
+                // 🚀 Sync to Server for Push
+                await syncDailyRemindersToServer(reminderTimes);
+
+                // ⚡️ Implicitly try to subscribe to Push (PWA Experience)
+                if (!isPushSubscribed) {
+                    // Don't await this to fail the whole flow, just try it side-effect
+                    subscribePush().catch(console.error);
+                }
+
+                setMessage("✅ 提醒已开启 (已同步云端)");
             }
 
             localStorage.setItem("meditation_reminders", JSON.stringify({
@@ -294,6 +366,9 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
         // 原生环境取消所有提醒
         if (isNative) {
             await cancelAllReminders();
+        } else {
+            // 🚀 Web: Remove from server
+            await syncDailyRemindersToServer([]); // Empty array = clear all "每日提醒"
         }
 
         localStorage.setItem("meditation_reminders", JSON.stringify({
@@ -330,7 +405,7 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
         setMessage("");
 
         try {
-            const res = await fetch("/api/danger-times", {
+            const res = await fetch(getApiUrl("/api/danger-times"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -360,7 +435,7 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
     // 删除高危时段
     const removeDangerTime = async (id: string) => {
         try {
-            const res = await fetch(`/api/danger-times?id=${id}`, {
+            const res = await fetch(getApiUrl(`/api/danger-times?id=${id}`), {
                 method: "DELETE"
             });
 
@@ -729,12 +804,33 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
                         className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
                     />
                 ) : (
-                    <>
-                        <Send className="w-4 h-4" />
-                        发送测试通知
-                    </>
+                    <Bell className="w-4 h-4" />
                 )}
+                {testLoading ? "发送中..." : "发送即时测试通知"}
             </motion.button>
+
+            {/* Manual Server Check Trigger */}
+            <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={async () => {
+                    setTestLoading(true);
+                    setMessage("⏳ 正在请求云端检查...");
+                    try {
+                        const res = await fetch(getApiUrl("/api/cron/reminders?source=manual"));
+                        const data = await res.json();
+                        setMessage(`✅ 检查完成: 匹配 ${data.totalMatched || 0} 条，发送 ${data.sent || 0} 条`);
+                    } catch (e) {
+                        setMessage("❌ 请求失败");
+                    }
+                    setTestLoading(false);
+                }}
+                disabled={testLoading}
+                className="w-full mt-2 py-3 rounded-xl bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors text-xs flex items-center justify-center gap-2"
+            >
+                手动触发云端检测 (调试用)
+            </motion.button>
+
 
             {/* 消息提示 */}
             <AnimatePresence>
@@ -751,11 +847,13 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
             </AnimatePresence>
 
             {/* 权限提示 */}
-            {permission === "default" && (
-                <p className="text-xs text-white/30 text-center mt-4">
-                    💡 点击按钮后请允许通知权限
-                </p>
-            )}
-        </motion.div>
+            {
+                permission === "default" && (
+                    <p className="text-xs text-white/30 text-center mt-4">
+                        💡 点击按钮后请允许通知权限
+                    </p>
+                )
+            }
+        </motion.div >
     );
 }

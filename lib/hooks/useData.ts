@@ -7,6 +7,7 @@
  */
 
 import useSWR from 'swr';
+import { getApiUrl } from '../config';
 
 // 通用 fetcher
 const fetcher = async (url: string) => {
@@ -39,7 +40,7 @@ export interface TTSCard {
 
 export function useTTSCards() {
     const { data, error, isLoading, mutate } = useSWR<TTSCard[]>(
-        '/api/tts/cards',
+        getApiUrl('/api/tts/cards'),
         fetcher,
         {
             ...swrConfig,
@@ -59,7 +60,8 @@ export function useTTSCards() {
             mutate([optimisticCard, ...(data || [])], false);
 
             // 发送请求
-            const res = await fetch('/api/tts/cards', {
+            // 发送请求
+            const res = await fetch(getApiUrl('/api/tts/cards'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newCard),
@@ -76,7 +78,7 @@ export function useTTSCards() {
             // 乐观更新 UI
             mutate((data || []).filter(c => c.id !== id), false);
 
-            await fetch(`/api/tts/cards?id=${id}`, { method: 'DELETE' });
+            await fetch(getApiUrl(`/api/tts/cards?id=${id}`), { method: 'DELETE' });
             mutate();
         },
     };
@@ -94,7 +96,7 @@ export interface StatsData {
 
 export function useMeditationStats() {
     const { data, error, isLoading, mutate } = useSWR<StatsData>(
-        '/api/meditation/stats',
+        getApiUrl('/api/meditation/stats'),
         fetcher,
         {
             ...swrConfig,
@@ -121,7 +123,7 @@ export interface Session {
 }
 
 export function useMeditationSessions(month?: string) {
-    const url = month ? `/api/meditation/sessions?month=${month}` : '/api/meditation/sessions';
+    const url = getApiUrl(month ? `/api/meditation/sessions?month=${month}` : '/api/meditation/sessions');
 
     const { data, error, isLoading, mutate } = useSWR<Session[]>(
         url,
@@ -152,7 +154,7 @@ export interface MeditationTopic {
 
 export function useMeditationTopics() {
     const { data, error, isLoading, mutate } = useSWR<MeditationTopic[]>(
-        '/api/meditation/cards',
+        getApiUrl('/api/meditation/cards'),
         fetcher,
         {
             ...swrConfig,
@@ -167,7 +169,7 @@ export function useMeditationTopics() {
         mutate,
         // 添加话题
         addTopic: async (topic: Partial<MeditationTopic>) => {
-            const res = await fetch('/api/meditation/cards', {
+            const res = await fetch(getApiUrl('/api/meditation/cards'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(topic),
@@ -180,7 +182,7 @@ export function useMeditationTopics() {
         // 删除话题
         deleteTopic: async (id: string) => {
             mutate((data || []).filter(t => t.id !== id), false);
-            await fetch(`/api/meditation/cards?id=${id}`, { method: 'DELETE' });
+            await fetch(getApiUrl(`/api/meditation/cards?id=${id}`), { method: 'DELETE' });
             mutate();
         },
     };

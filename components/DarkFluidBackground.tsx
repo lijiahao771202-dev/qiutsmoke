@@ -55,13 +55,34 @@ const PALETTES = [
 export function DarkFluidBackground() {
     const [palette, setPalette] = useState(PALETTES[0]);
     const [mounted, setMounted] = useState(false);
+    const [tilt, setTilt] = useState({ x: 0, y: 0 });
 
     useEffect(() => {
         // Randomly select a palette on mount
-        // Use a simple hash of the date or just random to ensure freshness
         const randomIndex = Math.floor(Math.random() * PALETTES.length);
         setPalette(PALETTES[randomIndex]);
         setMounted(true);
+
+        // Gyroscope Parallax Logic
+        const handleOrientation = (event: DeviceOrientationEvent) => {
+            const { beta, gamma } = event;
+            if (beta === null || gamma === null) return;
+
+            // X axis (Gamma): Left/Right tilt (-90 to 90)
+            // Y axis (Beta): Front/Back tilt (-180 to 180)
+
+            // Limit the tilt range to avoid extreme movement
+            // Gamma: +/- 20deg -> +/- 20px
+            // Beta:  +/- 20deg -> +/- 20px
+
+            const x = Math.max(-30, Math.min(30, gamma || 0));
+            const y = Math.max(-30, Math.min(30, (beta || 0) - 45)); // Subtract 45 to assume holding position
+
+            setTilt({ x, y });
+        };
+
+        window.addEventListener('deviceorientation', handleOrientation);
+        return () => window.removeEventListener('deviceorientation', handleOrientation);
     }, []);
 
     if (!mounted) return null; // Prevent hydration mismatch
@@ -91,6 +112,11 @@ export function DarkFluidBackground() {
                     repeat: Infinity,
                     ease: "easeInOut",
                 }}
+                // Apply Parallax with stiffer damping via strict transform
+                style={{
+                    transform: `translate(${tilt.x * 1.5}px, ${tilt.y * 1.5}px)`,
+                    transition: 'transform 0.2s cubic-bezier(0.17, 0.67, 0.83, 0.67)'
+                }}
             />
 
             {/* Orb 2: Middle Right */}
@@ -113,6 +139,10 @@ export function DarkFluidBackground() {
                     ease: "easeInOut",
                     delay: 2,
                 }}
+                style={{
+                    transform: `translate(${tilt.x * -1.2}px, ${tilt.y * -1.2}px)`, // Inverse movement for depth
+                    transition: 'transform 0.2s cubic-bezier(0.17, 0.67, 0.83, 0.67)'
+                }}
             />
 
             {/* Orb 3: Bottom Left */}
@@ -134,6 +164,10 @@ export function DarkFluidBackground() {
                     repeat: Infinity,
                     ease: "easeInOut",
                     delay: 5,
+                }}
+                style={{
+                    transform: `translate(${tilt.x}px, ${tilt.y}px)`,
+                    transition: 'transform 0.2s cubic-bezier(0.17, 0.67, 0.83, 0.67)'
                 }}
             />
 

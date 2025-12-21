@@ -6,7 +6,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 // 切换模式：'prod' = 生产/测试版 (热更新) | 'dev' = 本地开发 (Live Reload)
 // 提示：开发时改为 'dev'，打包发布/真机测试时改为 'prod'
-const MODE: 'prod' | 'dev' = 'dev';
+const MODE: 'prod' | 'dev' = 'prod';
 
 // 🏠 本地开发地址 (请根据 ifconfig 确认本机 IP)
 // 你的本机 IP: 192.168.31.34 (端口 3001)

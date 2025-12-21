@@ -10,6 +10,7 @@ import { useBackground, WALLPAPERS } from "./BackgroundContext";
 import { cn } from "@/lib/utils";
 import { AVATAR_PRESETS, getAvatarById } from "@/lib/avatars";
 import { useHaptics } from "@/lib/hooks/useHaptics";
+import { getApiUrl } from "@/lib/config";
 
 export default function UserProfile() {
     const [user, setUser] = useState<any>(null);
@@ -86,7 +87,7 @@ export default function UserProfile() {
     const handleSaveProfile = async () => {
         setIsSaving(true);
         try {
-            const res = await fetch("/api/profile", {
+            const res = await fetch(getApiUrl("/api/profile"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ nickname, avatarId }),

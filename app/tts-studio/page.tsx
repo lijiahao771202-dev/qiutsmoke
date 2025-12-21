@@ -28,7 +28,10 @@ const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
 // -----------------------------------------------------------------------------
 // Component: Glass Input Card
 // -----------------------------------------------------------------------------
-function GlassInput({ onAdd }: { onAdd: () => void }) {
+// TTSCard definition is imported
+import type { TTSCard } from "@/lib/hooks/useData";
+
+function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Promise<any> }) {
     const [text, setText] = useState("");
     const [title, setTitle] = useState("");
     const [voiceId, setVoiceId] = useState(VOICES[0].id);
@@ -45,17 +48,32 @@ function GlassInput({ onAdd }: { onAdd: () => void }) {
         if (!text.trim()) return;
         setIsLoading(true);
         try {
-            const res = await fetch("/api/tts/cards", {
-                method: "POST",
-                body: JSON.stringify({ title, content: text, voiceId, rate: "0%", guidanceLevel }),
-            });
-            if (res.ok) {
-                setText("");
-                setTitle("");
-                setAiPrompt("");
-                onAdd();
-                triggerSuccess(); // Haptic feedback
-            }
+            // 使用传入的 addCard 方法 (支持乐观更新)
+            await onAddCard({
+                title: title.trim() || undefined, // 确保空字符串转为 undefined 或被处理
+                content: text,
+                voice_id: voiceId, // 注意：useTTSCards 接口期望 snake_case 的 voice_id? 检查 TTSCard 定义
+                // 修正：接口是 snake_case 还是 camelCase? TTSCard 定义有 voice_id。
+                // 但 GlassInput 原来发的是 { voiceId }。API 应该是兼容的或者自动转换。
+                // 暂时保持与原逻辑一致，但 addCard 期望 Partial<TTSCard>，即 voice_id。
+                // 这里我手动映射一下以防万一。
+                // 原代码：body: JSON.stringify({ title, content: text, voiceId, rate: "0%", guidanceLevel }),
+                // 假设 API 接受 camelCase，但 hook 类型是 snake_case。
+                // 我将同时发送两者以防万一，或者更安全地：查看 useData.ts
+                // useData.ts 定义 TTSCard 使用 voice_id。
+                // 无论如何，我会发送 voice_id
+                voice_id: voiceId,
+                rate: "0%",
+                guidance_level: guidanceLevel
+            } as any); // cast as any to be safe with unknown backend mapping in hook
+
+            setText("");
+            setTitle("");
+            setAiPrompt("");
+            triggerSuccess();
+        } catch (e) {
+            console.error("Add failed", e);
+            triggerHeavy();
         } finally {
             setIsLoading(false);
         }
@@ -1976,7 +1994,7 @@ ${densityRule}
                         <h1 className="text-2xl font-medium tracking-tight text-white/90">声波工坊</h1>
                         <p className="text-rose-200/60 text-sm mt-1">Text to Speech Studio</p>
                     </div>
-                    <GlassInput onAdd={() => { }} />
+                    <GlassInput onAddCard={apiAddCard} />
 
                     <div className="mt-16">
                         <div className="flex items-center gap-4 mb-8">
@@ -2015,7 +2033,7 @@ ${densityRule}
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
                             onClick={() => setEditingCard(null)}
                         >
                             <motion.div

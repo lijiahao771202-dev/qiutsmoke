@@ -50,18 +50,20 @@ export async function POST(req: Request) {
     try {
         const supabase = getSupabaseClient();
         const body = await req.json();
-        const { content, voiceId, rate } = body;
+        const { title, content, voiceId, voice_id, rate, guidanceLevel, guidance_level } = body;
 
-        console.log(`[TTS Cards POST Impl] Received: voice=${voiceId}, content_len=${content?.length}`);
+        console.log(`[TTS Cards POST Impl] Received: title=${title}, voice=${voice_id || voiceId}, content_len=${content?.length}`);
 
         if (!content) return new Response(JSON.stringify({ error: 'Content required' }), { status: 400 });
 
         const { data, error } = await supabase
             .from('tts_cards')
             .insert({
+                title: title || undefined, // undefined will likely skip if column has default or insert null. If DB column is not not-null it works.
                 content,
-                voice_id: voiceId || 'zh-CN-XiaohanNeural',
-                rate: rate || '0%'
+                voice_id: voice_id || voiceId || 'zh-CN-XiaohanNeural',
+                rate: rate || '0%',
+                guidance_level: guidance_level || guidanceLevel || 'medium'
             })
             .select()
             .single();
@@ -107,7 +109,7 @@ export async function PATCH(req: Request) {
     try {
         const supabase = getSupabaseClient();
         const body = await req.json();
-        const { id, title, content, voiceId, rate } = body;
+        const { id, title, content, voiceId, voice_id, rate, guidanceLevel, guidance_level } = body;
 
         if (!id) return new Response(JSON.stringify({ error: 'ID required' }), { status: 400 });
 
@@ -115,7 +117,10 @@ export async function PATCH(req: Request) {
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
         if (voiceId !== undefined) updates.voice_id = voiceId;
+        if (voice_id !== undefined) updates.voice_id = voice_id;
         if (rate !== undefined) updates.rate = rate;
+        if (guidanceLevel !== undefined) updates.guidance_level = guidanceLevel;
+        if (guidance_level !== undefined) updates.guidance_level = guidance_level;
 
         const { data, error } = await supabase
             .from('tts_cards')
