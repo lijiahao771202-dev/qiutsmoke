@@ -1048,10 +1048,9 @@ export default function MeditatePage() {
         view.setUint32(40, dataSize, true);
         const dataOffset = 44;
 
-        // 🔥 [iOS Fix] 使用极低音量的随机噪声 (Dither) 代替纯静音
+        // Revert to pure silence
         for (let i = 0; i < samples; i++) {
-            const signal = Math.random() < 0.5 ? 1 : -1;
-            view.setInt16(dataOffset + i * 2, signal, true);
+            view.setInt16(dataOffset + i * 2, 0, true);
         }
 
         const blob = new Blob([view], { type: 'audio/wav' });
@@ -1804,7 +1803,7 @@ export default function MeditatePage() {
                     )}
                 </AnimatePresence>
                 <div className="fixed bottom-1 left-0 right-0 text-center pointer-events-none opacity-20 text-[10px] text-white z-50">
-                    v1.0.3 (iOS Audio Active Noise Fix)
+                    v1.0.4 (Revert Silence)
                 </div>
             </div>
         </AuthGuard >
