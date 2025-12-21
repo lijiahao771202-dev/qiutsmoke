@@ -1047,9 +1047,13 @@ export default function MeditatePage() {
         writeStr(36, 'data');
         view.setUint32(40, dataSize, true);
         const dataOffset = 44;
+
+        // 🔥 [iOS Fix] 使用极低音量的随机噪声 (Dither) 代替纯静音
         for (let i = 0; i < samples; i++) {
-            view.setInt16(dataOffset + i * 2, 0, true);
+            const signal = Math.random() < 0.5 ? 1 : -1;
+            view.setInt16(dataOffset + i * 2, signal, true);
         }
+
         const blob = new Blob([view], { type: 'audio/wav' });
         return URL.createObjectURL(blob);
     };
@@ -1799,7 +1803,10 @@ export default function MeditatePage() {
                         </motion.div>
                     )}
                 </AnimatePresence>
+                <div className="fixed bottom-1 left-0 right-0 text-center pointer-events-none opacity-20 text-[10px] text-white z-50">
+                    v1.0.3 (iOS Audio Active Noise Fix)
+                </div>
             </div>
-        </AuthGuard>
+        </AuthGuard >
     );
 }

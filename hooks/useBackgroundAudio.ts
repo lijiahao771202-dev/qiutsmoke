@@ -77,6 +77,13 @@ export function useBackgroundAudio(): BackgroundAudioReturn {
         writeStr(36, 'data');
         view.setUint32(40, samples * 2, true);
 
+        // 🔥 [iOS Fix] 填充极低音量噪音 (Dither)
+        const dataOffset = 44;
+        for (let i = 0; i < samples; i++) {
+            const signal = Math.random() < 0.5 ? 1 : -1;
+            view.setInt16(dataOffset + i * 2, signal, true);
+        }
+
         const blob = new Blob([view], { type: 'audio/wav' });
         const url = URL.createObjectURL(blob);
 
