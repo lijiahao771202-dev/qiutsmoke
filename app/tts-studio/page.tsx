@@ -590,11 +590,13 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 });
                 if (res && res.ok) {
                     const blob = await res.blob();
+                    // 🔥 同时保存 buffer 和 blobUrl，用于 HTMLAudioElement 后台播放
+                    const blobUrl = URL.createObjectURL(blob);
                     const arrayBuffer = await blob.arrayBuffer();
                     const buffer = await ctx.decodeAudioData(arrayBuffer);
 
                     setAudioQueue(prev => prev.map(q =>
-                        q.id === item.id ? { ...q, buffer } : q
+                        q.id === item.id ? { ...q, buffer, blobUrl } : q
                     ));
 
                     completedCount++;
@@ -628,99 +630,93 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         };
     }, [isPlaying, audioQueue.length]);
 
-    // Gapless Scheduler Effect
+    // 🔥 用 HTMLAudioElement 顺序播放（支持后台）
     useEffect(() => {
+        // 停止播放时清理
         if (!isPlaying) {
+            if (currentAudio) currentAudio.pause();
             if (audioContextRef.current?.state === 'running') {
                 audioContextRef.current.suspend();
             }
             return;
         }
 
-        if (audioQueue.length === 0 && scheduledIdsRef.current.size === 0) {
+        // 队列播放完成
+        if (audioQueue.length === 0) {
             setIsPlaying(false);
             return;
         }
 
-        const runScheduler = async () => {
-            await ensureAudioContext();
-            const ctx = audioContextRef.current;
-            if (!ctx) return;
+        // 🔥 关键防护：如果有音频正在播放，不处理
+        if (currentAudio && !currentAudio.paused) return;
 
-            if (ctx.state === 'suspended') {
-                await ctx.resume();
-            }
+        // 如果当前音频暂停了，恢复播放
+        if (currentAudio && currentAudio.paused) {
+            currentAudio.play().catch(e => console.error("Resume failed", e));
+            return;
+        }
 
-            // Start prefetching
-            prefetchNextTextItems(audioQueue);
+        // 预加载
+        prefetchNextTextItems(audioQueue);
 
-            for (let i = 0; i < audioQueue.length; i++) {
-                const item = audioQueue[i];
-                if (scheduledIdsRef.current.has(item.id)) continue;
+        // 处理队列第一个项目
+        const item = audioQueue[0];
 
-                const start = Math.max(ctx.currentTime, nextStartTimeRef.current);
+        if (item.type === 'pause') {
+            // 播放静默
+            (async () => {
+                await playSilence(item.duration / 1000);
+                setAudioQueue(prev => prev.slice(1));
+            })();
+        } else if (item.type === 'text' && (item as any).blobUrl) {
+            // 🔥 用 HTMLAudioElement 播放（支持后台）
+            const audio = new Audio((item as any).blobUrl);
+            (audio as any).playsInline = true;
+            audio.preload = 'auto';
 
-                if (item.type === 'pause') {
-                    nextStartTimeRef.current = start + (item.duration / 1000);
-                    scheduledIdsRef.current.add(item.id);
-
-                    setTimeout(() => {
-                        setAudioQueue(prev => prev.filter(q => q.id !== item.id));
-                        scheduledIdsRef.current.delete(item.id);
-                    }, (nextStartTimeRef.current - ctx.currentTime) * 1000 + 100);
-                } else if (item.type === 'text' && item.buffer) {
-                    const source = ctx.createBufferSource();
-                    source.buffer = item.buffer;
-
-                    const gainNode = ctx.createGain();
-                    source.connect(gainNode);
-                    gainNode.connect(ctx.destination);
-
-                    gainNode.gain.setValueAtTime(0, start);
-                    gainNode.gain.linearRampToValueAtTime(1, start + 0.01);
-
-                    const endTime = start + item.buffer.duration;
-                    gainNode.gain.setValueAtTime(1, endTime - 0.01);
-                    gainNode.gain.linearRampToValueAtTime(0, endTime);
-
-                    source.onended = () => {
-                        setAudioQueue(prev => prev.filter(q => q.id !== item.id));
-                        scheduledIdsRef.current.delete(item.id);
-                        sourceNodesRef.current.delete(item.id);
-                    };
-
-                    source.start(start);
-                    nextStartTimeRef.current = start + item.buffer.duration;
-                    scheduledIdsRef.current.add(item.id);
-                    sourceNodesRef.current.set(item.id, source);
-
-                    // ✅ 回调为 3 个项目的调度缓冲
-                    if (scheduledIdsRef.current.size > 3) break;
-                } else if (item.type === 'text' && !item.buffer) {
-                    // Item not ready, let prefetch handle it or fetch it now if it's the first one
-                    if (i === 0) {
-                        setIsLoadingAudio(true);
-                        try {
-                            const res = await fetchWithRetry("/api/tts", {
-                                method: "POST",
-                                body: JSON.stringify({ text: item.content, voice: item.voiceId, rate: item.rate }),
-                            });
-                            if (res && res.ok) {
-                                const blob = await res.blob();
-                                const ab = await blob.arrayBuffer();
-                                const buffer = await ctx.decodeAudioData(ab);
-                                setAudioQueue(prev => prev.map(q => q.id === item.id ? { ...q, buffer } : q));
-                            }
-                        } catch (e) { console.error(e); }
-                        setIsLoadingAudio(false);
-                    }
-                    break;
+            // 设置 Media Session
+            try {
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.metadata = new MediaMetadata({
+                        title: card?.title || 'TTS 播放',
+                        artist: 'Rain 声波工坊',
+                        artwork: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }]
+                    });
+                    navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
+                    navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
                 }
-            }
-        };
+            } catch { }
 
-        runScheduler();
-    }, [isPlaying, audioQueue]);
+            audio.onended = () => {
+                const blobUrl = (item as any).blobUrl;
+                if (blobUrl?.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
+                setAudioQueue(prev => prev.slice(1));
+                setCurrentAudio(null);
+            };
+            audio.onerror = () => {
+                const blobUrl = (item as any).blobUrl;
+                if (blobUrl?.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
+                setAudioQueue(prev => prev.slice(1));
+                setCurrentAudio(null);
+            };
+
+            setCurrentAudio(audio);
+            (async () => {
+                try {
+                    await ensureAudioContext();
+                    await audio.play();
+                } catch (e) {
+                    console.error('[TTS Studio] Play failed', e);
+                }
+            })();
+        } else if (item.type === 'text' && !item.buffer) {
+            // 音频还在加载，等待
+            setIsLoadingAudio(true);
+        } else {
+            // 跳过无法播放的
+            setAudioQueue(prev => prev.slice(1));
+        }
+    }, [isPlaying, audioQueue, currentAudio]);
 
 
     // -------------------------------------------------------------------------
