@@ -47,10 +47,13 @@ export async function POST(req: Request) {
         const vercelUrl = `${VERCEL_BACKEND}/api/tts`;
 
         // Safety: prevent loop if we're already on Vercel
+        // Safety: prevent loop if we're already on Vercel or Localhost
         const url = new URL(req.url);
-        if (url.hostname.includes('vercel.app') && !isProxied) {
-            // We're on Vercel, forward to implementation
+        if ((url.hostname.includes('vercel.app') || url.hostname.includes('localhost') || url.hostname.includes('127.0.0.1')) && !isProxied) {
+            // We're on Vercel or Localhost, forward to implementation
             const implUrl = new URL('/api/tts-impl', req.url);
+            console.log(`[TTS Edge] Local/Vercel detected. Forwarding to: ${implUrl.toString()}`);
+
             const implResponse = await fetch(implUrl.toString(), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -62,7 +65,7 @@ export async function POST(req: Request) {
                 headers: {
                     'Content-Type': implResponse.headers.get('Content-Type') || 'audio/mpeg',
                     'Access-Control-Allow-Origin': '*',
-                    'X-TTS-Handler': 'vercel-direct',
+                    'X-TTS-Handler': 'local-impl',
                 },
             });
         }

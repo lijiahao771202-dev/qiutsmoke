@@ -52,6 +52,8 @@ export async function POST(req: Request) {
         const body = await req.json();
         const { content, voiceId, rate } = body;
 
+        console.log(`[TTS Cards POST Impl] Received: voice=${voiceId}, content_len=${content?.length}`);
+
         if (!content) return new Response(JSON.stringify({ error: 'Content required' }), { status: 400 });
 
         const { data, error } = await supabase

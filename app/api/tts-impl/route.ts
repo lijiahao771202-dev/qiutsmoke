@@ -9,7 +9,7 @@ export async function POST(req: Request) {
         const body = await req.json();
         const { text, voice, rate } = body;
 
-        console.log(`[TTS Impl] Generating audio for: "${text.substring(0, 20)}..."`);
+        console.log(`[TTS Impl] Generating audio for: "${text.substring(0, 20)}..." | Voice: ${voice} | Rate: ${rate}`);
 
         // Dynamic import to be safe, though this file is nodejs runtime
         const { EdgeTTS } = await import('node-edge-tts');
@@ -17,9 +17,13 @@ export async function POST(req: Request) {
         const path = await import('path');
         const os = await import('os');
 
+        // Extract language from voice ID (e.g., "zh-CN-XiaoxiaoNeural" -> "zh-CN")
+        // Default to "zh-CN" if parsing fails
+        const lang = voice ? voice.split('-').slice(0, 2).join('-') : "zh-CN";
+
         const tts = new EdgeTTS({
             voice: voice || "zh-CN-XiaohanNeural",
-            lang: "zh-CN",
+            lang: lang,
             outputFormat: "audio-24khz-48kbitrate-mono-mp3",
             rate: rate || "0%",
         });
@@ -35,7 +39,8 @@ export async function POST(req: Request) {
         // Estimate min bytes: 1500 bytes per char is a safe rough estimate for high quality mp3
         // or just ensure it's not basically empty. 
         // 48kbps = 6KB/s. 
-        const minExpectedBytes = Math.max(text.length * 800, 1000);
+        // Relaxed check: 200 bytes per char or 100 bytes absolute min
+        const minExpectedBytes = Math.max(text.length * 200, 100);
 
         for (let i = 0; i <= maxRetries; i++) {
             try {
@@ -56,6 +61,30 @@ export async function POST(req: Request) {
             } catch (e) {
                 lastError = e;
                 console.warn(`[TTS Impl] Attempt ${i} failed:`, e);
+
+                // If last attempt and failed, try fallback voice (Xiaoxiao) if not already using it
+                if (i === maxRetries && voice !== 'zh-CN-XiaoxiaoNeural') {
+                    console.log(`[TTS Impl] Fallback to safe voice: zh-CN-XiaoxiaoNeural`);
+                    try {
+                        const fallbackTts = new EdgeTTS({
+                            voice: 'zh-CN-XiaoxiaoNeural',
+                            lang: 'zh-CN',
+                            outputFormat: "audio-24khz-48kbitrate-mono-mp3",
+                            rate: rate || "0%",
+                        });
+                        await fallbackTts.ttsPromise(text, tempFile);
+                        if (fs.existsSync(tempFile)) {
+                            const stats = fs.statSync(tempFile);
+                            if (stats.size >= minExpectedBytes) {
+                                audioBuffer = fs.readFileSync(tempFile);
+                                console.log(`[TTS Impl] Fallback Success: ${stats.size} bytes`);
+                                break;
+                            }
+                        }
+                    } catch (fbError) {
+                        console.error(`[TTS Impl] Fallback failed too:`, fbError);
+                    }
+                }
             } finally {
                 if (fs.existsSync(tempFile)) {
                     try { fs.unlinkSync(tempFile); } catch (e) { }

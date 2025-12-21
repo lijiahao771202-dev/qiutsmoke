@@ -41,15 +41,10 @@ export async function middleware(request: NextRequest) {
         }
     )
 
-    // 使用 getSession() 只读取 Cookie，不发网络请求
-    const { data: { session } } = await supabase.auth.getSession()
-
-    // 如果没有 session，重定向到登录页
-    if (!session) {
-        const redirectUrl = new URL('/auth', request.url)
-        redirectUrl.searchParams.set('next', pathname)
-        return NextResponse.redirect(redirectUrl)
-    }
+    // 使用 getSession() 刷新 Cookie（如果有），但不通过 Middleware 强制拦截重定向
+    // "Zero Latency" 策略：把鉴权交给前端 AuthGuard 或后端 API 处理
+    // 这样页面切换就是纯前端行为，不会被 Middleware 的网络请求阻塞
+    await supabase.auth.getSession()
 
     return response
 }

@@ -16,12 +16,7 @@ export type { TTSCard } from "@/lib/hooks/useData";
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
-const VOICES = [
-    { id: "zh-CN-XiaoxiaoNeural", name: "晓晓 (女声-温暖)" },
-    { id: "zh-CN-YunxiNeural", name: "云希 (男声-沉稳)" },
-    { id: "zh-CN-XiaohanNeural", name: "晓涵 (女声-温柔)" },
-    { id: "zh-CN-YunyangNeural", name: "云野 (男声-专业)" },
-];
+import { VOICES } from "@/lib/constants";
 
 const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
     light: { label: "🍃 轻引导", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/20" },
@@ -397,6 +392,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
     // Refs
     const currentItemIdRef = useRef<string | null>(null);
+    const isProcessingRef = useRef<boolean>(false); // 🔥 防止 useEffect 并发执行
     const audioContextRef = useRef<AudioContext | null>(null);
     const cachedSourceRef = useRef<AudioBufferSourceNode | null>(null);
     const cachedAudioBufferRef = useRef<AudioBuffer | null>(null); // 保存解码后的 AudioBuffer
@@ -409,6 +405,10 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     const scheduledIdsRef = useRef<Set<string>>(new Set());
     const sourceNodesRef = useRef<Map<string, AudioBufferSourceNode>>(new Map());
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    // 🔥 持久 Audio 对象：在用户手势中初始化后可复用，避免 iOS NotAllowedError
+    const sharedAudioRef = useRef<HTMLAudioElement | null>(null);
+    const primeOnceRef = useRef(false);
+    const isTogglingRef = useRef(false); // 🔥 防止快速点击产生的竞态
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -453,26 +453,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         return () => { releaseWakeLock(); };
     }, [isPlaying]);
 
-    const fetchWithRetry = async (url: string, options: RequestInit, retries = 3): Promise<Response | null> => {
-        for (let i = 0; i < retries; i++) {
-            try {
-                const res = await fetch(url, options);
-                if (res.ok) return res;
 
-                // 🔥 详细记录错误信息
-                const errorText = await res.text().catch(() => "No error details");
-                console.warn(`[TTS] Request failed (Attempt ${i + 1}/${retries}): ${res.status} - ${errorText}`);
-
-                // 如果是 4xx 错误（除 408/429 外），不重试
-                if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) return null;
-            } catch (e) {
-                console.warn(`[TTS] Retry ${i + 1}/${retries}`, e);
-                if (i === retries - 1) return null;
-                await new Promise(r => setTimeout(r, 1000 * (i + 1))); // 递增延迟
-            }
-        }
-        return null;
-    };
 
     // Cleanup
     useEffect(() => {
@@ -540,6 +521,21 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         return playAudioElement(url);
     };
 
+    // 🔥 在用户手势中初始化 sharedAudioRef，解锁 iOS 音频播放
+    const primeAudio = () => {
+        if (primeOnceRef.current) return;
+        primeOnceRef.current = true;
+        // iOS 要求 audio.play() 必须在用户手势的同步调用链中执行
+        const url = createSilenceWavURL(0.05);
+        const audio = new Audio(url);
+        (audio as any).playsInline = true;
+        audio.volume = 0.01;
+        audio.onended = () => URL.revokeObjectURL(url);
+        audio.onerror = () => URL.revokeObjectURL(url);
+        audio.play().catch(() => { });
+        // 保存到 ref，后续复用
+        sharedAudioRef.current = audio;
+    };
 
     // -------------------------------------------------------------------------
     // Queue Consumer with PREFETCH (预加载机制)
@@ -638,23 +634,28 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             if (audioContextRef.current?.state === 'running') {
                 audioContextRef.current.suspend();
             }
+            isProcessingRef.current = false; // 重置
+            currentItemIdRef.current = null; // 重置
             return;
         }
 
         // 队列为空时停止
         if (audioQueue.length === 0) {
+            // 🔥 如果正在使用缓存播放且有缓存，不要停止
+            if (useCachedPlayback && hasCachedAudio) return;
+
             setIsPlaying(false);
             return;
         }
 
+        // 🔥 锁：防止并发执行
+        if (isProcessingRef.current) return;
+
         // 🔥 关键防护：如果有音频正在播放，不处理
         if (currentAudio && !currentAudio.paused) return;
 
-        // 如果当前音频暂停了，恢复播放
-        if (currentAudio && currentAudio.paused) {
-            currentAudio.play().catch(e => console.error("Resume failed", e));
-            return;
-        }
+        // 🔥 如果 currentAudio 存在但已暂停（可能是播放完毕），清理它
+        // 不要尝试恢复，因为会触发 NotAllowedError
 
         // 持续预加载
         prefetchNextTextItems(audioQueue);
@@ -662,17 +663,50 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         // 处理队列第一个项目
         const item = audioQueue[0];
 
+        // 🔥 防止重复处理同一个项目（避免跳读）
+        if (currentItemIdRef.current === item.id) return;
+
+        // 🔥 设置锁，防止并发处理
+        isProcessingRef.current = true;
+        currentItemIdRef.current = item.id;
+
         if (item.type === 'pause') {
-            // 播放静默
-            (async () => {
-                await playSilence(item.duration / 1000);
+            // 🔥 使用 sharedAudioRef 播放静默，避免创建新 Audio 对象触发 iOS NotAllowedError
+            const silenceUrl = createSilenceWavURL(item.duration / 1000);
+            const audio = sharedAudioRef.current || new Audio();
+            (audio as any).playsInline = true;
+            audio.volume = 1;
+            audio.src = silenceUrl;
+            setIsLoadingAudio(false); // 🔥 静默也是一种播放状态
+
+            const cleanup = () => {
+                audio.onended = null;
+                audio.onerror = null;
+                URL.revokeObjectURL(silenceUrl);
                 setAudioQueue(prev => prev.slice(1));
+                setCurrentAudio(null);
+                currentItemIdRef.current = null;
+                isProcessingRef.current = false; // 🔥 释放锁
+            };
+            audio.onended = cleanup;
+            audio.onerror = cleanup;
+
+            setCurrentAudio(audio);
+            (async () => {
+                try {
+                    await ensureAudioContext();
+                    await audio.play();
+                } catch (e) {
+                    console.error('[TTS] Silence play failed', e);
+                }
             })();
         } else if (item.type === 'text' && item.url) {
-            // 🔥 用 HTMLAudioElement 播放（支持后台）
-            const audio = new Audio(item.url);
+            // 🔥 使用 sharedAudioRef 播放，避免创建新 Audio 对象触发 iOS NotAllowedError
+            const audio = sharedAudioRef.current || new Audio();
             (audio as any).playsInline = true;
-            audio.preload = 'auto';
+            audio.volume = 1;
+            audio.src = item.url;
+            setIsLoadingAudio(false); // 🔥 加载完成，开始播放
 
             // 设置 Media Session
             try {
@@ -687,16 +721,17 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 }
             } catch { }
 
-            audio.onended = () => {
+            const cleanup = () => {
+                audio.onended = null;
+                audio.onerror = null;
                 if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
                 setAudioQueue(prev => prev.slice(1));
                 setCurrentAudio(null);
+                currentItemIdRef.current = null;
+                isProcessingRef.current = false; // 🔥 释放锁
             };
-            audio.onerror = () => {
-                if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
-                setAudioQueue(prev => prev.slice(1));
-                setCurrentAudio(null);
-            };
+            audio.onended = cleanup;
+            audio.onerror = cleanup;
 
             setCurrentAudio(audio);
             (async () => {
@@ -710,9 +745,13 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         } else if (item.type === 'text' && !item.url && !item.buffer) {
             // 音频还在加载，等待
             setIsLoadingAudio(true);
+            isProcessingRef.current = false; // 🔥 释放锁，允许下一轮 useEffect 运行
+            currentItemIdRef.current = null;
         } else {
             // 跳过无法播放的
             setAudioQueue(prev => prev.slice(1));
+            isProcessingRef.current = false;
+            currentItemIdRef.current = null;
         }
     }, [isPlaying, audioQueue, currentAudio]);
 
@@ -1022,6 +1061,9 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                             const buffer = await ctx.decodeAudioData(arrayBuffer);
                             // 直接修改原始对象
                             (item as any).buffer = buffer;
+                            // 🔥 关键 fix: 必须同时生成 URL，否则 useEffect 中的 play logic 会跳过它
+                            const url = URL.createObjectURL(blob);
+                            (item as any).url = url;
                             loaded++;
                             setBufferProgress({ loaded, total: bufferTarget });
                             console.log(`[TTS] 缓冲进度: ${loaded}/${bufferTarget}`);
@@ -1040,137 +1082,84 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
         // 🔥 现在设置 state 时，segments 中的前 N 个项目已经有 buffer 了
         setAudioQueue(segments);
+        primeAudio(); // 🔥 初始化 sharedAudioRef
         setIsPlaying(true);
         isPlayingRef.current = true;
 
-        // 🚀 关键优化：立即开始播放第一个片段，不等待 useEffect 的渲染周期
-        const ctx = audioContextRef.current;
-        if (ctx && segments.length > 0) {
-            const firstItem = segments[0];
-            if (firstItem.type === 'text' && firstItem.buffer) {
-                const source = ctx.createBufferSource();
-                source.buffer = firstItem.buffer;
-                source.connect(ctx.destination);
 
-                const startTime = ctx.currentTime;
-                source.onended = () => {
-                    setAudioQueue(prev => prev.filter(q => q.id !== firstItem.id));
-                    scheduledIdsRef.current.delete(firstItem.id);
-                    sourceNodesRef.current.delete(firstItem.id);
-                };
-
-                source.start(startTime);
-                nextStartTimeRef.current = startTime + firstItem.buffer.duration;
-                scheduledIdsRef.current.add(firstItem.id);
-                sourceNodesRef.current.set(firstItem.id, source);
-                console.log('[TTS] 🎵 第一个片段已立即开始播放');
-            }
-        }
     };
 
     // 从指定位置开始播放缓存音频
+    // 从指定位置开始播放缓存音频
     const playFromPosition = async (startTime: number = 0) => {
-        if (!cachedAudioBufferRef.current || !audioContextRef.current) {
-            console.warn("[Play] AudioBuffer 未加载");
-            return;
+        if (!currentAudio) return;
+        try {
+            await ensureAudioContext();
+            currentAudio.currentTime = startTime;
+            await currentAudio.play();
+            setIsPlaying(true);
+            isPlayingRef.current = true;
+        } catch (e) {
+            console.error("[Play] Seek/Play failed", e);
         }
+    };
 
-        // 停止当前播放 - 先设置 isPausedRef 防止旧 onended 干扰
-        if (cachedSourceRef.current) {
-            isPausedRef.current = true; // 临时设置，防止旧 onended 清除新 interval
-            try { cachedSourceRef.current.stop(); } catch (e) { /* ignore */ }
-            cachedSourceRef.current = null;
-        }
+    // Retry wrapper for fetch
+    const fetchWithRetry = async (url: string, options: RequestInit, retries = 3, timeout = 60000) => {
+        for (let i = 0; i < retries; i++) {
+            try {
+                const controller = new AbortController();
+                const id = setTimeout(() => controller.abort(), timeout);
 
-        const ctx = audioContextRef.current;
-        const audioBuffer = cachedAudioBufferRef.current;
+                const response = await fetch(url, {
+                    ...options,
+                    signal: controller.signal
+                });
 
-        // 恢复 AudioContext
-        if (ctx.state === 'suspended') {
-            await ctx.resume();
-        }
+                clearTimeout(id);
 
-        // 清除之前的进度定时器
-        if (progressIntervalRef.current) {
-            clearInterval(progressIntervalRef.current);
-        }
-
-        const source = ctx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(ctx.destination);
-
-        const remainingDuration = audioBuffer.duration - startTime;
-
-        source.onended = () => {
-            // 如果是手动暂停 或 这个 source 已经不是当前播放的 source（说明是旧的被 stop）
-            if (isPausedRef.current || cachedSourceRef.current !== source) {
-                console.log("[Play] 忽略 onended（手动暂停或已切换 source）");
-                return; // 不清除 interval，让新的 source 继续使用
-            }
-
-            // 使用 AudioContext 实际时间判断是否真正播放完成
-            const actualElapsed = audioContextRef.current
-                ? audioContextRef.current.currentTime - playbackStartTimeRef.current
-                : 0;
-            console.log(`[Play] onended 触发, 实际播放时长: ${actualElapsed.toFixed(1)}s, 总时长: ${audioBuffer.duration.toFixed(1)}s`);
-
-            // 只有播放了至少 95% 才认为是真正播放完成
-            if (actualElapsed >= audioBuffer.duration * 0.95) {
-                isPlayingRef.current = false; // 同步更新
-                setIsPlaying(false);
-                cachedSourceRef.current = null;
-                pausedAtRef.current = 0;
-                isPausedRef.current = false;
-                setPlaybackProgress({ currentTime: audioBuffer.duration, duration: audioBuffer.duration });
-                console.log("[Play] ✅ 播放完成");
-
-                // 只有真正完成时才清除 interval
-                if (progressIntervalRef.current) {
-                    clearInterval(progressIntervalRef.current);
-                    progressIntervalRef.current = null;
+                if (response.status === 504 || response.status === 502) {
+                    throw new Error(`Gateway Timeout/Error: ${response.status}`);
                 }
+
+                if (!response.ok) {
+                    // Don't retry client errors (4xx) except 429
+                    if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+                        return response;
+                    }
+                    throw new Error(`Request failed: ${response.status}`);
+                }
+
+                return response;
+            } catch (err: any) {
+                const isLastAttempt = i === retries - 1;
+                console.warn(`[Fetch Retry] Attempt ${i + 1}/${retries} failed:`, err);
+
+                if (isLastAttempt) throw err;
+
+                // Exponential backoff: 1s, 2s, 4s
+                await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
             }
-        };
-
-        cachedSourceRef.current = source;
-        isPlayingRef.current = true; // 同步更新
-        console.log("[Play] 设置 isPlaying = true");
-        setIsPlaying(true);
-
-        // 记录开始时间并启动进度更新
-        playbackStartTimeRef.current = ctx.currentTime - startTime;
-        progressIntervalRef.current = setInterval(() => {
-            if (audioContextRef.current && cachedSourceRef.current) {
-                const elapsed = audioContextRef.current.currentTime - playbackStartTimeRef.current;
-                setPlaybackProgress(prev => ({
-                    ...prev,
-                    currentTime: Math.min(elapsed, prev.duration)
-                }));
-            }
-        }, 100);
-
-        // 从指定位置开始播放
-        isPausedRef.current = false; // 重置暂停标志
-        console.log(`[Play] source.start 参数: startTime=${startTime.toFixed(2)}, remainingDuration=${remainingDuration.toFixed(2)}, bufferDuration=${audioBuffer.duration.toFixed(2)}`);
-        source.start(0, startTime, remainingDuration);
-        console.log(`[Play] ▶️ 从 ${startTime.toFixed(1)}s 开始播放`);
+        }
+        throw new Error("Max retries exceeded");
     };
 
     // 跳转到指定位置
     const seekTo = async (time: number) => {
-        if (!cachedAudioBufferRef.current) return;
+        if (!currentAudio) return;
 
-        pausedAtRef.current = time;
+        // 更新进度条 UI
         setPlaybackProgress(prev => ({ ...prev, currentTime: time }));
 
-        // 使用 ref 判断是否正在播放
-        if (isPlayingRef.current) {
-            console.log("[Play] 播放中拖动进度条到:", time.toFixed(1), "s");
-            await playFromPosition(time);
-        }
+        // 操作音频元素
+        currentAudio.currentTime = time;
+
+        // 如果当时是暂停状态，不需要自动播放
+        // 如果是播放状态，因为 currentTime 改变不会影响 play 状态，通常会自动继续
+        // 但安全起见，如果是暂停但我们希望拖动即播放（或者保持状态），这里保留原样即可
     };
 
-    // 播放缓存音频 - 使用 Web Audio API
+    // 播放缓存音频 - 改用 HTMLAudioElement (sharedAudioRef)
     const playCachedAudio = async () => {
         // 先停止任何正在播放的音频
         if (currentAudio) {
@@ -1178,22 +1167,18 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             currentAudio.src = '';
             setCurrentAudio(null);
         }
-        // 停止 AudioBufferSourceNode
-        if (cachedSourceRef.current) {
-            try {
-                cachedSourceRef.current.stop();
-            } catch (e) { /* ignore */ }
-            cachedSourceRef.current = null;
-        }
+
         setAudioQueue([]); // 清空流式队列
         currentItemIdRef.current = null;
 
-        // 如果已有缓存的 AudioBuffer 且处于暂停状态，从该位置恢复
-        if (cachedAudioBufferRef.current && isPausedRef.current) {
-            console.log("[Play] 从暂停位置恢复:", pausedAtRef.current.toFixed(1), "s");
-            isPausedRef.current = false;
-            await playFromPosition(pausedAtRef.current);
-            return;
+        // 如果已经有 currentAudio 且是暂停状态，直接恢复
+        if (currentAudio && currentAudio.paused && useCachedPlayback) {
+            try {
+                await ensureAudioContext();
+                await currentAudio.play();
+                setIsPlaying(true);
+                return;
+            } catch (e) { console.warn("Resume failed", e); }
         }
 
         setIsLoadingAudio(true);
@@ -1207,100 +1192,152 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 return;
             }
 
-            // 使用 Web Audio API 播放
-            const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
-            if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-                audioContextRef.current = new AC();
-            }
-            const ctx = audioContextRef.current!;
+            // 🔥 使用 sharedAudioRef 播放
+            const audio = sharedAudioRef.current || new Audio();
+            (audio as any).playsInline = true;
+            audio.volume = 1;
 
-            // 恢复 AudioContext（iOS 需要用户交互后恢复）
-            if (ctx.state === 'suspended') {
-                await ctx.resume();
-            }
+            const url = URL.createObjectURL(cachedBlob);
+            audio.src = url;
 
-            const arrayBuffer = await cachedBlob.arrayBuffer();
-            console.log("[Play] 解码 WAV, 大小:", (arrayBuffer.byteLength / 1024).toFixed(1), "KB");
+            // 重要：设置当前音频引用
+            setCurrentAudio(audio);
 
-            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-            const totalDuration = audioBuffer.duration;
-            console.log("[Play] 解码成功, 时长:", totalDuration.toFixed(1), "秒");
+            // 设置时长和事件监听
+            audio.onloadedmetadata = () => {
+                const duration = audio.duration;
+                setPlaybackProgress({ currentTime: 0, duration: isFinite(duration) ? duration : 0 });
+                console.log("[Play] 缓存音频加载完成, 时长:", duration);
+                setIsLoadingAudio(false);
+            };
 
-            // 保存 AudioBuffer 引用
-            cachedAudioBufferRef.current = audioBuffer;
-            pausedAtRef.current = 0;
+            audio.ontimeupdate = () => {
+                setPlaybackProgress(prev => ({
+                    ...prev,
+                    currentTime: audio.currentTime
+                }));
+            };
 
-            // 设置时长
-            setPlaybackProgress({ currentTime: 0, duration: totalDuration });
-            setIsLoadingAudio(false);
+            const cleanup = () => {
+                console.log("[Play] 缓存播放结束");
+                setIsPlaying(false);
+                isPlayingRef.current = false;
+                audio.onended = null;
+                audio.onerror = null;
+                audio.ontimeupdate = null;
+                // 不 revoke URL，以便重播
+            };
 
-            // 从头开始播放
-            await playFromPosition(0);
-        } catch (e) {
-            console.error("[Play] 播放错误", e);
-            setIsPlaying(false);
-            setIsLoadingAudio(false);
-            if (progressIntervalRef.current) {
-                clearInterval(progressIntervalRef.current);
-            }
-        }
-    };
+            audio.onended = () => {
+                cleanup();
+                setPlaybackProgress(prev => ({ ...prev, currentTime: prev.duration })); // 确保进度条走完
+            };
 
-    const togglePlay = async () => {
-        await ensureAudioContext();
-        console.log("[Play] togglePlay 调用, isPlayingRef:", isPlayingRef.current, "isPlaying:", isPlaying);
+            audio.onerror = (e) => {
+                console.error("[Play] 缓存播放错误", e);
+                cleanup();
+                setIsLoadingAudio(false);
+            };
 
-        if (isPlayingRef.current) {
-            // PAUSE
-            console.log("[Play] 点击暂停, hasCachedAudio:", hasCachedAudio, "useCachedPlayback:", useCachedPlayback);
-
-            // 如果是缓存播放模式，保存当前位置
-            if (hasCachedAudio && useCachedPlayback && playbackProgress.duration > 0) {
-                pausedAtRef.current = playbackProgress.currentTime;
-                isPausedRef.current = true;
-            }
-
-            isPlayingRef.current = false;
-            setIsPlaying(false);
-
-            if (currentAudio) currentAudio.pause();
-
-            // 停止缓存音频播放
-            if (cachedSourceRef.current) {
-                try {
-                    cachedSourceRef.current.stop();
-                } catch (e) { /* ignore */ }
-                cachedSourceRef.current = null;
-            }
-
-            // Web Audio Scheduler handled by useEffect observing isPlaying=false
-
-            // 清理进度定时器（但不重置进度）
-            if (progressIntervalRef.current) {
-                clearInterval(progressIntervalRef.current);
-                progressIntervalRef.current = null;
-            }
-        } else {
-            // 如果有缓存且选择使用缓存播放
-            if (hasCachedAudio && useCachedPlayback) {
-                await playCachedAudio();
-                return;
-            }
-
-            // RESUME or START (流式播放)
+            // 播放
+            await ensureAudioContext();
             if (audioContextRef.current?.state === 'suspended') {
                 await audioContextRef.current.resume();
             }
 
-            if (audioQueue.length > 0) {
+            try {
+                // 🔥 等待音频准备好，防 AbortError
+                if (audio.readyState < 3) { // HAVE_FUTURE_DATA
+                    await new Promise((resolve) => {
+                        const onCanPlay = () => {
+                            audio.removeEventListener('canplay', onCanPlay);
+                            resolve(true);
+                        };
+                        audio.addEventListener('canplay', onCanPlay);
+                    });
+                }
+
+                await audio.play();
                 setIsPlaying(true);
                 isPlayingRef.current = true;
-                if (currentAudio && currentAudio.paused) {
-                    currentAudio.play();
+            } catch (e: any) {
+                // Ignore AbortError if we are just switching tracks quickly
+                if (e.name === 'AbortError') {
+                    console.log("[Play] Play aborted (expected during rapid switching)");
+                } else {
+                    console.error("[Play] 最终播放调用失败", e);
+                    setIsPlaying(false);
+                }
+            }
+
+        } catch (e) {
+            console.error("[Play] 准备播放错误", e);
+            setIsPlaying(false);
+            setIsLoadingAudio(false);
+        }
+    };
+
+    const togglePlay = async () => {
+        if (isTogglingRef.current) return;
+        isTogglingRef.current = true;
+
+        try {
+            await ensureAudioContext();
+            console.log("[Play] togglePlay 调用, isPlayingRef:", isPlayingRef.current);
+
+            if (isPlayingRef.current) {
+                // PAUSE
+                isPlayingRef.current = false;
+                setIsPlaying(false);
+
+                if (currentAudio) {
+                    currentAudio.pause();
+                    // synthesized audio: src and currentTime preserved for resume
                 }
             } else {
-                await startNewPlayback();
+                // PLAY / RESUME
+
+                // 🔥 Always prime AudioContext in user gesture
+                primeAudio();
+                await ensureAudioContext();
+                if (audioContextRef.current?.state === 'suspended') {
+                    await audioContextRef.current.resume();
+                }
+
+                // 1. Resume current audio if paused
+                if (currentAudio && currentAudio.paused) {
+                    // Check if it's our target audio (cached or streaming)
+                    if (useCachedPlayback || audioQueue.length > 0) {
+                        try {
+                            await currentAudio.play();
+                            setIsPlaying(true);
+                            isPlayingRef.current = true;
+                        } catch (e) {
+                            console.error("[Play] Resume failed", e);
+                        }
+                        return;
+                    }
+                }
+
+                // 2. Synthesized cached playback (Initial start)
+                if (hasCachedAudio && useCachedPlayback) {
+                    await playCachedAudio();
+                    return;
+                }
+
+                // 3. Streaming playback (Initial start or Resume queue)
+                if (audioQueue.length > 0) {
+                    setIsPlaying(true);
+                    isPlayingRef.current = true;
+                } else {
+                    await startNewPlayback();
+                }
             }
+        } finally {
+            // Unlock after a moment to allow UI to settle and prevent bounce
+            setTimeout(() => {
+                isTogglingRef.current = false;
+            }, 300);
         }
     };
 

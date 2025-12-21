@@ -72,12 +72,7 @@ const ICONS_MAP: Record<string, any> = {
     network: Network,
 };
 
-const VOICES = [
-    { id: "zh-CN-XiaoxiaoNeural", name: "晓晓 (女声-温暖)", style: "warm" },
-    { id: "zh-CN-YunxiNeural", name: "云希 (男声-沉稳)", style: "calm" },
-    { id: "zh-CN-XiaohanNeural", name: "晓涵 (女声-温柔)", style: "gentle" },
-    { id: "zh-CN-YunyangNeural", name: "云野 (男声-专业)", style: "professional" },
-];
+import { VOICES } from "@/lib/constants";
 
 /**
  * 🧹 清洗 AI 生成的文本，移除所有不适合 TTS 朗读的内容
@@ -264,10 +259,13 @@ export default function MeditatePage() {
     const timeoutRef = useRef<NodeJS.Timeout | null>(null);
     const isPausingRef = useRef(false);
     const currentItemIdRef = useRef<string | null>(null);
+    const isProcessingRef = useRef<boolean>(false); // 🔥 防止 useEffect 并发执行
     const audioContextRef = useRef<AudioContext | null>(null);
     const nextStartTimeRef = useRef<number>(0);
     const scheduledIdsRef = useRef<Set<string>>(new Set());
     const sourceNodesRef = useRef<Map<string, AudioBufferSourceNode>>(new Map());
+    // 🔥 持久 Audio 对象：在用户手势中初始化后可复用，避免 iOS NotAllowedError
+    const sharedAudioRef = useRef<HTMLAudioElement | null>(null);
 
     const ensureAudioContext = async () => {
         if (typeof window === 'undefined') return;
@@ -308,10 +306,20 @@ export default function MeditatePage() {
     };
 
     const primeOnceRef = useRef(false);
-    const primeAudio = async () => {
+    const primeAudio = () => {
         if (primeOnceRef.current) return;
         primeOnceRef.current = true;
-        await playSilence(0.05);
+        // 🔥 iOS 要求 audio.play() 必须在用户手势的同步调用链中执行
+        // 创建持久 Audio 对象，后续复用它来播放不同的音频
+        const url = createSilenceWavURL(0.05);
+        const audio = new Audio(url);
+        (audio as any).playsInline = true;
+        audio.volume = 0.01; // 极低音量
+        audio.onended = () => URL.revokeObjectURL(url);
+        audio.onerror = () => URL.revokeObjectURL(url);
+        audio.play().catch(() => { }); // 同步调用，忽略错误
+        // 🔥 保存到 ref，后续复用
+        sharedAudioRef.current = audio;
     };
 
     // === 预加载音频项目（并行解码） ===
@@ -586,47 +594,90 @@ export default function MeditatePage() {
             isPlayingNextRef.current = false;
             hasStartedRef.current = false;
             setIsBuffering(false);
+            isProcessingRef.current = false; // 重置
+            currentItemIdRef.current = null; // 重置
             return;
         }
+
+        // 队列为空时停止
+        if (audioQueue.length === 0) {
+            setIsPlaying(false);
+            return;
+        }
+
+        // 🔥 锁：防止并发执行
+        if (isProcessingRef.current) return;
 
         // 🔥 关键防护：如果有音频正在播放，不处理
         if (currentAudio && !currentAudio.paused) return;
 
-        // 如果当前音频暂停了，恢复播放
-        if (currentAudio && currentAudio.paused) {
-            currentAudio.play().catch(e => console.error("Resume failed", e));
-            return;
-        }
+        // 🔥 如果 currentAudio 存在但已暂停（可能是播放完毕），清理它
+        // 不要尝试恢复，因为会触发 NotAllowedError
 
         // 处理队列第一个项目
         if (audioQueue.length > 0) {
             const item = audioQueue[0];
 
+            // 🔥 防止重复处理同一个项目（避免跳读）
+            if (currentItemIdRef.current === item.id) return;
+
+            // 🔥 设置锁，防止并发处理
+            isProcessingRef.current = true;
+            currentItemIdRef.current = item.id;
+
             // 跳过错误的
             if (item.type === 'audio' && item.status === 'error') {
                 setAudioQueue(prev => prev.slice(1));
+                isProcessingRef.current = false;
+                currentItemIdRef.current = null;
                 return;
             }
 
             // 等待加载
             if (item.type === 'audio' && item.status === 'loading') {
                 setIsBuffering(true);
+                isProcessingRef.current = false;
+                currentItemIdRef.current = null;
                 return;
             }
 
             setIsBuffering(false);
 
             if (item.type === 'pause') {
-                // 播放静默
-                (async () => {
-                    await playSilence(item.duration / 1000);
+                // 🔥 使用 sharedAudioRef 播放静默，避免创建新 Audio 对象触发 iOS NotAllowedError
+                const silenceUrl = createSilenceWavURL(item.duration / 1000);
+                const audio = sharedAudioRef.current || new Audio();
+                (audio as any).playsInline = true;
+                audio.volume = 1;
+                audio.src = silenceUrl;
+
+                const cleanup = () => {
+                    audio.onended = null;
+                    audio.onerror = null;
+                    URL.revokeObjectURL(silenceUrl);
                     setAudioQueue(prev => prev.slice(1));
+                    setCurrentAudio(null);
+                    currentItemIdRef.current = null;
+                    isProcessingRef.current = false; // 🔥 释放锁
+                };
+                audio.onended = cleanup;
+                audio.onerror = cleanup;
+
+                setCurrentAudio(audio);
+                (async () => {
+                    try {
+                        await ensureAudioContext();
+                        await audio.play();
+                    } catch (e) {
+                        console.error('[Meditate] Silence play failed', e);
+                    }
                 })();
             } else if (item.type === 'audio' && item.url) {
-                // 🔥 用 HTMLAudioElement 播放（支持后台）
-                const audio = new Audio(item.url);
+                // 🔥 使用 sharedAudioRef 播放，避免创建新 Audio 对象触发 iOS NotAllowedError
+                const audio = sharedAudioRef.current || new Audio();
                 (audio as any).playsInline = true;
-                audio.preload = 'auto';
+                audio.volume = 1;
+                audio.src = item.url;
 
                 // 设置 Media Session
                 try {
@@ -641,16 +692,17 @@ export default function MeditatePage() {
                     }
                 } catch { }
 
-                audio.onended = () => {
+                const cleanup = () => {
+                    audio.onended = null;
+                    audio.onerror = null;
                     if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
                     setAudioQueue(prev => prev.slice(1));
                     setCurrentAudio(null);
+                    currentItemIdRef.current = null;
+                    isProcessingRef.current = false; // 🔥 释放锁
                 };
-                audio.onerror = () => {
-                    if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
-                    setAudioQueue(prev => prev.slice(1));
-                    setCurrentAudio(null);
-                };
+                audio.onended = cleanup;
+                audio.onerror = cleanup;
 
                 setCurrentAudio(audio);
                 (async () => {
@@ -722,7 +774,7 @@ export default function MeditatePage() {
     };
 
 
-    const isProcessingRef = useRef(false);
+
     const wakeLockRef = useRef<any>(null);
     const wakeLockActiveRef = useRef(false);
 
@@ -1157,7 +1209,7 @@ export default function MeditatePage() {
         }
 
         await ensureAudioContext();
-        await primeAudio();
+        primeAudio();
         generateMeditation(promptToUse);
     };
 
@@ -1384,24 +1436,22 @@ export default function MeditatePage() {
                                         <label className="text-sm font-medium text-slate-300 mb-2 block">
                                             选择音色
                                         </label>
-                                        <div className="grid grid-cols-2 gap-2">
+                                        <select
+                                            value={selectedVoice}
+                                            onChange={(e) => {
+                                                setSelectedVoice(e.target.value);
+                                                localStorage.setItem("meditation_voice", e.target.value);
+                                            }}
+                                            className="w-full bg-white/5 backdrop-blur rounded-xl px-4 py-3 text-sm text-white border border-white/10 outline-none focus:ring-2 focus:ring-rose-500/40 appearance-none cursor-pointer hover:bg-white/10 transition-all font-medium"
+                                        >
                                             {VOICES.map((voice) => (
-                                                <button
-                                                    key={voice.id}
-                                                    onClick={() => {
-                                                        setSelectedVoice(voice.id);
-                                                        localStorage.setItem("meditation_voice", voice.id);
-                                                    }}
-                                                    className={cn(
-                                                        "px-3 py-2 rounded-xl border text-sm transition-all",
-                                                        selectedVoice === voice.id
-                                                            ? "bg-rose-500 border-rose-400 text-white"
-                                                            : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
-                                                    )}
-                                                >
+                                                <option key={voice.id} value={voice.id} className="bg-zinc-900 text-slate-200 py-2">
                                                     {voice.name}
-                                                </button>
+                                                </option>
                                             ))}
+                                        </select>
+                                        <div className="text-xs text-white/30 mt-2 px-1">
+                                            * 部分方言音色可能在特定区域可用性有限
                                         </div>
                                     </div>
 
@@ -1685,7 +1735,7 @@ export default function MeditatePage() {
                                     <button
                                         onClick={async () => {
                                             await ensureAudioContext();
-                                            await primeAudio();
+                                            primeAudio();
                                             if (!isPlaying && audioContextRef.current?.state === 'suspended') {
                                                 await audioContextRef.current.resume();
                                             }
