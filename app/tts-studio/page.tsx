@@ -492,22 +492,52 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     // -------------------------------------------------------------------------
     // Audio Playback Engine (Promise Wrapper)
     // -------------------------------------------------------------------------
+    const playAudioElement = (url: string): Promise<void> => {
+        return new Promise((resolve) => {
+            const audio = new Audio(url);
+            setCurrentAudio(audio); // Capture ref
+
+            audio.preload = 'auto';
+            // @ts-ignore
+            audio.playsInline = true;
+
+            // MediaSession
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: card.title || "TTS Playback",
+                    artist: "Rain App",
+                });
+                navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
+                navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
+            }
+
+            audio.onended = () => {
+                if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+                resolve();
+            };
+            audio.onerror = (e) => {
+                console.error("Audio error", e);
+                if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+                resolve(); // Resolve anyway to proceed
+            };
+
+            const start = async () => {
+                try {
+                    await ensureAudioContext();
+                    await audio.play();
+                } catch (e) {
+                    console.error("Play failed", e);
+                    resolve();
+                }
+            };
+            start();
+        });
+    };
+
     const playSilence = async (seconds: number) => {
         const url = createSilenceWavURL(seconds);
-        const audio = new Audio(url);
-        (audio as any).playsInline = true;
-        audio.preload = 'auto';
-        return new Promise<void>((resolve) => {
-            audio.onended = () => {
-                URL.revokeObjectURL(url);
-                resolve();
-            };
-            audio.onerror = () => {
-                URL.revokeObjectURL(url);
-                resolve();
-            };
-            audio.play().catch(() => resolve());
-        });
+        // Use playAudioElement for silence too, to keep consistent event loop
+        return playAudioElement(url);
     };
 
 
@@ -560,13 +590,13 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 });
                 if (res && res.ok) {
                     const blob = await res.blob();
-                    // 🔥 同时保存 buffer 和 blobUrl，用于 HTMLAudioElement 后台播放
-                    const blobUrl = URL.createObjectURL(blob);
                     const arrayBuffer = await blob.arrayBuffer();
                     const buffer = await ctx.decodeAudioData(arrayBuffer);
+                    // 🔥 同时设置 url 和 buffer，确保 HTMLAudioElement 可以使用
+                    const url = URL.createObjectURL(blob);
 
                     setAudioQueue(prev => prev.map(q =>
-                        q.id === item.id ? { ...q, buffer, blobUrl } : q
+                        q.id === item.id ? { ...q, buffer, url } : q
                     ));
 
                     completedCount++;
@@ -600,7 +630,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         };
     }, [isPlaying, audioQueue.length]);
 
-    // 🔥 用 HTMLAudioElement 顺序播放（支持后台）
+    // 🔥 用 b1d4d20 风格：HTMLAudioElement 顺序播放，支持后台
     useEffect(() => {
         // 停止播放时清理
         if (!isPlaying) {
@@ -611,23 +641,22 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             return;
         }
 
-        // 队列播放完成
+        // 队列为空时停止
         if (audioQueue.length === 0) {
             setIsPlaying(false);
             return;
         }
 
         // 🔥 关键防护：如果有音频正在播放，不处理
-        // 注意：这里检查 currentAudio 是否正在运行
-        if (currentAudio && !currentAudio.paused && !currentAudio.ended) return;
+        if (currentAudio && !currentAudio.paused) return;
 
-        // 如果当前音频暂停了（不是结束），尝试恢复
-        if (currentAudio && currentAudio.paused && !currentAudio.ended) {
+        // 如果当前音频暂停了，恢复播放
+        if (currentAudio && currentAudio.paused) {
             currentAudio.play().catch(e => console.error("Resume failed", e));
             return;
         }
 
-        // 预加载
+        // 持续预加载
         prefetchNextTextItems(audioQueue);
 
         // 处理队列第一个项目
@@ -639,9 +668,9 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 await playSilence(item.duration / 1000);
                 setAudioQueue(prev => prev.slice(1));
             })();
-        } else if (item.type === 'text' && (item as any).blobUrl) {
+        } else if (item.type === 'text' && item.url) {
             // 🔥 用 HTMLAudioElement 播放（支持后台）
-            const audio = new Audio((item as any).blobUrl);
+            const audio = new Audio(item.url);
             (audio as any).playsInline = true;
             audio.preload = 'auto';
 
@@ -649,8 +678,8 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             try {
                 if ('mediaSession' in navigator) {
                     navigator.mediaSession.metadata = new MediaMetadata({
-                        title: card?.title || 'TTS 播放',
-                        artist: 'Rain 声波工坊',
+                        title: card.title || 'TTS 播放',
+                        artist: 'Rain App',
                         artwork: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }]
                     });
                     navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
@@ -659,14 +688,12 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             } catch { }
 
             audio.onended = () => {
-                const blobUrl = (item as any).blobUrl;
-                if (blobUrl?.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
+                if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
                 setAudioQueue(prev => prev.slice(1));
                 setCurrentAudio(null);
             };
             audio.onerror = () => {
-                const blobUrl = (item as any).blobUrl;
-                if (blobUrl?.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
+                if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
                 setAudioQueue(prev => prev.slice(1));
                 setCurrentAudio(null);
             };
@@ -677,10 +704,10 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     await ensureAudioContext();
                     await audio.play();
                 } catch (e) {
-                    console.error('[TTS Studio] Play failed', e);
+                    console.error('[TTS] Play failed', e);
                 }
             })();
-        } else if (item.type === 'text' && !item.buffer) {
+        } else if (item.type === 'text' && !item.url && !item.buffer) {
             // 音频还在加载，等待
             setIsLoadingAudio(true);
         } else {
@@ -991,12 +1018,10 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                         });
                         if (res && res.ok) {
                             const blob = await res.blob();
-                            const blobUrl = URL.createObjectURL(blob);
                             const arrayBuffer = await blob.arrayBuffer();
                             const buffer = await ctx.decodeAudioData(arrayBuffer);
                             // 直接修改原始对象
                             (item as any).buffer = buffer;
-                            (item as any).blobUrl = blobUrl;
                             loaded++;
                             setBufferProgress({ loaded, total: bufferTarget });
                             console.log(`[TTS] 缓冲进度: ${loaded}/${bufferTarget}`);
@@ -1013,577 +1038,598 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             console.log('[TTS] ✅ 初始缓冲完成，开始播放');
         }
 
-        // 🔥 现在设置 state 时，segments 中的前 N 个项目已经有 buffer 和 blobUrl 了
+        // 🔥 现在设置 state 时，segments 中的前 N 个项目已经有 buffer 了
         setAudioQueue(segments);
         setIsPlaying(true);
         isPlayingRef.current = true;
 
-        console.log('[TTS] 🎵 队列已就绪，交给 useEffect 控制顺序播放');
-    }
-};
+        // 🚀 关键优化：立即开始播放第一个片段，不等待 useEffect 的渲染周期
+        const ctx = audioContextRef.current;
+        if (ctx && segments.length > 0) {
+            const firstItem = segments[0];
+            if (firstItem.type === 'text' && firstItem.buffer) {
+                const source = ctx.createBufferSource();
+                source.buffer = firstItem.buffer;
+                source.connect(ctx.destination);
 
-// 从指定位置开始播放缓存音频
-const playFromPosition = async (startTime: number = 0) => {
-    if (!cachedAudioBufferRef.current || !audioContextRef.current) {
-        console.warn("[Play] AudioBuffer 未加载");
-        return;
-    }
+                const startTime = ctx.currentTime;
+                source.onended = () => {
+                    setAudioQueue(prev => prev.filter(q => q.id !== firstItem.id));
+                    scheduledIdsRef.current.delete(firstItem.id);
+                    sourceNodesRef.current.delete(firstItem.id);
+                };
 
-    // 停止当前播放 - 先设置 isPausedRef 防止旧 onended 干扰
-    if (cachedSourceRef.current) {
-        isPausedRef.current = true; // 临时设置，防止旧 onended 清除新 interval
-        try { cachedSourceRef.current.stop(); } catch (e) { /* ignore */ }
-        cachedSourceRef.current = null;
-    }
-
-    const ctx = audioContextRef.current;
-    const audioBuffer = cachedAudioBufferRef.current;
-
-    // 恢复 AudioContext
-    if (ctx.state === 'suspended') {
-        await ctx.resume();
-    }
-
-    // 清除之前的进度定时器
-    if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
-    }
-
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(ctx.destination);
-
-    const remainingDuration = audioBuffer.duration - startTime;
-
-    source.onended = () => {
-        // 如果是手动暂停 或 这个 source 已经不是当前播放的 source（说明是旧的被 stop）
-        if (isPausedRef.current || cachedSourceRef.current !== source) {
-            console.log("[Play] 忽略 onended（手动暂停或已切换 source）");
-            return; // 不清除 interval，让新的 source 继续使用
-        }
-
-        // 使用 AudioContext 实际时间判断是否真正播放完成
-        const actualElapsed = audioContextRef.current
-            ? audioContextRef.current.currentTime - playbackStartTimeRef.current
-            : 0;
-        console.log(`[Play] onended 触发, 实际播放时长: ${actualElapsed.toFixed(1)}s, 总时长: ${audioBuffer.duration.toFixed(1)}s`);
-
-        // 只有播放了至少 95% 才认为是真正播放完成
-        if (actualElapsed >= audioBuffer.duration * 0.95) {
-            isPlayingRef.current = false; // 同步更新
-            setIsPlaying(false);
-            cachedSourceRef.current = null;
-            pausedAtRef.current = 0;
-            isPausedRef.current = false;
-            setPlaybackProgress({ currentTime: audioBuffer.duration, duration: audioBuffer.duration });
-            console.log("[Play] ✅ 播放完成");
-
-            // 只有真正完成时才清除 interval
-            if (progressIntervalRef.current) {
-                clearInterval(progressIntervalRef.current);
-                progressIntervalRef.current = null;
+                source.start(startTime);
+                nextStartTimeRef.current = startTime + firstItem.buffer.duration;
+                scheduledIdsRef.current.add(firstItem.id);
+                sourceNodesRef.current.set(firstItem.id, source);
+                console.log('[TTS] 🎵 第一个片段已立即开始播放');
             }
         }
     };
 
-    cachedSourceRef.current = source;
-    isPlayingRef.current = true; // 同步更新
-    console.log("[Play] 设置 isPlaying = true");
-    setIsPlaying(true);
-
-    // 记录开始时间并启动进度更新
-    playbackStartTimeRef.current = ctx.currentTime - startTime;
-    progressIntervalRef.current = setInterval(() => {
-        if (audioContextRef.current && cachedSourceRef.current) {
-            const elapsed = audioContextRef.current.currentTime - playbackStartTimeRef.current;
-            setPlaybackProgress(prev => ({
-                ...prev,
-                currentTime: Math.min(elapsed, prev.duration)
-            }));
-        }
-    }, 100);
-
-    // 从指定位置开始播放
-    isPausedRef.current = false; // 重置暂停标志
-    console.log(`[Play] source.start 参数: startTime=${startTime.toFixed(2)}, remainingDuration=${remainingDuration.toFixed(2)}, bufferDuration=${audioBuffer.duration.toFixed(2)}`);
-    source.start(0, startTime, remainingDuration);
-    console.log(`[Play] ▶️ 从 ${startTime.toFixed(1)}s 开始播放`);
-};
-
-// 跳转到指定位置
-const seekTo = async (time: number) => {
-    if (!cachedAudioBufferRef.current) return;
-
-    pausedAtRef.current = time;
-    setPlaybackProgress(prev => ({ ...prev, currentTime: time }));
-
-    // 使用 ref 判断是否正在播放
-    if (isPlayingRef.current) {
-        console.log("[Play] 播放中拖动进度条到:", time.toFixed(1), "s");
-        await playFromPosition(time);
-    }
-};
-
-// 播放缓存音频 - 使用 Web Audio API
-const playCachedAudio = async () => {
-    // 先停止任何正在播放的音频
-    if (currentAudio) {
-        currentAudio.pause();
-        currentAudio.src = '';
-        setCurrentAudio(null);
-    }
-    // 停止 AudioBufferSourceNode
-    if (cachedSourceRef.current) {
-        try {
-            cachedSourceRef.current.stop();
-        } catch (e) { /* ignore */ }
-        cachedSourceRef.current = null;
-    }
-    setAudioQueue([]); // 清空流式队列
-    currentItemIdRef.current = null;
-
-    // 如果已有缓存的 AudioBuffer 且处于暂停状态，从该位置恢复
-    if (cachedAudioBufferRef.current && isPausedRef.current) {
-        console.log("[Play] 从暂停位置恢复:", pausedAtRef.current.toFixed(1), "s");
-        isPausedRef.current = false;
-        await playFromPosition(pausedAtRef.current);
-        return;
-    }
-
-    setIsLoadingAudio(true);
-    try {
-        // 从 IndexedDB 获取缓存
-        const cachedBlob = await getAudioCache(card.id);
-        if (!cachedBlob) {
-            console.warn("[Play] 缓存不存在，回退到流式播放");
-            setIsLoadingAudio(false);
-            await startNewPlayback();
+    // 从指定位置开始播放缓存音频
+    const playFromPosition = async (startTime: number = 0) => {
+        if (!cachedAudioBufferRef.current || !audioContextRef.current) {
+            console.warn("[Play] AudioBuffer 未加载");
             return;
         }
 
-        // 使用 Web Audio API 播放
-        const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
-        if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-            audioContextRef.current = new AC();
+        // 停止当前播放 - 先设置 isPausedRef 防止旧 onended 干扰
+        if (cachedSourceRef.current) {
+            isPausedRef.current = true; // 临时设置，防止旧 onended 清除新 interval
+            try { cachedSourceRef.current.stop(); } catch (e) { /* ignore */ }
+            cachedSourceRef.current = null;
         }
-        const ctx = audioContextRef.current!;
 
-        // 恢复 AudioContext（iOS 需要用户交互后恢复）
+        const ctx = audioContextRef.current;
+        const audioBuffer = cachedAudioBufferRef.current;
+
+        // 恢复 AudioContext
         if (ctx.state === 'suspended') {
             await ctx.resume();
         }
 
-        const arrayBuffer = await cachedBlob.arrayBuffer();
-        console.log("[Play] 解码 WAV, 大小:", (arrayBuffer.byteLength / 1024).toFixed(1), "KB");
-
-        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-        const totalDuration = audioBuffer.duration;
-        console.log("[Play] 解码成功, 时长:", totalDuration.toFixed(1), "秒");
-
-        // 保存 AudioBuffer 引用
-        cachedAudioBufferRef.current = audioBuffer;
-        pausedAtRef.current = 0;
-
-        // 设置时长
-        setPlaybackProgress({ currentTime: 0, duration: totalDuration });
-        setIsLoadingAudio(false);
-
-        // 从头开始播放
-        await playFromPosition(0);
-    } catch (e) {
-        console.error("[Play] 播放错误", e);
-        setIsPlaying(false);
-        setIsLoadingAudio(false);
+        // 清除之前的进度定时器
         if (progressIntervalRef.current) {
             clearInterval(progressIntervalRef.current);
         }
-    }
-};
 
-const togglePlay = async () => {
-    await ensureAudioContext();
-    console.log("[Play] togglePlay 调用, isPlayingRef:", isPlayingRef.current, "isPlaying:", isPlaying);
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
 
-    if (isPlayingRef.current) {
-        // PAUSE
-        console.log("[Play] 点击暂停, hasCachedAudio:", hasCachedAudio, "useCachedPlayback:", useCachedPlayback);
+        const remainingDuration = audioBuffer.duration - startTime;
 
-        // 如果是缓存播放模式，保存当前位置
-        if (hasCachedAudio && useCachedPlayback && playbackProgress.duration > 0) {
-            pausedAtRef.current = playbackProgress.currentTime;
-            isPausedRef.current = true;
+        source.onended = () => {
+            // 如果是手动暂停 或 这个 source 已经不是当前播放的 source（说明是旧的被 stop）
+            if (isPausedRef.current || cachedSourceRef.current !== source) {
+                console.log("[Play] 忽略 onended（手动暂停或已切换 source）");
+                return; // 不清除 interval，让新的 source 继续使用
+            }
+
+            // 使用 AudioContext 实际时间判断是否真正播放完成
+            const actualElapsed = audioContextRef.current
+                ? audioContextRef.current.currentTime - playbackStartTimeRef.current
+                : 0;
+            console.log(`[Play] onended 触发, 实际播放时长: ${actualElapsed.toFixed(1)}s, 总时长: ${audioBuffer.duration.toFixed(1)}s`);
+
+            // 只有播放了至少 95% 才认为是真正播放完成
+            if (actualElapsed >= audioBuffer.duration * 0.95) {
+                isPlayingRef.current = false; // 同步更新
+                setIsPlaying(false);
+                cachedSourceRef.current = null;
+                pausedAtRef.current = 0;
+                isPausedRef.current = false;
+                setPlaybackProgress({ currentTime: audioBuffer.duration, duration: audioBuffer.duration });
+                console.log("[Play] ✅ 播放完成");
+
+                // 只有真正完成时才清除 interval
+                if (progressIntervalRef.current) {
+                    clearInterval(progressIntervalRef.current);
+                    progressIntervalRef.current = null;
+                }
+            }
+        };
+
+        cachedSourceRef.current = source;
+        isPlayingRef.current = true; // 同步更新
+        console.log("[Play] 设置 isPlaying = true");
+        setIsPlaying(true);
+
+        // 记录开始时间并启动进度更新
+        playbackStartTimeRef.current = ctx.currentTime - startTime;
+        progressIntervalRef.current = setInterval(() => {
+            if (audioContextRef.current && cachedSourceRef.current) {
+                const elapsed = audioContextRef.current.currentTime - playbackStartTimeRef.current;
+                setPlaybackProgress(prev => ({
+                    ...prev,
+                    currentTime: Math.min(elapsed, prev.duration)
+                }));
+            }
+        }, 100);
+
+        // 从指定位置开始播放
+        isPausedRef.current = false; // 重置暂停标志
+        console.log(`[Play] source.start 参数: startTime=${startTime.toFixed(2)}, remainingDuration=${remainingDuration.toFixed(2)}, bufferDuration=${audioBuffer.duration.toFixed(2)}`);
+        source.start(0, startTime, remainingDuration);
+        console.log(`[Play] ▶️ 从 ${startTime.toFixed(1)}s 开始播放`);
+    };
+
+    // 跳转到指定位置
+    const seekTo = async (time: number) => {
+        if (!cachedAudioBufferRef.current) return;
+
+        pausedAtRef.current = time;
+        setPlaybackProgress(prev => ({ ...prev, currentTime: time }));
+
+        // 使用 ref 判断是否正在播放
+        if (isPlayingRef.current) {
+            console.log("[Play] 播放中拖动进度条到:", time.toFixed(1), "s");
+            await playFromPosition(time);
         }
+    };
 
-        isPlayingRef.current = false;
-        setIsPlaying(false);
-
-        if (currentAudio) currentAudio.pause();
-
-        // 停止缓存音频播放
+    // 播放缓存音频 - 使用 Web Audio API
+    const playCachedAudio = async () => {
+        // 先停止任何正在播放的音频
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio.src = '';
+            setCurrentAudio(null);
+        }
+        // 停止 AudioBufferSourceNode
         if (cachedSourceRef.current) {
             try {
                 cachedSourceRef.current.stop();
             } catch (e) { /* ignore */ }
             cachedSourceRef.current = null;
         }
+        setAudioQueue([]); // 清空流式队列
+        currentItemIdRef.current = null;
 
-        // Web Audio Scheduler handled by useEffect observing isPlaying=false
-
-        // 清理进度定时器（但不重置进度）
-        if (progressIntervalRef.current) {
-            clearInterval(progressIntervalRef.current);
-            progressIntervalRef.current = null;
-        }
-    } else {
-        // 如果有缓存且选择使用缓存播放
-        if (hasCachedAudio && useCachedPlayback) {
-            await playCachedAudio();
+        // 如果已有缓存的 AudioBuffer 且处于暂停状态，从该位置恢复
+        if (cachedAudioBufferRef.current && isPausedRef.current) {
+            console.log("[Play] 从暂停位置恢复:", pausedAtRef.current.toFixed(1), "s");
+            isPausedRef.current = false;
+            await playFromPosition(pausedAtRef.current);
             return;
         }
 
-        // RESUME or START (流式播放)
-        if (audioContextRef.current?.state === 'suspended') {
-            await audioContextRef.current.resume();
-        }
+        setIsLoadingAudio(true);
+        try {
+            // 从 IndexedDB 获取缓存
+            const cachedBlob = await getAudioCache(card.id);
+            if (!cachedBlob) {
+                console.warn("[Play] 缓存不存在，回退到流式播放");
+                setIsLoadingAudio(false);
+                await startNewPlayback();
+                return;
+            }
 
-        if (audioQueue.length > 0) {
-            setIsPlaying(true);
-            isPlayingRef.current = true;
-            if (currentAudio && currentAudio.paused) {
-                currentAudio.play();
+            // 使用 Web Audio API 播放
+            const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+            if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+                audioContextRef.current = new AC();
+            }
+            const ctx = audioContextRef.current!;
+
+            // 恢复 AudioContext（iOS 需要用户交互后恢复）
+            if (ctx.state === 'suspended') {
+                await ctx.resume();
+            }
+
+            const arrayBuffer = await cachedBlob.arrayBuffer();
+            console.log("[Play] 解码 WAV, 大小:", (arrayBuffer.byteLength / 1024).toFixed(1), "KB");
+
+            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+            const totalDuration = audioBuffer.duration;
+            console.log("[Play] 解码成功, 时长:", totalDuration.toFixed(1), "秒");
+
+            // 保存 AudioBuffer 引用
+            cachedAudioBufferRef.current = audioBuffer;
+            pausedAtRef.current = 0;
+
+            // 设置时长
+            setPlaybackProgress({ currentTime: 0, duration: totalDuration });
+            setIsLoadingAudio(false);
+
+            // 从头开始播放
+            await playFromPosition(0);
+        } catch (e) {
+            console.error("[Play] 播放错误", e);
+            setIsPlaying(false);
+            setIsLoadingAudio(false);
+            if (progressIntervalRef.current) {
+                clearInterval(progressIntervalRef.current);
+            }
+        }
+    };
+
+    const togglePlay = async () => {
+        await ensureAudioContext();
+        console.log("[Play] togglePlay 调用, isPlayingRef:", isPlayingRef.current, "isPlaying:", isPlaying);
+
+        if (isPlayingRef.current) {
+            // PAUSE
+            console.log("[Play] 点击暂停, hasCachedAudio:", hasCachedAudio, "useCachedPlayback:", useCachedPlayback);
+
+            // 如果是缓存播放模式，保存当前位置
+            if (hasCachedAudio && useCachedPlayback && playbackProgress.duration > 0) {
+                pausedAtRef.current = playbackProgress.currentTime;
+                isPausedRef.current = true;
+            }
+
+            isPlayingRef.current = false;
+            setIsPlaying(false);
+
+            if (currentAudio) currentAudio.pause();
+
+            // 停止缓存音频播放
+            if (cachedSourceRef.current) {
+                try {
+                    cachedSourceRef.current.stop();
+                } catch (e) { /* ignore */ }
+                cachedSourceRef.current = null;
+            }
+
+            // Web Audio Scheduler handled by useEffect observing isPlaying=false
+
+            // 清理进度定时器（但不重置进度）
+            if (progressIntervalRef.current) {
+                clearInterval(progressIntervalRef.current);
+                progressIntervalRef.current = null;
             }
         } else {
-            await startNewPlayback();
+            // 如果有缓存且选择使用缓存播放
+            if (hasCachedAudio && useCachedPlayback) {
+                await playCachedAudio();
+                return;
+            }
+
+            // RESUME or START (流式播放)
+            if (audioContextRef.current?.state === 'suspended') {
+                await audioContextRef.current.resume();
+            }
+
+            if (audioQueue.length > 0) {
+                setIsPlaying(true);
+                isPlayingRef.current = true;
+                if (currentAudio && currentAudio.paused) {
+                    currentAudio.play();
+                }
+            } else {
+                await startNewPlayback();
+            }
         }
-    }
-};
+    };
 
-// Resume Fix: If we just toggle `isPlaying`, execute Effect. 
-// If `currentAudio` exists, we need to `play()` it.
-// I added logic in `togglePlay` to `currentAudio.play()`.
-// But `useEffect` will also run.
-// If logic: `if (currentItemIdRef.current === item.id) return;`
-// This prevents re-fetch. Good.
-// So `currentAudio.play()` in `togglePlay` resumes the audio.
-// `onended` eventually fires.
-// Promise resolves.
-// `setAudioQueue` called.
-// Effect runs for NEXT item.
-// This seems correct for "Resume".
+    // Resume Fix: If we just toggle `isPlaying`, execute Effect. 
+    // If `currentAudio` exists, we need to `play()` it.
+    // I added logic in `togglePlay` to `currentAudio.play()`.
+    // But `useEffect` will also run.
+    // If logic: `if (currentItemIdRef.current === item.id) return;`
+    // This prevents re-fetch. Good.
+    // So `currentAudio.play()` in `togglePlay` resumes the audio.
+    // `onended` eventually fires.
+    // Promise resolves.
+    // `setAudioQueue` called.
+    // Effect runs for NEXT item.
+    // This seems correct for "Resume".
 
-// One caveat: `isLoadingAudio` spinner.
-// If fetching, currentAudio is null.
-// We toggle pause. `isPlaying=false`.
-// fetch finishes. `playAudioElement` starts. `setIsPlaying` is false...
-// The promise resolves. `setAudioQueue` happens.
-// Next item... Effect runs.. `isPlaying` is false -> returns.
-// So it stops correctly at end of current fetch.
+    // One caveat: `isLoadingAudio` spinner.
+    // If fetching, currentAudio is null.
+    // We toggle pause. `isPlaying=false`.
+    // fetch finishes. `playAudioElement` starts. `setIsPlaying` is false...
+    // The promise resolves. `setAudioQueue` happens.
+    // Next item... Effect runs.. `isPlaying` is false -> returns.
+    // So it stops correctly at end of current fetch.
 
-return (
-    <motion.div
-        layout
-        layoutId={`tts-card-${card.id}`}
-        transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        className="group relative"
-    >
-        <GlassCard
-            className={cn(
-                "h-full p-6 transition-all bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05]",
-                "hover:bg-rose-500/10 hover:shadow-rose-500/10"
-            )}
-            hoverEffect={true}
+    return (
+        <motion.div
+            layout
+            layoutId={`tts-card-${card.id}`}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="group relative"
         >
-            {/* Visualizer Background */}
-            {(isPlaying && !currentAudio?.paused) && (
-                <div className="absolute inset-0 z-0 opacity-20 pointer-events-none overflow-hidden">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-32 flex items-center justify-center gap-1">
-                        {[...Array(12)].map((_, i) => (
-                            <motion.div
-                                key={i}
-                                className="w-1.5 bg-rose-400 rounded-full"
-                                animate={{ height: [12, 32, 12] }}
-                                transition={{
-                                    duration: 0.8,
-                                    repeat: Infinity,
-                                    delay: i * 0.1,
-                                    ease: "easeInOut"
-                                }}
-                            />
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            <div className="relative z-10 flex flex-col h-full gap-4">
-                {/* Header */}
-                <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-lg font-semibold text-white/90 leading-tight">
-                                {card.title || "未命名卡片"}
-                            </h3>
-                            {/* Guidance Badge */}
-                            {card.guidance_level && GUIDANCE_BADGES[card.guidance_level] && (
-                                <span className={cn(
-                                    "px-1.5 py-0.5 rounded border text-[10px]",
-                                    GUIDANCE_BADGES[card.guidance_level].color
-                                )}>
-                                    {GUIDANCE_BADGES[card.guidance_level].label}
-                                </span>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-white/40">
-                            <span className="bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
-                                {card.voice_id}
-                            </span>
-                            <span>{card.rate || "Default"}</span>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        {/* 已合成标记 */}
-                        {hasCachedAudio && (
-                            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs">
-                                <Music className="w-3 h-3" />
-                                <span>已合成</span>
-                            </div>
-                        )}
-
-                        {/* 菜单按钮 */}
-                        <div className="relative">
-                            <button
-                                onClick={() => setShowCardMenu(!showCardMenu)}
-                                className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors"
-                            >
-                                <Edit2 className="w-4 h-4" />
-                            </button>
-
-                            {/* 下拉菜单 */}
-                            <AnimatePresence>
-                                {showCardMenu && (
-                                    <motion.div
-                                        initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                        exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                                        className="absolute right-0 top-full mt-1 w-40 py-1 rounded-xl bg-zinc-900/95 border border-white/10 shadow-xl z-50"
-                                    >
-                                        {/* 合成音频 */}
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); synthesizeAndDownload(); }}
-                                            disabled={isSynthesizing}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
-                                        >
-                                            {isSynthesizing ? (
-                                                <>
-                                                    <span className="animate-spin w-4 h-4 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full" />
-                                                    <span>{synthesizeProgress.current}/{synthesizeProgress.total}</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Music className="w-4 h-4 text-emerald-400" />
-                                                    <span>{hasCachedAudio ? '重新合成' : '合成音频'}</span>
-                                                </>
-                                            )}
-                                        </button>
-
-                                        {/* 删除缓存 */}
-                                        {hasCachedAudio && (
-                                            <button
-                                                onClick={async (e) => {
-                                                    e.stopPropagation();
-                                                    await deleteAudioCache(card.id);
-                                                    setHasCachedAudio(false);
-                                                    setCachedAudioUrl(null);
-                                                    setShowCardMenu(false);
-                                                }}
-                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-amber-400 hover:bg-white/10 transition-colors"
-                                            >
-                                                <RotateCcw className="w-4 h-4" />
-                                                <span>删除缓存</span>
-                                            </button>
-                                        )}
-
-                                        {/* 下载音频 */}
-                                        {hasCachedAudio && (
-                                            <button
-                                                onClick={async (e) => {
-                                                    e.stopPropagation();
-                                                    const blob = await getAudioCache(card.id);
-                                                    if (blob) {
-                                                        const url = URL.createObjectURL(blob);
-                                                        const a = document.createElement('a');
-                                                        a.href = url;
-                                                        a.download = `${card.title || '未命名'}_合成音频.wav`;
-                                                        document.body.appendChild(a);
-                                                        a.click();
-                                                        document.body.removeChild(a);
-                                                        URL.revokeObjectURL(url);
-                                                    }
-                                                    setShowCardMenu(false);
-                                                }}
-                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sky-400 hover:bg-white/10 transition-colors"
-                                            >
-                                                <Download className="w-4 h-4" />
-                                                <span>下载音频</span>
-                                            </button>
-                                        )}
-
-                                        <div className="my-1 border-t border-white/10" />
-
-                                        {/* 编辑 */}
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); setShowCardMenu(false); onEdit(card); }}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
-                                        >
-                                            <Pencil className="w-4 h-4" />
-                                            <span>编辑卡片</span>
-                                        </button>
-
-                                        {/* 删除 */}
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); setShowCardMenu(false); onDelete(card.id); }}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                            <span>删除卡片</span>
-                                        </button>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Content Preview */}
-                <div className="flex-1 min-h-[60px] max-h-[120px] overflow-y-auto custom-scrollbar my-2">
-                    <p className="text-sm text-white/70 leading-relaxed font-light whitespace-pre-wrap">
-                        {card.content}
-                    </p>
-                </div>
-
-                {/* Control Bar */}
-                <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
-                    <button
-                        onClick={(e) => { e.stopPropagation(); togglePlay(); }}
-                        disabled={isBuffering}
-                        className={cn(
-                            "flex items-center justify-center w-10 h-10 rounded-full transition-all border",
-                            isBuffering
-                                ? "bg-amber-500/20 border-amber-400/50 text-amber-300 cursor-wait"
-                                : isPlaying
-                                    ? "bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/30"
-                                    : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20"
-                        )}
-                    >
-                        {isBuffering ? (
-                            <span className="animate-spin w-4 h-4 border-2 border-amber-300/30 border-t-amber-300 rounded-full" />
-                        ) : isLoadingAudio ? (
-                            <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
-                        ) : isPlaying ? (
-                            <Pause className="w-4 h-4 fill-current" />
-                        ) : (
-                            <Play className="w-4 h-4 fill-current ml-0.5" />
-                        )}
-                    </button>
-
-                    {/* 🚀 缓冲进度显示 */}
-                    {isBuffering && (
-                        <div className="flex items-center gap-2 text-xs text-amber-300/80 animate-pulse">
-                            <span className="font-medium">准备中...</span>
-                            <span className="font-mono">{bufferProgress.loaded}/{bufferProgress.total}</span>
-                        </div>
-                    )}
-
-                    <div className="flex-1 space-y-1.5">
-                        <div className="flex justify-between text-xs text-white/40 font-mono">
-                            {hasCachedAudio ? (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setUseCachedPlayback(!useCachedPlayback); }}
-                                    className={cn(
-                                        "px-1.5 py-0.5 rounded transition-colors text-left",
-                                        useCachedPlayback
-                                            ? "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
-                                            : "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
-                                    )}
-                                    title="点击切换播放模式"
-                                >
-                                    {isPlaying
-                                        ? (useCachedPlayback ? "CACHED ▶" : "STREAM ▶")
-                                        : (useCachedPlayback ? "CACHED" : "STREAM")}
-                                </button>
-                            ) : (
-                                <span>{isPlaying ? "STREAMING" : "READY"}</span>
-                            )}
-                            {/* 时间显示 */}
-                            {playbackProgress.duration > 0 ? (
-                                <span>
-                                    {formatTime(playbackProgress.currentTime)} / {formatTime(playbackProgress.duration)}
-                                </span>
-                            ) : (
-                                <span>
-                                    {audioDuration && hasCachedAudio ? formatTime(audioDuration) : (audioQueue.length > 0 ? `${audioQueue.length} SEGS` : "00:00")}
-                                </span>
-                            )}
-                        </div>
-                        {/* Progress Bar - 可拖动 */}
-                        {playbackProgress.duration > 0 ? (
-                            <div className="relative h-6 flex items-center group">
-                                {/* 背景轨道 */}
-                                <div className="absolute left-0 right-0 h-1.5 bg-white/10 rounded-full" />
-                                {/* 已播放部分 */}
-                                <div
-                                    className="absolute left-0 h-1.5 bg-gradient-to-r from-rose-500 to-amber-500 rounded-full pointer-events-none"
-                                    style={{ width: `${(playbackProgress.currentTime / playbackProgress.duration) * 100}%` }}
-                                />
-                                {/* 拖动滑块 */}
-                                <input
-                                    type="range"
-                                    min={0}
-                                    max={playbackProgress.duration}
-                                    step={0.1}
-                                    value={playbackProgress.currentTime}
-                                    onChange={(e) => {
-                                        e.stopPropagation();
-                                        const time = parseFloat(e.target.value);
-                                        seekTo(time);
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="absolute left-0 right-0 h-6 opacity-0 cursor-pointer z-10"
-                                    title="拖动调整播放位置"
-                                />
-                                {/* 拖动手柄 */}
-                                <div
-                                    className="absolute w-3 h-3 bg-white rounded-full shadow-lg transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                                    style={{ left: `${(playbackProgress.currentTime / playbackProgress.duration) * 100}%` }}
-                                />
-                            </div>
-                        ) : (
-                            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+            <GlassCard
+                className={cn(
+                    "h-full p-6 transition-all bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05]",
+                    "hover:bg-rose-500/10 hover:shadow-rose-500/10"
+                )}
+                hoverEffect={true}
+            >
+                {/* Visualizer Background */}
+                {(isPlaying && !currentAudio?.paused) && (
+                    <div className="absolute inset-0 z-0 opacity-20 pointer-events-none overflow-hidden">
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-32 flex items-center justify-center gap-1">
+                            {[...Array(12)].map((_, i) => (
                                 <motion.div
-                                    className="h-full bg-gradient-to-r from-rose-500 to-amber-500"
-                                    layout
-                                    transition={{ duration: 0.1 }}
-                                    style={{ width: `${audioQueue.length > 0 ? 100 : 0}%` }}
+                                    key={i}
+                                    className="w-1.5 bg-rose-400 rounded-full"
+                                    animate={{ height: [12, 32, 12] }}
+                                    transition={{
+                                        duration: 0.8,
+                                        repeat: Infinity,
+                                        delay: i * 0.1,
+                                        ease: "easeInOut"
+                                    }}
                                 />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                <div className="relative z-10 flex flex-col h-full gap-4">
+                    {/* Header */}
+                    <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-semibold text-white/90 leading-tight">
+                                    {card.title || "未命名卡片"}
+                                </h3>
+                                {/* Guidance Badge */}
+                                {card.guidance_level && GUIDANCE_BADGES[card.guidance_level] && (
+                                    <span className={cn(
+                                        "px-1.5 py-0.5 rounded border text-[10px]",
+                                        GUIDANCE_BADGES[card.guidance_level].color
+                                    )}>
+                                        {GUIDANCE_BADGES[card.guidance_level].label}
+                                    </span>
+                                )}
                             </div>
-                        )}
+                            <div className="flex items-center gap-2 text-xs text-white/40">
+                                <span className="bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
+                                    {card.voice_id}
+                                </span>
+                                <span>{card.rate || "Default"}</span>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            {/* 已合成标记 */}
+                            {hasCachedAudio && (
+                                <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs">
+                                    <Music className="w-3 h-3" />
+                                    <span>已合成</span>
+                                </div>
+                            )}
+
+                            {/* 菜单按钮 */}
+                            <div className="relative">
+                                <button
+                                    onClick={() => setShowCardMenu(!showCardMenu)}
+                                    className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors"
+                                >
+                                    <Edit2 className="w-4 h-4" />
+                                </button>
+
+                                {/* 下拉菜单 */}
+                                <AnimatePresence>
+                                    {showCardMenu && (
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                                            className="absolute right-0 top-full mt-1 w-40 py-1 rounded-xl bg-zinc-900/95 border border-white/10 shadow-xl z-50"
+                                        >
+                                            {/* 合成音频 */}
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); synthesizeAndDownload(); }}
+                                                disabled={isSynthesizing}
+                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                                            >
+                                                {isSynthesizing ? (
+                                                    <>
+                                                        <span className="animate-spin w-4 h-4 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full" />
+                                                        <span>{synthesizeProgress.current}/{synthesizeProgress.total}</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Music className="w-4 h-4 text-emerald-400" />
+                                                        <span>{hasCachedAudio ? '重新合成' : '合成音频'}</span>
+                                                    </>
+                                                )}
+                                            </button>
+
+                                            {/* 删除缓存 */}
+                                            {hasCachedAudio && (
+                                                <button
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation();
+                                                        await deleteAudioCache(card.id);
+                                                        setHasCachedAudio(false);
+                                                        setCachedAudioUrl(null);
+                                                        setShowCardMenu(false);
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-amber-400 hover:bg-white/10 transition-colors"
+                                                >
+                                                    <RotateCcw className="w-4 h-4" />
+                                                    <span>删除缓存</span>
+                                                </button>
+                                            )}
+
+                                            {/* 下载音频 */}
+                                            {hasCachedAudio && (
+                                                <button
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation();
+                                                        const blob = await getAudioCache(card.id);
+                                                        if (blob) {
+                                                            const url = URL.createObjectURL(blob);
+                                                            const a = document.createElement('a');
+                                                            a.href = url;
+                                                            a.download = `${card.title || '未命名'}_合成音频.wav`;
+                                                            document.body.appendChild(a);
+                                                            a.click();
+                                                            document.body.removeChild(a);
+                                                            URL.revokeObjectURL(url);
+                                                        }
+                                                        setShowCardMenu(false);
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sky-400 hover:bg-white/10 transition-colors"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                    <span>下载音频</span>
+                                                </button>
+                                            )}
+
+                                            <div className="my-1 border-t border-white/10" />
+
+                                            {/* 编辑 */}
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setShowCardMenu(false); onEdit(card); }}
+                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                                <span>编辑卡片</span>
+                                            </button>
+
+                                            {/* 删除 */}
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setShowCardMenu(false); onDelete(card.id); }}
+                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                                <span>删除卡片</span>
+                                            </button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        </div>
                     </div>
 
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setIsPlaying(false);
-                            if (currentAudio) currentAudio.pause();
-                            setAudioQueue([]);
-                        }}
-                        className="p-2 hover:bg-white/10 rounded-full text-white/40 hover:text-white transition-colors"
-                    >
-                        <RotateCw className="w-4 h-4" />
-                    </button>
+                    {/* Content Preview */}
+                    <div className="flex-1 min-h-[60px] max-h-[120px] overflow-y-auto custom-scrollbar my-2">
+                        <p className="text-sm text-white/70 leading-relaxed font-light whitespace-pre-wrap">
+                            {card.content}
+                        </p>
+                    </div>
+
+                    {/* Control Bar */}
+                    <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                            disabled={isBuffering}
+                            className={cn(
+                                "flex items-center justify-center w-10 h-10 rounded-full transition-all border",
+                                isBuffering
+                                    ? "bg-amber-500/20 border-amber-400/50 text-amber-300 cursor-wait"
+                                    : isPlaying
+                                        ? "bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/30"
+                                        : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20"
+                            )}
+                        >
+                            {isBuffering ? (
+                                <span className="animate-spin w-4 h-4 border-2 border-amber-300/30 border-t-amber-300 rounded-full" />
+                            ) : isLoadingAudio ? (
+                                <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
+                            ) : isPlaying ? (
+                                <Pause className="w-4 h-4 fill-current" />
+                            ) : (
+                                <Play className="w-4 h-4 fill-current ml-0.5" />
+                            )}
+                        </button>
+
+                        {/* 🚀 缓冲进度显示 */}
+                        {isBuffering && (
+                            <div className="flex items-center gap-2 text-xs text-amber-300/80 animate-pulse">
+                                <span className="font-medium">准备中...</span>
+                                <span className="font-mono">{bufferProgress.loaded}/{bufferProgress.total}</span>
+                            </div>
+                        )}
+
+                        <div className="flex-1 space-y-1.5">
+                            <div className="flex justify-between text-xs text-white/40 font-mono">
+                                {hasCachedAudio ? (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setUseCachedPlayback(!useCachedPlayback); }}
+                                        className={cn(
+                                            "px-1.5 py-0.5 rounded transition-colors text-left",
+                                            useCachedPlayback
+                                                ? "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
+                                                : "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
+                                        )}
+                                        title="点击切换播放模式"
+                                    >
+                                        {isPlaying
+                                            ? (useCachedPlayback ? "CACHED ▶" : "STREAM ▶")
+                                            : (useCachedPlayback ? "CACHED" : "STREAM")}
+                                    </button>
+                                ) : (
+                                    <span>{isPlaying ? "STREAMING" : "READY"}</span>
+                                )}
+                                {/* 时间显示 */}
+                                {playbackProgress.duration > 0 ? (
+                                    <span>
+                                        {formatTime(playbackProgress.currentTime)} / {formatTime(playbackProgress.duration)}
+                                    </span>
+                                ) : (
+                                    <span>
+                                        {audioDuration && hasCachedAudio ? formatTime(audioDuration) : (audioQueue.length > 0 ? `${audioQueue.length} SEGS` : "00:00")}
+                                    </span>
+                                )}
+                            </div>
+                            {/* Progress Bar - 可拖动 */}
+                            {playbackProgress.duration > 0 ? (
+                                <div className="relative h-6 flex items-center group">
+                                    {/* 背景轨道 */}
+                                    <div className="absolute left-0 right-0 h-1.5 bg-white/10 rounded-full" />
+                                    {/* 已播放部分 */}
+                                    <div
+                                        className="absolute left-0 h-1.5 bg-gradient-to-r from-rose-500 to-amber-500 rounded-full pointer-events-none"
+                                        style={{ width: `${(playbackProgress.currentTime / playbackProgress.duration) * 100}%` }}
+                                    />
+                                    {/* 拖动滑块 */}
+                                    <input
+                                        type="range"
+                                        min={0}
+                                        max={playbackProgress.duration}
+                                        step={0.1}
+                                        value={playbackProgress.currentTime}
+                                        onChange={(e) => {
+                                            e.stopPropagation();
+                                            const time = parseFloat(e.target.value);
+                                            seekTo(time);
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="absolute left-0 right-0 h-6 opacity-0 cursor-pointer z-10"
+                                        title="拖动调整播放位置"
+                                    />
+                                    {/* 拖动手柄 */}
+                                    <div
+                                        className="absolute w-3 h-3 bg-white rounded-full shadow-lg transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                                        style={{ left: `${(playbackProgress.currentTime / playbackProgress.duration) * 100}%` }}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                    <motion.div
+                                        className="h-full bg-gradient-to-r from-rose-500 to-amber-500"
+                                        layout
+                                        transition={{ duration: 0.1 }}
+                                        style={{ width: `${audioQueue.length > 0 ? 100 : 0}%` }}
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsPlaying(false);
+                                if (currentAudio) currentAudio.pause();
+                                setAudioQueue([]);
+                            }}
+                            className="p-2 hover:bg-white/10 rounded-full text-white/40 hover:text-white transition-colors"
+                        >
+                            <RotateCw className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
-            </div>
-        </GlassCard>
-    </motion.div>
-);
+            </GlassCard>
+        </motion.div>
+    );
 }
 
 // -----------------------------------------------------------------------------

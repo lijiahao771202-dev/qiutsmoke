@@ -590,12 +590,11 @@ export default function MeditatePage() {
         }
 
         // 🔥 关键防护：如果有音频正在播放，不处理
-        if (currentAudio && !currentAudio.paused && !currentAudio.ended) {
-            return;
-        }
+        if (currentAudio && !currentAudio.paused) return;
 
-        // 如果手动暂停了（且没结束），则不自动继续（除非用户点播放，那是外层逻辑控制）
-        if (currentAudio && currentAudio.paused && !currentAudio.ended) {
+        // 如果当前音频暂停了，恢复播放
+        if (currentAudio && currentAudio.paused) {
+            currentAudio.play().catch(e => console.error("Resume failed", e));
             return;
         }
 
