@@ -62,9 +62,6 @@ function BackgroundLayer() {
                             left: 0,
                             right: 0,
                             bottom: 0,
-                            marginTop: 'calc(-1 * env(safe-area-inset-top, 0px))',
-                            paddingTop: 'env(safe-area-inset-top, 0px)',
-                            minHeight: 'calc(100vh + env(safe-area-inset-top, 0px))',
                         }}
                     />
                 )}

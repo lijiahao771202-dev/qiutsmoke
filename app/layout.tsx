@@ -38,6 +38,7 @@ export default function RootLayout({
         style={{
           background: 'transparent',
           overflowX: 'hidden',
+          overscrollBehaviorY: 'none',
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
         }}
       >

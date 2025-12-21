@@ -30,11 +30,11 @@ const config: CapacitorConfig = {
   },
   ios: {
     // 优化 iOS 状态栏和全屏体验
-    contentInset: 'always',
+    contentInset: 'never',
     backgroundColor: '#000000',
     allowsLinkPreview: false,
-    // 开启高性能滚动
-    scrollEnabled: true,
+    // 关闭 WebView 回弹 (防止壁纸跟着动)
+    scrollEnabled: false,
   },
 };
 
