@@ -1566,7 +1566,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     {/* Control Bar */}
                     <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
                         <button
-                            onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                            onClick={(e) => { e.stopPropagation(); triggerLight(); togglePlay(); }}
                             disabled={isBuffering}
                             className={cn(
                                 "flex items-center justify-center w-10 h-10 rounded-full transition-all border",

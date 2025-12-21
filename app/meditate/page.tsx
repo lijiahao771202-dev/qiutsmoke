@@ -1194,6 +1194,8 @@ export default function MeditatePage() {
     };
 
     const handleCardClick = async (id: string) => {
+        triggerLight(); // 立即触发轻触震动
+        console.log('[Haptics] 🔔 Card clicked, triggerLight called');
         setActiveCard(id);
         const topic = DEFAULT_TOPICS.find(t => t.id === id) || customTopics.find(t => t.id === id);
         const promptToUse = (editedPrompts[id] ?? topic?.prompt ?? customPrompt);
