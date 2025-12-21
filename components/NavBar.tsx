@@ -4,6 +4,27 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Wind, Droplets, Sparkles, BarChart } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useHaptics } from "@/lib/hooks/useHaptics";
+
+// 带震动反馈的导航链接
+function NavLink({ href, children, isActive, className }: {
+    href: string;
+    children: React.ReactNode;
+    isActive: boolean;
+    className?: string;
+}) {
+    const { triggerLight } = useHaptics();
+
+    return (
+        <Link
+            href={href}
+            onClick={() => triggerLight()}
+            className={className}
+        >
+            {children}
+        </Link>
+    );
+}
 
 export default function NavBar() {
     const pathname = usePathname();
@@ -11,9 +32,10 @@ export default function NavBar() {
     const isActive = (path: string) => pathname === path;
 
     return (
-        <nav className="fixed md:top-6 md:bottom-auto bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-50 glass-panel rounded-full p-2 flex justify-center items-center gap-6 md:gap-4 shadow-2xl shadow-black/40 backdrop-blur-3xl bg-black/20 border border-white/10 ring-1 ring-white/5">
-            <Link
+        <nav className="fixed md:top-6 md:bottom-auto bottom-[calc(2rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-50 glass-panel rounded-full p-2 flex justify-center items-center gap-6 md:gap-4 shadow-2xl shadow-black/40 backdrop-blur-3xl bg-black/20 border border-white/10 ring-1 ring-white/5">
+            <NavLink
                 href="/"
+                isActive={isActive("/")}
                 className={cn(
                     "p-4 md:p-3 rounded-full transition-all duration-300 relative group",
                     isActive("/")
@@ -27,10 +49,11 @@ export default function NavBar() {
                 )} />
                 <Wind className="w-6 h-6" />
                 <span className="sr-only">Home</span>
-            </Link>
+            </NavLink>
 
-            <Link
+            <NavLink
                 href="/meditate"
+                isActive={isActive("/meditate")}
                 className={cn(
                     "p-4 md:p-3 rounded-full transition-all duration-300 relative group",
                     isActive("/meditate")
@@ -44,10 +67,11 @@ export default function NavBar() {
                 )} />
                 <Droplets className="w-6 h-6" />
                 <span className="sr-only">Meditate</span>
-            </Link>
+            </NavLink>
 
-            <Link
+            <NavLink
                 href="/tts-studio"
+                isActive={isActive("/tts-studio")}
                 className={cn(
                     "p-4 md:p-3 rounded-full transition-all duration-300 relative group",
                     isActive("/tts-studio")
@@ -61,10 +85,11 @@ export default function NavBar() {
                 )} />
                 <Sparkles className="w-6 h-6" />
                 <span className="sr-only">TTS Studio</span>
-            </Link>
+            </NavLink>
 
-            <Link
+            <NavLink
                 href="/stats"
+                isActive={isActive("/stats")}
                 className={cn(
                     "p-4 md:p-3 rounded-full transition-all duration-300 relative group",
                     isActive("/stats")
@@ -78,7 +103,7 @@ export default function NavBar() {
                 )} />
                 <BarChart className="w-6 h-6" />
                 <span className="sr-only">Statistics</span>
-            </Link>
+            </NavLink>
         </nav>
     );
 }

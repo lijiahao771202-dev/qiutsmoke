@@ -9,6 +9,7 @@ import NotificationSettings from "./NotificationSettings";
 import { useBackground, WALLPAPERS } from "./BackgroundContext";
 import { cn } from "@/lib/utils";
 import { AVATAR_PRESETS, getAvatarById } from "@/lib/avatars";
+import { useHaptics } from "@/lib/hooks/useHaptics";
 
 export default function UserProfile() {
     const [user, setUser] = useState<any>(null);
@@ -106,6 +107,8 @@ export default function UserProfile() {
         }
     };
 
+    const { triggerLight } = useHaptics();
+
     if (!user) return null;
 
     const currentAvatar = getAvatarById(avatarId);
@@ -113,11 +116,14 @@ export default function UserProfile() {
 
     return (
         <>
-            <div className="fixed top-[calc(1.5rem+env(safe-area-inset-top))] right-6 z-50" ref={dropdownRef}>
+            <div className="fixed top-[calc(1rem+env(safe-area-inset-top))] right-6 z-50" ref={dropdownRef}>
                 <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => setIsOpen(!isOpen)}
+                    onClick={() => {
+                        triggerLight();
+                        setIsOpen(!isOpen);
+                    }}
                     className="flex items-center gap-2 p-1.5 pr-3 rounded-full glass-panel border border-white/10 bg-white/5 hover:bg-white/10 transition-colors shadow-lg"
                 >
                     {/* 使用选择的头像 */}
