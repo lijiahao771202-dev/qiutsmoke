@@ -730,7 +730,10 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 currentItemIdRef.current = null;
                 isProcessingRef.current = false; // 🔥 释放锁
             };
-            audio.onended = cleanup;
+            audio.onended = () => {
+                // 🔥 [Safety Margin] Wait 1s before cleanup to ensure last words are heard
+                setTimeout(cleanup, 1000);
+            };
             audio.onerror = cleanup;
 
             setCurrentAudio(audio);
@@ -859,6 +862,10 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     finalBuffers.push(buf);
                 }
             }
+
+            // 🔥 [Safety Margin] Add 1s silence at the end to prevent cutoff
+            const safetySilence = ctx.createBuffer(numberOfChannels, actualSampleRate * 1.0, actualSampleRate); // 1.0s
+            finalBuffers.push(safetySilence);
 
             const totalLength = finalBuffers.reduce((sum, buf) => sum + buf.length, 0);
             const mergedBuffer = ctx.createBuffer(numberOfChannels, totalLength, actualSampleRate);
@@ -1229,8 +1236,11 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             };
 
             audio.onended = () => {
-                cleanup();
-                setPlaybackProgress(prev => ({ ...prev, currentTime: prev.duration })); // 确保进度条走完
+                // 🔥 [Safety Margin] Wait 1s before updating UI
+                setTimeout(() => {
+                    cleanup();
+                    setPlaybackProgress(prev => ({ ...prev, currentTime: prev.duration }));
+                }, 1000);
             };
 
             audio.onerror = (e) => {
