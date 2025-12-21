@@ -1708,9 +1708,18 @@ export default function TTSStudioPage() {
     const [aiDurationEdit, setAiDurationEdit] = useState<number>(5); // 目标时长（分钟）
     const [guidanceLevelEdit, setGuidanceLevelEdit] = useState<'light' | 'medium' | 'heavy'>('medium');
 
+    // 删除确认弹窗状态（替代 iOS 不支持的 confirm）
+    const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
     const handleDelete = async (id: string) => {
-        if (!confirm('确定要删除这张卡片吗？')) return;
-        await apiDeleteCard(id);
+        // 使用自定义确认弹窗代替 confirm()，因为 iOS WebView 不支持
+        setDeleteConfirmId(id);
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteConfirmId) return;
+        await apiDeleteCard(deleteConfirmId);
+        setDeleteConfirmId(null);
     };
 
     const handleEdit = (card: TTSCard) => {
@@ -2041,6 +2050,47 @@ ${densityRule}
                                             {isSaving ? "保存中..." : "保存"}
                                         </button>
                                     </div>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* 删除确认弹窗 (iOS WebView 兼容) */}
+                <AnimatePresence>
+                    {deleteConfirmId && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                            onClick={() => setDeleteConfirmId(null)}
+                        >
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-full max-w-sm glass-panel rounded-3xl border border-white/10 shadow-2xl p-6 text-center"
+                            >
+                                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-rose-500/20 flex items-center justify-center">
+                                    <Trash2 className="w-8 h-8 text-rose-400" />
+                                </div>
+                                <h3 className="text-lg font-medium text-white mb-2">确认删除</h3>
+                                <p className="text-white/60 text-sm mb-6">确定要删除这张卡片吗？此操作无法撤销。</p>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setDeleteConfirmId(null)}
+                                        className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 text-sm transition-colors"
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        onClick={confirmDelete}
+                                        className="flex-1 px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-sm font-medium transition-colors"
+                                    >
+                                        删除
+                                    </button>
                                 </div>
                             </motion.div>
                         </motion.div>

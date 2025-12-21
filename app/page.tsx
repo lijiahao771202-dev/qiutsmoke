@@ -155,24 +155,23 @@ export default function Home() {
           className="relative mb-16 text-center"
         >
           <div className="absolute inset-0 bg-blue-500/20 blur-[80px] rounded-full" />
-          <button
-            onClick={() => {
-              triggerMedium();
-              dateInputRef.current?.showPicker();
-            }}
-            className="relative cursor-pointer active:scale-95 transition-transform group"
+          <label
+            htmlFor="days-date-input"
+            onClick={() => triggerMedium()}
+            className="relative cursor-pointer active:scale-95 transition-transform group block"
           >
-            <h2 className="text-[8rem] font-bold leading-none tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/10 drop-shadow-2xl group-hover:from-cyan-100 group-hover:to-cyan-100/10 transition-all">
+            <h2 className="text-[8rem] font-bold leading-none tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/10 drop-shadow-2xl group-active:from-cyan-100 group-active:to-cyan-100/10 transition-all">
               {days}
             </h2>
-            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-xs text-white/30 opacity-0 group-hover:opacity-100 transition-opacity">点击修改</span>
-          </button>
+            <span className="text-xs text-white/30 mt-1 block">点击修改日期</span>
+          </label>
           <p className="text-lg text-white/40 font-light tracking-widest uppercase mt-2">Days Free</p>
-          {/* Hidden date input */}
+          {/* Hidden date input - iOS compatible */}
           <input
+            id="days-date-input"
             ref={dateInputRef}
             type="date"
-            className="absolute opacity-0 pointer-events-none"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             value={startDate || ''}
             onChange={handleDateChange}
           />
