@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useHaptics } from "@/lib/hooks/useHaptics";
 import { motion } from "framer-motion";
 import { Droplets, Wind, Activity, Zap, Heart, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,8 @@ const MILESTONES = [1, 3, 7, 14, 30, 60, 100, 365];
 export default function Home() {
   const [days, setDays] = useState(0);
   const [startDate, setStartDate] = useState<string | null>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  const { triggerLight, triggerMedium } = useHaptics();
 
   // --- Logic Preserved from Original ---
   useEffect(() => {
@@ -144,7 +147,7 @@ export default function Home() {
           </GlassCard>
         </motion.header>
 
-        {/* Main Counter */}
+        {/* Main Counter - Clickable to change date */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -152,10 +155,27 @@ export default function Home() {
           className="relative mb-16 text-center"
         >
           <div className="absolute inset-0 bg-blue-500/20 blur-[80px] rounded-full" />
-          <h2 className="relative text-[8rem] font-bold leading-none tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/10 drop-shadow-2xl">
-            {days}
-          </h2>
+          <button
+            onClick={() => {
+              triggerMedium();
+              dateInputRef.current?.showPicker();
+            }}
+            className="relative cursor-pointer active:scale-95 transition-transform group"
+          >
+            <h2 className="text-[8rem] font-bold leading-none tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/10 drop-shadow-2xl group-hover:from-cyan-100 group-hover:to-cyan-100/10 transition-all">
+              {days}
+            </h2>
+            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-xs text-white/30 opacity-0 group-hover:opacity-100 transition-opacity">点击修改</span>
+          </button>
           <p className="text-lg text-white/40 font-light tracking-widest uppercase mt-2">Days Free</p>
+          {/* Hidden date input */}
+          <input
+            ref={dateInputRef}
+            type="date"
+            className="absolute opacity-0 pointer-events-none"
+            value={startDate || ''}
+            onChange={handleDateChange}
+          />
         </motion.div>
 
         {/* Milestone Tracker (Horizontal) */}
