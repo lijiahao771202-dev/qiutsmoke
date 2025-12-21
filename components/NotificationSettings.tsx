@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, BellOff, Clock, X, Plus, Trash2, Send, AlertTriangle, Shield, Radio, CheckCircle } from "lucide-react";
+import { Bell, BellOff, Clock, X, Plus, Trash2, Send, AlertTriangle, Shield, Radio, CheckCircle, Smartphone } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useNotifications } from "@/lib/hooks/useNotifications";
 
 interface DangerTime {
     id: string;
@@ -17,6 +18,16 @@ interface NotificationSettingsProps {
 }
 
 export default function NotificationSettings({ onClose }: NotificationSettingsProps) {
+    // Capacitor 本地通知 hook (自动检测原生环境)
+    const {
+        isNative, // 是否在原生环境
+        permissionGranted: nativePermission,
+        requestPermission: requestNativePermission,
+        scheduleDailyReminder,
+        cancelAllReminders,
+        sendTestNotification: sendNativeTestNotification
+    } = useNotifications();
+
     const [isSupported, setIsSupported] = useState(false);
     const [permission, setPermission] = useState<NotificationPermission>("default");
     const [isSubscribed, setIsSubscribed] = useState(false);
@@ -50,13 +61,20 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
     }, []);
 
     useEffect(() => {
-        const supported = "Notification" in window && "serviceWorker" in navigator;
-        setIsSupported(supported);
+        // 在原生环境中总是支持的
+        if (isNative) {
+            setIsSupported(true);
+            // 原生环境不用检查 Web Notification
+        } else {
+            // Web 环境检测
+            const supported = "Notification" in window && "serviceWorker" in navigator;
+            setIsSupported(supported);
 
-        if (supported) {
-            setPermission(Notification.permission);
-            // 检查推送订阅状态
-            checkPushSubscription();
+            if (supported) {
+                setPermission(Notification.permission);
+                // 检查推送订阅状态
+                checkPushSubscription();
+            }
         }
 
         // Load from localStorage
@@ -71,7 +89,7 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
 
         // 加载高危时段
         loadDangerTimes();
-    }, [loadDangerTimes]);
+    }, [loadDangerTimes, isNative]);
 
     // 检查推送订阅状态
     const checkPushSubscription = async () => {
@@ -222,13 +240,37 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
         setMessage("");
 
         try {
-            if (permission !== "granted") {
-                const granted = await requestPermission();
-                if (!granted) {
-                    setMessage("需要通知权限才能发送提醒");
-                    setLoading(false);
-                    return;
+            // 原生环境使用 Capacitor Local Notifications
+            if (isNative) {
+                if (!nativePermission) {
+                    const granted = await requestNativePermission();
+                    if (!granted) {
+                        setMessage("❌ 需要通知权限！请在系统设置中允许");
+                        setLoading(false);
+                        return;
+                    }
                 }
+
+                // 为每个时间设置本地提醒
+                for (const time of reminderTimes) {
+                    const [hourStr, minuteStr] = time.split(":");
+                    const hour = parseInt(hourStr, 10);
+                    const minute = parseInt(minuteStr, 10);
+                    await scheduleDailyReminder(hour, minute);
+                }
+
+                setMessage(`✅ 已设置 ${reminderTimes.length} 个每日提醒`);
+            } else {
+                // Web 环境
+                if (permission !== "granted") {
+                    const granted = await requestPermission();
+                    if (!granted) {
+                        setMessage("需要通知权限才能发送提醒");
+                        setLoading(false);
+                        return;
+                    }
+                }
+                setMessage("✅ 提醒已开启");
             }
 
             localStorage.setItem("meditation_reminders", JSON.stringify({
@@ -238,7 +280,6 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
             }));
 
             setIsSubscribed(true);
-            setMessage("✅ 提醒已开启");
         } catch (err) {
             console.error("Subscribe error:", err);
             setMessage("设置失败: " + (err instanceof Error ? err.message : String(err)));
@@ -249,6 +290,12 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
 
     const unsubscribe = async () => {
         setLoading(true);
+
+        // 原生环境取消所有提醒
+        if (isNative) {
+            await cancelAllReminders();
+        }
+
         localStorage.setItem("meditation_reminders", JSON.stringify({
             times: reminderTimes,
             enabled: false
@@ -332,29 +379,44 @@ export default function NotificationSettings({ onClose }: NotificationSettingsPr
         setMessage("");
 
         try {
-            if (Notification.permission === "default") {
-                const result = await Notification.requestPermission();
-                setPermission(result);
-                if (result !== "granted") {
-                    setMessage("❌ 需要通知权限！");
+            // 原生环境使用 Capacitor Local Notifications
+            if (isNative) {
+                if (!nativePermission) {
+                    const granted = await requestNativePermission();
+                    if (!granted) {
+                        setMessage("❌ 需要通知权限！请在系统设置中允许");
+                        setTestLoading(false);
+                        return;
+                    }
+                }
+                await sendNativeTestNotification();
+                setMessage("✅ 测试通知已发送！请等待几秒钟...");
+            } else {
+                // Web 环境使用 Notification API
+                if (Notification.permission === "default") {
+                    const result = await Notification.requestPermission();
+                    setPermission(result);
+                    if (result !== "granted") {
+                        setMessage("❌ 需要通知权限！");
+                        setTestLoading(false);
+                        return;
+                    }
+                } else if (Notification.permission === "denied") {
+                    setMessage("❌ 通知被阻止！请在设置中允许");
                     setTestLoading(false);
                     return;
                 }
-            } else if (Notification.permission === "denied") {
-                setMessage("❌ 通知被阻止！请在设置中允许");
-                setTestLoading(false);
-                return;
+
+                new Notification("🧘 测试提醒", {
+                    body: "如果你看到这条消息，说明通知功能正常！",
+                    tag: "test-notification"
+                });
+
+                setMessage("✅ 测试通知已发送！");
             }
-
-            new Notification("🧘 测试提醒", {
-                body: "如果你看到这条消息，说明通知功能正常！",
-                tag: "test-notification"
-            });
-
-            setMessage("✅ 测试通知已发送！");
         } catch (err) {
             console.error("Test notification error:", err);
-            setMessage("发送失败");
+            setMessage("发送失败: " + (err instanceof Error ? err.message : String(err)));
         }
 
         setTestLoading(false);

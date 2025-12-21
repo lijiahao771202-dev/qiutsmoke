@@ -356,7 +356,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoadingAudio, setIsLoadingAudio] = useState(false); // For spinning indicator
     const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
-    const { triggerLight, triggerMedium, triggerSuccess, triggerError } = useHaptics();
+    const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess, triggerError } = useHaptics();
 
     // 合成状态
     const [isSynthesizing, setIsSynthesizing] = useState(false);
@@ -367,6 +367,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     const [cachedAudioUrl, setCachedAudioUrl] = useState<string | null>(null);
     const [audioDuration, setAudioDuration] = useState<number | null>(null); // 音频总时长
     const [showCardMenu, setShowCardMenu] = useState(false);
+    const [deleteCacheConfirm, setDeleteCacheConfirm] = useState(false); // iOS的确认弹窗
     const [useCachedPlayback, setUseCachedPlayback] = useState(true); // 默认使用缓存播放
 
     // 播放进度状态 (用于缓存音频)
@@ -415,6 +416,25 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     const sharedAudioRef = useRef<HTMLAudioElement | null>(null);
     const primeOnceRef = useRef(false);
     const isTogglingRef = useRef(false); // 🔥 防止快速点击产生的竞态
+
+    // 🔥 [iOS Fix] 初始化共享 Audio 对象
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const audio = new Audio();
+            (audio as any).playsInline = true; // iOS 关键
+            audio.preload = 'auto';
+            sharedAudioRef.current = audio;
+        }
+        return () => {
+            if (sharedAudioRef.current) {
+                const audio = sharedAudioRef.current;
+                audio.pause();
+                audio.src = '';
+                audio.onended = null;
+                audio.onerror = null;
+            }
+        };
+    }, []);
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -677,22 +697,32 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         currentItemIdRef.current = item.id;
 
         if (item.type === 'pause') {
-            // 🔥 使用 sharedAudioRef 播放静默，避免创建新 Audio 对象触发 iOS NotAllowedError
+            // 🔥 使用 sharedAudioRef 播放静默
             const silenceUrl = createSilenceWavURL(item.duration / 1000);
-            const audio = sharedAudioRef.current || new Audio();
+
+            // 确保使用共享实例
+            let audio = sharedAudioRef.current;
+            if (!audio) {
+                audio = new Audio();
+                sharedAudioRef.current = audio;
+            }
+
             (audio as any).playsInline = true;
             audio.volume = 1;
             audio.src = silenceUrl;
-            setIsLoadingAudio(false); // 🔥 静默也是一种播放状态
+            setIsLoadingAudio(false);
 
             const cleanup = () => {
-                audio.onended = null;
-                audio.onerror = null;
+                // 不要设置为 null，只是移除监听器
+                if (audio) {
+                    audio.onended = null;
+                    audio.onerror = null;
+                }
                 URL.revokeObjectURL(silenceUrl);
                 setAudioQueue(prev => prev.slice(1));
                 setCurrentAudio(null);
                 currentItemIdRef.current = null;
-                isProcessingRef.current = false; // 🔥 释放锁
+                isProcessingRef.current = false;
             };
             audio.onended = cleanup;
             audio.onerror = cleanup;
@@ -704,15 +734,23 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     await audio.play();
                 } catch (e) {
                     console.error('[TTS] Silence play failed', e);
+                    // 失败时也触发清理，避免卡死
+                    cleanup();
                 }
             })();
         } else if (item.type === 'text' && item.url) {
-            // 🔥 使用 sharedAudioRef 播放，避免创建新 Audio 对象触发 iOS NotAllowedError
-            const audio = sharedAudioRef.current || new Audio();
+            // 🔥 使用 sharedAudioRef 播放
+            // 确保使用共享实例
+            let audio = sharedAudioRef.current;
+            if (!audio) {
+                audio = new Audio();
+                sharedAudioRef.current = audio;
+            }
+
             (audio as any).playsInline = true;
             audio.volume = 1;
             audio.src = item.url;
-            setIsLoadingAudio(false); // 🔥 加载完成，开始播放
+            setIsLoadingAudio(false);
 
             // 设置 Media Session
             try {
@@ -728,17 +766,21 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             } catch { }
 
             const cleanup = () => {
-                audio.onended = null;
-                audio.onerror = null;
+                if (audio) {
+                    audio.onended = null;
+                    audio.onerror = null;
+                }
                 if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
                 setAudioQueue(prev => prev.slice(1));
                 setCurrentAudio(null);
                 currentItemIdRef.current = null;
-                isProcessingRef.current = false; // 🔥 释放锁
+                isProcessingRef.current = false;
             };
             audio.onended = () => {
                 // 🔥 [Safety Margin] Wait 1s before cleanup to ensure last words are heard
-                setTimeout(cleanup, 1000);
+                // 注意：在持续对话中，这个 1s 延迟可能会导致感觉“卡顿”。
+                // 但为了不切断尾音，暂时保留，或者缩短。
+                setTimeout(cleanup, 500); // 缩短到 500ms
             };
             audio.onerror = cleanup;
 
@@ -749,6 +791,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     await audio.play();
                 } catch (e) {
                     console.error('[TTS] Play failed', e);
+                    cleanup();
                 }
             })();
         } else if (item.type === 'text' && !item.url && !item.buffer) {
@@ -1453,7 +1496,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                             {/* 菜单按钮 */}
                             <div className="relative">
                                 <button
-                                    onClick={() => { triggerMedium(); setShowCardMenu(!showCardMenu); }}
+                                    onClick={(e) => { e.stopPropagation(); triggerMedium(); setShowCardMenu(!showCardMenu); }}
                                     className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors"
                                 >
                                     <Edit2 className="w-4 h-4" />
@@ -1490,13 +1533,10 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                             {/* 删除缓存 */}
                                             {hasCachedAudio && (
                                                 <button
-                                                    onClick={async (e) => {
+                                                    onClick={(e) => {
                                                         e.stopPropagation();
-                                                        triggerHeavy(); // Delete action feel
-                                                        await deleteAudioCache(card.id);
-                                                        setHasCachedAudio(false);
-                                                        setCachedAudioUrl(null);
                                                         setShowCardMenu(false);
+                                                        setDeleteCacheConfirm(true); // 显示确认弹窗
                                                     }}
                                                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-amber-400 hover:bg-white/10 transition-colors"
                                                 >
@@ -1510,23 +1550,36 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                                 <button
                                                     onClick={async (e) => {
                                                         e.stopPropagation();
+                                                        setShowCardMenu(false);
                                                         const blob = await getAudioCache(card.id);
                                                         if (blob) {
+                                                            const filename = `${card.title || '未命名'}_合成音频.wav`;
+                                                            // 尝试使用 Web Share API (iOS 支持更好)
+                                                            if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'audio/wav' })] })) {
+                                                                try {
+                                                                    const file = new File([blob], filename, { type: 'audio/wav' });
+                                                                    await navigator.share({ files: [file], title: card.title || '冒想音频' });
+                                                                    return;
+                                                                } catch (err: any) {
+                                                                    // 用户取消分享或失败，回退到下载
+                                                                    if (err.name !== 'AbortError') console.warn('分享失败', err);
+                                                                }
+                                                            }
+                                                            // 回退: 标准下载 (iOS Safari 可能不工作)
                                                             const url = URL.createObjectURL(blob);
                                                             const a = document.createElement('a');
                                                             a.href = url;
-                                                            a.download = `${card.title || '未命名'}_合成音频.wav`;
+                                                            a.download = filename;
                                                             document.body.appendChild(a);
                                                             a.click();
                                                             document.body.removeChild(a);
-                                                            URL.revokeObjectURL(url);
+                                                            setTimeout(() => URL.revokeObjectURL(url), 100);
                                                         }
-                                                        setShowCardMenu(false);
                                                     }}
                                                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sky-400 hover:bg-white/10 transition-colors"
                                                 >
                                                     <Download className="w-4 h-4" />
-                                                    <span>下载音频</span>
+                                                    <span>下载/分享音频</span>
                                                 </button>
                                             )}
 
@@ -1685,6 +1738,53 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     </div>
                 </div>
             </GlassCard>
+
+            {/* 删除缓存确认弹窗 (iOS兼容) */}
+            <AnimatePresence>
+                {deleteCacheConfirm && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setDeleteCacheConfirm(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full max-w-sm glass-panel rounded-3xl border border-white/10 shadow-2xl p-6 text-center"
+                        >
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-amber-500/20 flex items-center justify-center">
+                                <RotateCcw className="w-8 h-8 text-amber-400" />
+                            </div>
+                            <h3 className="text-lg font-medium text-white mb-2">删除音频缓存</h3>
+                            <p className="text-white/60 text-sm mb-6">确定要删除已合成的音频缓存吗？你可以重新合成。</p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setDeleteCacheConfirm(false)}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 text-sm transition-colors"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        triggerHeavy();
+                                        await deleteAudioCache(card.id);
+                                        setHasCachedAudio(false);
+                                        setCachedAudioUrl(null);
+                                        setDeleteCacheConfirm(false);
+                                    }}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-sm font-medium transition-colors"
+                                >
+                                    删除
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </motion.div>
     );
 }

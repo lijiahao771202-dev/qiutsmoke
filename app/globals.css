@@ -29,6 +29,25 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* iOS WebView 触摸优化 */
+button,
+a,
+label,
+[role="button"],
+.cursor-pointer {
+  touch-action: manipulation;
+  /* 防止双击缩放延迟 */
+  -webkit-tap-highlight-color: transparent;
+  /* 移除点击高亮 */
+  cursor: pointer;
+}
+
+/* 确保所有可点击元素在 iOS 上响应触摸 */
+button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 /* iOS 全屏支持 - 确保视口充满整个屏幕 */
 html,
 body {

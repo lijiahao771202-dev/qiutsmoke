@@ -1,17 +1,50 @@
 "use client";
 
 import { LocalNotifications, ScheduleOptions } from '@capacitor/local-notifications';
-import { useCallback, useState, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { useCallback, useState, useEffect, useMemo } from 'react';
+
+/**
+ * 更可靠的原生环境检测
+ * Capacitor.isNativePlatform() 在远程 URL 加载时可能返回 false
+ * 使用 User-Agent 作为备选检测方法
+ */
+const detectNativeEnvironment = (): boolean => {
+    if (typeof window === 'undefined') return false;
+
+    // 首先尝试 Capacitor 官方检测
+    try {
+        if (Capacitor.isNativePlatform()) return true;
+    } catch (e) {
+        console.warn('[NativeDetect] Capacitor detection failed:', e);
+    }
+
+    // 备选：检测 iOS WebView User-Agent
+    // Capacitor iOS 使用 WKWebView，可以通过 UA 检测
+    const ua = navigator.userAgent;
+    // 检测是否在 iOS App 的 WebView 中 (不是 Safari)
+    const isIOSWebView = /iPhone|iPad|iPod/.test(ua) && !ua.includes('Safari');
+    // 或者检测 Capacitor 特有的 UA 标识
+    const hasCapacitorFlag = ua.includes('Capacitor');
+
+    return isIOSWebView || hasCapacitorFlag;
+};
 
 /**
  * useNotifications Hook
  * 提供本地通知功能，用于冥想提醒等场景
+ * 仅在 Capacitor 原生环境中可用
  */
 export const useNotifications = () => {
     const [permissionGranted, setPermissionGranted] = useState(false);
 
-    // 检查权限状态
+    // 检测是否在原生环境 (使用增强的检测方法)
+    const isNative = useMemo(() => detectNativeEnvironment(), []);
+
+    // 检查权限状态 (仅在原生环境)
     useEffect(() => {
+        if (!isNative) return; // Web 环境跳过
+
         (async () => {
             try {
                 const status = await LocalNotifications.checkPermissions();
@@ -20,7 +53,7 @@ export const useNotifications = () => {
                 console.warn('[Notifications] Check permission failed', e);
             }
         })();
-    }, []);
+    }, [isNative]);
 
     /**
      * 请求通知权限
@@ -130,6 +163,7 @@ export const useNotifications = () => {
     }, [permissionGranted, requestPermission]);
 
     return {
+        isNative, // 是否在原生环境
         permissionGranted,
         requestPermission,
         scheduleDailyReminder,

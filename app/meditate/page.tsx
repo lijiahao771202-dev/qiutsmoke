@@ -270,6 +270,16 @@ export default function MeditatePage() {
     // 🔥 持久 Audio 对象：在用户手势中初始化后可复用，避免 iOS NotAllowedError
     const sharedAudioRef = useRef<HTMLAudioElement | null>(null);
 
+    // 🔥 [iOS Fix] 初始化共享 Audio 对象
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const audio = new Audio();
+            (audio as any).playsInline = true;
+            audio.preload = 'auto';
+            sharedAudioRef.current = audio;
+        }
+    }, []);
+
     const ensureAudioContext = async () => {
         if (typeof window === 'undefined') return;
         const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -312,17 +322,25 @@ export default function MeditatePage() {
     const primeAudio = () => {
         if (primeOnceRef.current) return;
         primeOnceRef.current = true;
-        // 🔥 iOS 要求 audio.play() 必须在用户手势的同步调用链中执行
-        // 创建持久 Audio 对象，后续复用它来播放不同的音频
+
         const url = createSilenceWavURL(0.05);
-        const audio = new Audio(url);
+        // 🔥 优先使用已初始化的对象
+        let audio = sharedAudioRef.current;
+        if (!audio) {
+            audio = new Audio();
+            sharedAudioRef.current = audio;
+        }
+
         (audio as any).playsInline = true;
-        audio.volume = 0.01; // 极低音量
+        audio.preload = 'auto';
+        audio.volume = 0.01;
+        audio.src = url;
+
         audio.onended = () => URL.revokeObjectURL(url);
         audio.onerror = () => URL.revokeObjectURL(url);
-        audio.play().catch(() => { }); // 同步调用，忽略错误
-        // 🔥 保存到 ref，后续复用
-        sharedAudioRef.current = audio;
+
+        // 🔥 必须 catch 错误，防止阻塞后续逻辑
+        audio.play().catch(err => console.warn("Prime failed", err));
     };
 
     // === 预加载音频项目（并行解码） ===
@@ -651,38 +669,51 @@ export default function MeditatePage() {
             setIsBuffering(false);
 
             if (item.type === 'pause') {
-                // 🔥 使用 sharedAudioRef 播放静默，避免创建新 Audio 对象触发 iOS NotAllowedError
                 const silenceUrl = createSilenceWavURL(item.duration / 1000);
-                const audio = sharedAudioRef.current || new Audio();
-                (audio as any).playsInline = true;
+
+                // 🔥 [iOS Strict Fix] 强制复用 sharedAudioRef
+                if (!sharedAudioRef.current) {
+                    sharedAudioRef.current = new Audio();
+                    (sharedAudioRef.current as any).playsInline = true;
+                }
+                const audio = sharedAudioRef.current;
+
                 audio.volume = 1;
                 audio.src = silenceUrl;
 
                 const cleanup = () => {
-                    audio.onended = null;
-                    audio.onerror = null;
+                    if (sharedAudioRef.current === audio) {
+                        audio.onended = null;
+                        audio.onerror = null;
+                    }
                     URL.revokeObjectURL(silenceUrl);
                     setAudioQueue(prev => prev.slice(1));
                     setCurrentAudio(null);
                     currentItemIdRef.current = null;
-                    isProcessingRef.current = false; // 🔥 释放锁
+                    isProcessingRef.current = false;
                 };
+
                 audio.onended = cleanup;
                 audio.onerror = cleanup;
-
                 setCurrentAudio(audio);
+
                 (async () => {
                     try {
                         await ensureAudioContext();
                         await audio.play();
                     } catch (e) {
-                        console.error('[Meditate] Silence play failed', e);
+                        console.error('[Meditate] Silence playback failed', e);
+                        cleanup();
                     }
                 })();
             } else if (item.type === 'audio' && item.url) {
-                // 🔥 使用 sharedAudioRef 播放，避免创建新 Audio 对象触发 iOS NotAllowedError
-                const audio = sharedAudioRef.current || new Audio();
-                (audio as any).playsInline = true;
+                // 🔥 [iOS Strict Fix] 强制复用 sharedAudioRef
+                if (!sharedAudioRef.current) {
+                    sharedAudioRef.current = new Audio();
+                    (sharedAudioRef.current as any).playsInline = true;
+                }
+                const audio = sharedAudioRef.current;
+
                 audio.volume = 1;
                 audio.src = item.url;
 
@@ -700,24 +731,30 @@ export default function MeditatePage() {
                 } catch { }
 
                 const cleanup = () => {
-                    audio.onended = null;
-                    audio.onerror = null;
-                    if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
-                    setAudioQueue(prev => prev.slice(1));
-                    setCurrentAudio(null);
-                    currentItemIdRef.current = null;
-                    isProcessingRef.current = false; // 🔥 释放锁
+                    setTimeout(() => {
+                        if (sharedAudioRef.current === audio) {
+                            audio.onended = null;
+                            audio.onerror = null;
+                        }
+                        if (item.url && item.url.startsWith('blob:')) URL.revokeObjectURL(item.url);
+                        setAudioQueue(prev => prev.slice(1));
+                        setCurrentAudio(null);
+                        currentItemIdRef.current = null;
+                        isProcessingRef.current = false;
+                    }, 500);
                 };
+
                 audio.onended = cleanup;
                 audio.onerror = cleanup;
-
                 setCurrentAudio(audio);
+
                 (async () => {
                     try {
                         await ensureAudioContext();
                         await audio.play();
                     } catch (e) {
-                        console.error('[Meditate] Play failed', e);
+                        console.error('[Meditate] Audio playback failed', e);
+                        cleanup();
                     }
                 })();
             } else if (item.type === 'audio' && item.buffer) {
