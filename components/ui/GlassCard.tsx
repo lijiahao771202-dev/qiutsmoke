@@ -3,6 +3,7 @@
 
 import { cn } from "@/lib/utils";
 import React, { useRef } from "react";
+import { useHaptics } from "@/lib/hooks/useHaptics";
 
 interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
     children: React.ReactNode;
@@ -15,9 +16,11 @@ export function GlassCard({
     className,
     transparency = "medium",
     hoverEffect = false,
+    onMouseDown,
     ...props
 }: GlassCardProps) {
     const divRef = useRef<HTMLDivElement>(null);
+    const { triggerLight } = useHaptics();
 
     const bgOpacity = {
         low: "bg-black/60",
@@ -41,6 +44,12 @@ export function GlassCard({
         <div
             ref={divRef}
             onMouseMove={handleMouseMove}
+            onTouchStart={(e) => {
+                triggerLight(); // 触发轻触震动
+                if (props.onClick) {
+                    // 允许 onClick 正常触发
+                }
+            }}
             className={cn(
                 "relative overflow-hidden rounded-[2rem]",
                 // L3: Adaptive Tint - Boost saturation/contrast to pull background color through

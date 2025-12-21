@@ -12,6 +12,7 @@ import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
 // TTSCard interface moved to lib/hooks/useData.ts
 // Re-export for backwards compatibility
 export type { TTSCard } from "@/lib/hooks/useData";
+import { useHaptics } from "@/lib/hooks/useHaptics";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -32,6 +33,7 @@ function GlassInput({ onAdd }: { onAdd: () => void }) {
     const [title, setTitle] = useState("");
     const [voiceId, setVoiceId] = useState(VOICES[0].id);
     const [isLoading, setIsLoading] = useState(false);
+    const { triggerLight, triggerSuccess, triggerHeavy } = useHaptics();
 
     // AI 生成相关状态
     const [aiPrompt, setAiPrompt] = useState("");
@@ -52,6 +54,7 @@ function GlassInput({ onAdd }: { onAdd: () => void }) {
                 setTitle("");
                 setAiPrompt("");
                 onAdd();
+                triggerSuccess(); // Haptic feedback
             }
         } finally {
             setIsLoading(false);
@@ -163,9 +166,11 @@ ${densityRule}
             if (!title.trim()) {
                 setTitle(aiPrompt.slice(0, 20) + (aiPrompt.length > 20 ? "..." : ""));
             }
+            triggerSuccess(); // AI Generation Success
         } catch (e) {
             console.error("AI 生成失败:", e);
             setText("生成失败，请重试...");
+            triggerHeavy(); // Error Haptic
         } finally {
             setAiGenerating(false);
         }
@@ -351,6 +356,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoadingAudio, setIsLoadingAudio] = useState(false); // For spinning indicator
     const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
+    const { triggerLight, triggerMedium, triggerSuccess, triggerError } = useHaptics();
 
     // 合成状态
     const [isSynthesizing, setIsSynthesizing] = useState(false);
@@ -953,8 +959,10 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             setCachedAudioUrl(url);
 
             console.log("[Synthesize] ✅ 合成完成并已缓存");
+            triggerSuccess(); // Synthesis Complete
         } catch (err) {
             console.error("[Synthesize] Error", err);
+            triggerError();
         } finally {
             setIsSynthesizing(false);
             setSynthesizeProgress({ current: 0, total: 0 });
@@ -1290,6 +1298,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     const togglePlay = async () => {
         if (isTogglingRef.current) return;
         isTogglingRef.current = true;
+        triggerLight();
 
         try {
             await ensureAudioContext();
@@ -1444,7 +1453,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                             {/* 菜单按钮 */}
                             <div className="relative">
                                 <button
-                                    onClick={() => setShowCardMenu(!showCardMenu)}
+                                    onClick={() => { triggerMedium(); setShowCardMenu(!showCardMenu); }}
                                     className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors"
                                 >
                                     <Edit2 className="w-4 h-4" />
@@ -1461,7 +1470,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                         >
                                             {/* 合成音频 */}
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); synthesizeAndDownload(); }}
+                                                onClick={(e) => { e.stopPropagation(); triggerLight(); synthesizeAndDownload(); }}
                                                 disabled={isSynthesizing}
                                                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
                                             >
@@ -1483,6 +1492,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                                 <button
                                                     onClick={async (e) => {
                                                         e.stopPropagation();
+                                                        triggerHeavy(); // Delete action feel
                                                         await deleteAudioCache(card.id);
                                                         setHasCachedAudio(false);
                                                         setCachedAudioUrl(null);
@@ -1533,7 +1543,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
                                             {/* 删除 */}
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); setShowCardMenu(false); onDelete(card.id); }}
+                                                onClick={(e) => { e.stopPropagation(); triggerHeavy(); setShowCardMenu(false); onDelete(card.id); }}
                                                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
                                             >
                                                 <Trash2 className="w-4 h-4" />

@@ -1,6 +1,8 @@
 "use client";
 
+
 import { useState, useRef, useEffect, useMemo } from "react";
+import { useHaptics } from "@/lib/hooks/useHaptics";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, Wind, CloudRain, Zap, Moon, Droplets, Settings, X, Activity, Shield, Trash2, Plus, Network, Sparkles, Edit2, Check, ArrowLeft, Save } from "lucide-react";
 import Link from "next/link";
@@ -248,6 +250,7 @@ export default function MeditatePage() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [audioQueue, setAudioQueue] = useState<QueueItem[]>([]);
     const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
+    const { triggerSuccess, triggerLight, triggerHeavy } = useHaptics();
     const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
     const [showAudioHint, setShowAudioHint] = useState(false);
     const [text, setText] = useState("");
@@ -601,7 +604,11 @@ export default function MeditatePage() {
 
         // 队列为空时停止
         if (audioQueue.length === 0) {
-            setIsPlaying(false);
+            if (isPlaying) {
+                console.log("[Meditate] ✅ Session Complete");
+                triggerSuccess();
+                setIsPlaying(false);
+            }
             return;
         }
 
@@ -958,12 +965,14 @@ export default function MeditatePage() {
                     // Stream ended - flush ALL remaining text
                     await processBuffer(true);
                     setIsGenerating(false);
+                    triggerSuccess(); // AI Generation Complete
                 }
             }
 
         } catch (error) {
             console.error("Generation failed", error);
             setIsGenerating(false);
+            triggerHeavy();
         }
     };
 
