@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import AuthGuard from "@/components/AuthGuard";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useMeditationTopics } from "@/lib/hooks/useData";
+import { useBackgroundAudio } from "@/hooks/useBackgroundAudio";
 
 // IP Address from system check
 const LAN_IP = "10.173.165.153:3001";
@@ -483,16 +484,72 @@ export default function MeditatePage() {
 
                 scheduledCount++;
 
+            } else if (item.type === 'audio' && item.url) {
+                // 🔥 使用 HTMLAudioElement - 支持后台播放
+                // 重要：一次只播放一个音频，等待完成后再播放下一个
+
+                // 🔥 立即锁定，防止轮询再次调用
+                isPlayingNextRef.current = true;
+
+                const audio = new Audio(item.url);
+                (audio as any).playsInline = true;
+                audio.preload = 'auto';
+
+                // 设置 Media Session
+                try {
+                    if ('mediaSession' in navigator) {
+                        navigator.mediaSession.metadata = new MediaMetadata({
+                            title: activeCard ? (customTopics.find(t => t.id === activeCard)?.title || 'Rain 冥想') : 'Rain 冥想',
+                            artist: 'Rain Meditation',
+                            artwork: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }]
+                        });
+                        navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
+                        navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
+                    }
+                } catch { }
+
+                audio.onended = () => {
+                    if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
+                    setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+                    scheduledIdsRef.current.delete(item.id);
+                    setCurrentAudio(null);
+                    // 🔥 播放完成后触发下一个
+                    isPlayingNextRef.current = false;
+                };
+                audio.onerror = () => {
+                    if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
+                    setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+                    scheduledIdsRef.current.delete(item.id);
+                    setCurrentAudio(null);
+                    isPlayingNextRef.current = false;
+                };
+
+                scheduledIdsRef.current.add(item.id);
+                setCurrentAudio(audio);
+
+                (async () => {
+                    try {
+                        await ensureAudioContext();
+                        await audio.play();
+                    } catch (e) {
+                        console.error('[Meditate] HTMLAudio play failed', e);
+                        // 播放失败时也要触发下一个
+                        isPlayingNextRef.current = false;
+                    }
+                })();
+
+                // 🔥 HTMLAudioElement 只调度一个，跳出循环
+                break;
+
             } else if (item.type === 'audio' && item.buffer) {
-                // 调度音频
+                // WebAudio 作为 fallback（用于没有 URL 的情况）
                 const source = ctx.createBufferSource();
                 source.buffer = item.buffer;
                 source.connect(ctx.destination);
 
                 const duration = item.buffer.duration;
 
-                // 🔥 用 setTimeout 替代 onended（更可靠）
-                const endTimeMs = ((start - ctx.currentTime) + duration) * 1000 + 1000; // 加 1s 安全边距
+                const endTimeMs = ((start - ctx.currentTime) + duration) * 1000 + 1000;
                 setTimeout(() => {
                     setAudioQueue(prev => prev.filter(q => q.id !== item.id));
                     scheduledIdsRef.current.delete(item.id);
@@ -517,10 +574,11 @@ export default function MeditatePage() {
         isPlayingNextRef.current = false;
     };
 
-    // 当 isPlaying 变化时，启动或停止播放循环
+    // 🔥 用 b1d4d20 的方式：useEffect 监听 audioQueue 变化，顺序播放
     useEffect(() => {
+        // 停止播放时清理
         if (!isPlaying) {
-            // 停止播放时清理
+            if (currentAudio) currentAudio.pause();
             if (currentSourceRef.current) {
                 try { currentSourceRef.current.stop(); } catch { }
                 currentSourceRef.current = null;
@@ -531,23 +589,115 @@ export default function MeditatePage() {
             return;
         }
 
-        // 🔥 启动轮询检查（替代依赖 audioQueue 的 useEffect）
-        const checkInterval = setInterval(() => {
-            if (!isPlayingNextRef.current && audioQueueRef.current.length > 0) {
-                playNextInQueue();
-            }
-        }, 200);
+        // 🔥 关键防护：如果有音频正在播放，不处理
+        if (currentAudio && !currentAudio.paused) return;
 
-        // 立即检查一次
-        if (!isPlayingNextRef.current && audioQueueRef.current.length > 0) {
-            playNextInQueue();
+        // 如果当前音频暂停了，恢复播放
+        if (currentAudio && currentAudio.paused) {
+            currentAudio.play().catch(e => console.error("Resume failed", e));
+            return;
         }
 
-        return () => clearInterval(checkInterval);
-    }, [isPlaying]);
+        // 处理队列第一个项目
+        if (audioQueue.length > 0) {
+            const item = audioQueue[0];
+
+            // 跳过错误的
+            if (item.type === 'audio' && item.status === 'error') {
+                setAudioQueue(prev => prev.slice(1));
+                return;
+            }
+
+            // 等待加载
+            if (item.type === 'audio' && item.status === 'loading') {
+                setIsBuffering(true);
+                return;
+            }
+
+            setIsBuffering(false);
+
+            if (item.type === 'pause') {
+                // 播放静默
+                (async () => {
+                    await playSilence(item.duration / 1000);
+                    setAudioQueue(prev => prev.slice(1));
+                })();
+            } else if (item.type === 'audio' && item.url) {
+                // 🔥 用 HTMLAudioElement 播放（支持后台）
+                const audio = new Audio(item.url);
+                (audio as any).playsInline = true;
+                audio.preload = 'auto';
+
+                // 设置 Media Session
+                try {
+                    if ('mediaSession' in navigator) {
+                        navigator.mediaSession.metadata = new MediaMetadata({
+                            title: activeCard ? (customTopics.find(t => t.id === activeCard)?.title || 'Rain 冥想') : 'Rain 冥想',
+                            artist: 'Rain Meditation',
+                            artwork: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }]
+                        });
+                        navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
+                        navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
+                    }
+                } catch { }
+
+                audio.onended = () => {
+                    if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
+                    setAudioQueue(prev => prev.slice(1));
+                    setCurrentAudio(null);
+                };
+                audio.onerror = () => {
+                    if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
+                    setAudioQueue(prev => prev.slice(1));
+                    setCurrentAudio(null);
+                };
+
+                setCurrentAudio(audio);
+                (async () => {
+                    try {
+                        await ensureAudioContext();
+                        await audio.play();
+                    } catch (e) {
+                        console.error('[Meditate] Play failed', e);
+                    }
+                })();
+            } else if (item.type === 'audio' && item.buffer) {
+                // WebAudio fallback
+                (async () => {
+                    await ensureAudioContext();
+                    const ctx = audioContextRef.current;
+                    if (!ctx) {
+                        setAudioQueue(prev => prev.slice(1));
+                        return;
+                    }
+                    const source = ctx.createBufferSource();
+                    source.buffer = item.buffer || null;
+                    source.connect(ctx.destination);
+                    source.onended = () => {
+                        setAudioQueue(prev => prev.slice(1));
+                        currentSourceRef.current = null;
+                    };
+                    currentSourceRef.current = source;
+                    try {
+                        await ctx.resume();
+                        source.start();
+                    } catch (e) {
+                        console.error('[Meditate] WebAudio play failed', e);
+                        setAudioQueue(prev => prev.slice(1));
+                    }
+                })();
+            } else {
+                // 跳过无法播放的
+                setAudioQueue(prev => prev.slice(1));
+            }
+        }
+    }, [isPlaying, audioQueue, currentAudio]);
 
     // Handle Stop / Reset
-    const stopAudio = () => {
+    // 🎵 后台音频 Hook
+    const backgroundAudio = useBackgroundAudio();
+
+    const stopAudio = async () => {
         setIsPlaying(false);
         if (currentAudio) {
             currentAudio.pause();
@@ -566,6 +716,9 @@ export default function MeditatePage() {
         setAudioQueue([]);
         currentItemIdRef.current = null;
         processingBuffer.current = "";
+
+        // 🎵 停用后台音频
+        await backgroundAudio.deactivate();
     };
 
 
@@ -630,15 +783,14 @@ export default function MeditatePage() {
         return () => document.removeEventListener('visibilitychange', onVisibility);
     }, [currentAudio, isPlaying, audioQueue]);
 
+    // 🎵 播放状态变化时更新后台音频状态
     useEffect(() => {
-        (async () => {
-            if (isPlaying) {
-                await requestWakeLock();
-            } else {
-                await releaseWakeLock();
-            }
-        })();
-    }, [isPlaying]);
+        if (isPlaying) {
+            backgroundAudio.setPlaybackState('playing');
+        } else {
+            backgroundAudio.setPlaybackState('paused');
+        }
+    }, [isPlaying, backgroundAudio]);
 
     // === P1: AudioContext 看门狗 - 仅用于恢复挂起的音频上下文 === //
     useEffect(() => {
@@ -674,6 +826,16 @@ export default function MeditatePage() {
         }
 
         try {
+            // 🎵 激活后台音频（Media Session + Wake Lock）
+            await backgroundAudio.activate({
+                title: activeCard ? (customTopics.find(t => t.id === activeCard)?.title || '冥想') : '冥想',
+                artist: 'Rain Meditation',
+                album: '正念冥想',
+                onPlay: () => setIsPlaying(true),
+                onPause: () => setIsPlaying(false),
+                onStop: () => stopAudio()
+            });
+
             setIsPlaying(true);
 
             if (typeof window !== 'undefined' && (window as any).electron) {
@@ -934,8 +1096,10 @@ export default function MeditatePage() {
                             }
 
                             // 更新队列中的 item 为 ready
+                            // 🔥 同时设置 buffer 和 url，确保 HTMLAudioElement 可以使用
+                            const blobUrl = URL.createObjectURL(blob);
                             setAudioQueue(prev => prev.map(item =>
-                                item.id === itemId ? { ...item, buffer: buf, status: 'ready' } : item
+                                item.id === itemId ? { ...item, buffer: buf, url: blobUrl, status: 'ready' } : item
                             ));
 
                         } else {

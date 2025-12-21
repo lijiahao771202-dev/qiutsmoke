@@ -3,64 +3,66 @@ import { NextResponse } from 'next/server';
 /**
  * TTS Cards API Route - Edge Runtime Proxy
  * 
- * Proxies requests to:
- * - /api/tts/cards-impl (Node.js) when running on Vercel
- * - Vercel Backend when running on Cloudflare
+ * 路由逻辑：
+ * - 本地开发 / Vercel：转发到 /api/tts/cards-impl (Node.js)
+ * - Cloudflare Pages：代理到 Vercel 后端
  */
 
 const VERCEL_BACKEND = 'https://qiutsmoke.vercel.app';
 
 export const runtime = 'edge';
 
+// 检测是否在 Cloudflare 环境
+function isCloudflare(): boolean {
+    // Cloudflare Workers 有 caches.default，Node.js / Vercel 没有
+    return typeof (globalThis as any).caches !== 'undefined' &&
+        typeof (globalThis as any).caches.default !== 'undefined';
+}
+
 async function handleRequest(req: Request) {
-    const isVercel = !!process.env.VERCEL;
-    const url = new URL(req.url); // Original URL (e.g. .../api/tts/cards?id=123)
+    const url = new URL(req.url);
 
-    // 1. If on Vercel: Forward internally to implementation
-    if (isVercel) {
-        const implUrl = new URL('/api/tts/cards-impl' + url.search, req.url);
+    // 1. 如果在 Cloudflare：代理到 Vercel
+    if (isCloudflare()) {
+        const targetUrl = `${VERCEL_BACKEND}/api/tts/cards${url.search}`;
+        console.log(`[TTS Cards Edge] Proxying to Vercel: ${targetUrl}`);
 
-        console.log(`[TTS Cards Edge] Forwarding internal to: ${implUrl.pathname}`);
+        const headers = new Headers(req.headers);
+        headers.set('x-tts-proxy', 'true');
 
-        const response = await fetch(implUrl.toString(), {
-            method: req.method,
-            headers: req.headers,
-            body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
-        });
+        try {
+            const response = await fetch(targetUrl, {
+                method: req.method,
+                headers: headers,
+                body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
+            });
 
-        // Mirror the response
-        return new Response(response.body, {
-            status: response.status,
-            headers: response.headers
-        });
+            const newRes = new Response(response.body, response);
+            newRes.headers.set('Access-Control-Allow-Origin', '*');
+            return newRes;
+        } catch (error) {
+            console.error('[TTS Cards Edge] Proxy Error:', error);
+            return new Response(JSON.stringify({ error: 'Proxy Failed', details: String(error) }), {
+                status: 502,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
     }
 
-    // 2. If on Cloudflare: Proxy to Vercel
-    const targetUrl = `${VERCEL_BACKEND}/api/tts/cards${url.search}`;
-    console.log(`[TTS Cards Edge] Proxying to Vercel: ${targetUrl}`);
+    // 2. 本地开发 或 Vercel：转发到实现 API
+    const implUrl = new URL('/api/tts/cards-impl' + url.search, req.url);
+    console.log(`[TTS Cards Edge] Forwarding internal to: ${implUrl.pathname}`);
 
-    const headers = new Headers(req.headers);
-    headers.set('x-tts-proxy', 'true'); // Just a flag, though Vercel logic is mainly based on env
+    const response = await fetch(implUrl.toString(), {
+        method: req.method,
+        headers: req.headers,
+        body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
+    });
 
-    try {
-        const response = await fetch(targetUrl, {
-            method: req.method,
-            headers: headers,
-            body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
-        });
-
-        // Clone response to safely read it or modify headers
-        const newRes = new Response(response.body, response);
-        // Ensure CORS allows Cloudflare domain
-        newRes.headers.set('Access-Control-Allow-Origin', '*');
-        return newRes;
-    } catch (error) {
-        console.error('[TTS Cards Edge] Proxy Error:', error);
-        return new Response(JSON.stringify({ error: 'Proxy Failed', details: String(error) }), {
-            status: 502,
-            headers: { 'Content-Type': 'application/json' }
-        });
-    }
+    return new Response(response.body, {
+        status: response.status,
+        headers: response.headers
+    });
 }
 
 export const GET = handleRequest;
