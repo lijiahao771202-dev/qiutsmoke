@@ -33,8 +33,8 @@ const config: CapacitorConfig = {
     contentInset: 'never',
     backgroundColor: '#000000',
     allowsLinkPreview: false,
-    // 关闭 WebView 回弹 (防止壁纸跟着动)
-    scrollEnabled: false,
+    // 恢复滚动能力 (CSS overscroll-behavior 会处理回弹问题)
+    scrollEnabled: true,
   },
 };
 
