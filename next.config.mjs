@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    // ☁️ Conditional Export: Only for Cloudflare Pages
-    // Vercel needs default output for API routes to work
-    output: process.env.IS_CLOUDFLARE ? 'export' : undefined,
     images: {
         unoptimized: true,
     },
@@ -20,6 +17,15 @@ const nextConfig = {
                         key: 'Cache-Control',
                         value: 'no-cache, no-store, must-revalidate',
                     },
+                ],
+            },
+            {
+                source: '/api/:path*',
+                headers: [
+                    { key: 'Access-Control-Allow-Credentials', value: 'true' },
+                    { key: 'Access-Control-Allow-Origin', value: '*' },
+                    { key: 'Access-Control-Allow-Methods', value: 'GET,DELETE,PATCH,POST,PUT' },
+                    { key: 'Access-Control-Allow-Headers', value: 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version' },
                 ],
             },
         ];
