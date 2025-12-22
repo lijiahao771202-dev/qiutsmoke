@@ -761,17 +761,17 @@ export default function MeditatePage() {
                 } catch { }
 
                 const cleanup = () => {
-                    setTimeout(() => {
-                        if (sharedAudioRef.current === audio) {
-                            audio.onended = null;
-                            audio.onerror = null;
-                        }
-                        if (item.url && item.url.startsWith('blob:')) URL.revokeObjectURL(item.url);
-                        setAudioQueue(prev => prev.slice(1));
-                        setCurrentAudio(null);
-                        currentItemIdRef.current = null;
-                        isProcessingRef.current = false;
-                    }, 500);
+                    // 🔥 [BUG FIX] 移除 500ms 延迟，立即重置锁，防止队列卡住
+                    console.log(`[Meditate] 🔄 Audio cleanup for item, resetting locks`);
+                    if (sharedAudioRef.current === audio) {
+                        audio.onended = null;
+                        audio.onerror = null;
+                    }
+                    if (item.url && item.url.startsWith('blob:')) URL.revokeObjectURL(item.url);
+                    setAudioQueue(prev => prev.slice(1));
+                    setCurrentAudio(null);
+                    currentItemIdRef.current = null;
+                    isProcessingRef.current = false;
                 };
 
                 audio.onended = cleanup;
@@ -794,6 +794,9 @@ export default function MeditatePage() {
                     const ctx = audioContextRef.current;
                     if (!ctx) {
                         setAudioQueue(prev => prev.slice(1));
+                        // 🔥 [BUG FIX] 必须重置锁
+                        currentItemIdRef.current = null;
+                        isProcessingRef.current = false;
                         return;
                     }
                     const source = ctx.createBufferSource();
@@ -802,6 +805,9 @@ export default function MeditatePage() {
                     source.onended = () => {
                         setAudioQueue(prev => prev.slice(1));
                         currentSourceRef.current = null;
+                        // 🔥 [BUG FIX] 必须重置锁
+                        currentItemIdRef.current = null;
+                        isProcessingRef.current = false;
                     };
                     currentSourceRef.current = source;
                     try {
@@ -810,11 +816,18 @@ export default function MeditatePage() {
                     } catch (e) {
                         console.error('[Meditate] WebAudio play failed', e);
                         setAudioQueue(prev => prev.slice(1));
+                        // 🔥 [BUG FIX] 必须重置锁
+                        currentItemIdRef.current = null;
+                        isProcessingRef.current = false;
                     }
                 })();
             } else {
                 // 跳过无法播放的
+                console.log('[Meditate] ⚠️ Skipping unplayable item:', item);
                 setAudioQueue(prev => prev.slice(1));
+                // 🔥 [BUG FIX] 必须重置锁
+                currentItemIdRef.current = null;
+                isProcessingRef.current = false;
             }
         }
     }, [isPlaying, audioQueue, currentAudio]);
