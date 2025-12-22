@@ -1861,7 +1861,7 @@ export default function MeditatePage() {
                     )}
                 </AnimatePresence>
                 <div className="fixed bottom-1 left-0 right-0 text-center pointer-events-none opacity-20 text-[10px] text-white z-50">
-                    v1.1.4 (Cron Window Fix)
+                    v1.1.5 (TTS Queue Fix)
                 </div>
             </div>
         </AuthGuard >
