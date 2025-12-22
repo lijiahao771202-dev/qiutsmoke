@@ -14,7 +14,7 @@ const DEV_URL = 'http://192.168.31.34:3000';
 
 // ☁️ 线上生产地址 (实现"云端热更新"的关键)
 // App 将直接加载此 URL，只要 Cloudflare 部署了新代码，用户打开 App 即刻生效
-const PROD_URL = 'https://rain-meditation.pages.dev';
+const PROD_URL = 'https://qiutsmoke.vercel.app';
 
 // -----------------------------------------------------------------------------
 

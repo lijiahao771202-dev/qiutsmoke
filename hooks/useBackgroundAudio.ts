@@ -47,19 +47,59 @@ export function useBackgroundAudio(): BackgroundAudioReturn {
     const silentAudioRef = useRef<HTMLAudioElement | null>(null);
     const isActiveRef = useRef(false);
 
-    // 🎵 10秒静默 MP3 (Base64) - 比动态生成更稳定
-    const SILENT_MP3 = "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAAFAAAAZAAKCg4OExMTFhYWGhoaHBwcIiIiJycnKSkpLy8vMzMzOTk5Ozs7Q0NDR0dHS0tLTExMVFRUWFhYWlpaXFxcYGBgZGRkaGhoeHh4fX19g4ODiIiIjY2NkZGRlZWVmZmZnZ2doaGhpqamq6urr6+vsLCwtLS0vb29wMDAvr6+xMTExsbGysrKzMzM0tLS1dXV2tra3Nzc4ODg5OTk5+fn6urq7u7u8vLy9/f3+/v7////AAAAAHAABAAAAABQAABAAAAAAAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA//uSxAAAAAABAAAAAAAAAAAA";
+    // 🔥 [iOS Fix] 生成抖动静音 WAV - 包含微小噪声，防止 iOS 检测为纯静音并暂停
+    // iOS 会检测纯静音音频并可能暂停它，抖动静音会保持音频会话活跃
+    const createDitheredSilenceWAV = useCallback((seconds: number = 10): string => {
+        const sampleRate = 22050; // 较低采样率减少数据量
+        const numSamples = sampleRate * seconds;
+        const bytesPerSample = 2;
+        const dataSize = numSamples * bytesPerSample;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
 
-    // 创建静默音频元素
+        const writeStr = (offset: number, s: string) => {
+            for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+        };
+
+        // WAV header
+        writeStr(0, 'RIFF');
+        view.setUint32(4, 36 + dataSize, true);
+        writeStr(8, 'WAVE');
+        writeStr(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * bytesPerSample, true);
+        view.setUint16(32, bytesPerSample, true);
+        view.setUint16(34, 16, true);
+        writeStr(36, 'data');
+        view.setUint32(40, dataSize, true);
+
+        // 🔥 抖动静音：微小随机噪声 (约 -60dB)
+        // 这足以让 iOS 认为音频有内容，但听起来完全静音
+        for (let i = 0; i < numSamples; i++) {
+            const dither = (Math.random() - 0.5) * 50; // 极小的随机值 (-25 到 +25)
+            view.setInt16(44 + i * 2, Math.round(dither), true);
+        }
+
+        const blob = new Blob([buffer], { type: 'audio/wav' });
+        return URL.createObjectURL(blob);
+    }, []);
+
+    // 创建静默音频元素 (使用抖动静音)
     const createSilentAudio = useCallback((): HTMLAudioElement => {
-        const audio = new Audio(SILENT_MP3);
+        const url = createDitheredSilenceWAV(10); // 10秒抖动静音
+        const audio = new Audio(url);
         audio.loop = true;
         audio.volume = 0.01; // 微小音量保活
         // @ts-ignore
         audio.playsInline = true;
         audio.preload = 'auto';
+
+        console.log('[BackgroundAudio] 🔊 Created dithered silence audio for keep-alive');
         return audio;
-    }, []);
+    }, [createDitheredSilenceWAV]);
 
     // 请求 Wake Lock
     const requestWakeLock = useCallback(async () => {

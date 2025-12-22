@@ -538,6 +538,12 @@ export default function MeditatePage() {
                 (audio as any).playsInline = true;
                 audio.preload = 'auto';
 
+                // 🔥 [iOS Fix] 复用共享 Audio 对象，避免 iOS 限制多个 Audio 实例
+                // const audio = sharedAudioRef.current || new Audio();
+                // audio.src = item.url;
+                // (audio as any).playsInline = true;
+                // audio.preload = 'auto';
+
                 // 设置 Media Session
                 try {
                     if ('mediaSession' in navigator) {
@@ -551,7 +557,11 @@ export default function MeditatePage() {
                     }
                 } catch { }
 
+                // 🔥 [iOS Debug] 添加诊断日志
+                console.log(`[Meditate] 📢 Playing audio ${item.id}, queue length: ${queue.length}`);
+
                 audio.onended = () => {
+                    console.log(`[Meditate] ✅ Audio ended: ${item.id}`);
                     if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
                     setAudioQueue(prev => prev.filter(q => q.id !== item.id));
                     scheduledIdsRef.current.delete(item.id);
@@ -559,12 +569,18 @@ export default function MeditatePage() {
                     // 🔥 播放完成后触发下一个
                     isPlayingNextRef.current = false;
                 };
-                audio.onerror = () => {
+                audio.onerror = (e) => {
+                    console.error(`[Meditate] ❌ Audio error: ${item.id}`, e);
                     if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
                     setAudioQueue(prev => prev.filter(q => q.id !== item.id));
                     scheduledIdsRef.current.delete(item.id);
                     setCurrentAudio(null);
                     isPlayingNextRef.current = false;
+                };
+
+                // 🔥 [iOS Fix] 监听暂停事件，可能是系统暂停
+                audio.onpause = () => {
+                    console.log(`[Meditate] ⏸️ Audio paused by system: ${item.id}, isPlaying: ${isPlaying}`);
                 };
 
                 scheduledIdsRef.current.add(item.id);
@@ -1062,9 +1078,11 @@ export default function MeditatePage() {
         view.setUint32(40, dataSize, true);
         const dataOffset = 44;
 
-        // Revert to pure silence
+        // 🔥 [iOS Fix] 抖动静音：微小随机噪声，防止 iOS 检测为纯静音
+        // 纯静音 (view.setInt16(_, 0, true)) 会被 iOS 检测并暂停
         for (let i = 0; i < samples; i++) {
-            view.setInt16(dataOffset + i * 2, 0, true);
+            const dither = (Math.random() - 0.5) * 50; // -25 到 +25 的微小噪声
+            view.setInt16(dataOffset + i * 2, Math.round(dither), true);
         }
 
         const blob = new Blob([view], { type: 'audio/wav' });

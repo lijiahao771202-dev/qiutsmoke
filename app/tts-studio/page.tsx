@@ -317,7 +317,7 @@ ${densityRule}
 // Component: TTS Card with Audio Logic
 // -----------------------------------------------------------------------------
 
-// Helper: Generate Silence WAV Blob
+// Helper: Generate Silence WAV Blob (with dithering for iOS)
 const createSilenceWavURL = (seconds: number) => {
     const sr = 44100;
     const sec = Math.max(0.05, seconds);
@@ -343,6 +343,14 @@ const createSilenceWavURL = (seconds: number) => {
     view.setUint16(34, bps, true);
     writeStr(36, 'data');
     view.setUint32(40, dataSize, true);
+
+    // 🔥 [iOS Fix] 抖动静音：微小随机噪声，防止 iOS 检测为纯静音并暂停
+    const dataOffset = 44;
+    for (let i = 0; i < samples; i++) {
+        const dither = (Math.random() - 0.5) * 50; // -25 到 +25 的微小噪声
+        view.setInt16(dataOffset + i * 2, Math.round(dither), true);
+    }
+
     const blob = new Blob([view], { type: 'audio/wav' });
     return URL.createObjectURL(blob);
 };
@@ -536,14 +544,23 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
             }
 
+            // 🔥 [iOS Debug] 诊断日志
+            console.log(`[TTS Studio] 📢 Playing audio: ${url.substring(0, 50)}...`);
+
             audio.onended = () => {
+                console.log(`[TTS Studio] ✅ Audio ended`);
                 if (url.startsWith('blob:')) URL.revokeObjectURL(url);
                 resolve();
             };
             audio.onerror = (e) => {
-                console.error("Audio error", e);
+                console.error("[TTS Studio] ❌ Audio error", e);
                 if (url.startsWith('blob:')) URL.revokeObjectURL(url);
                 resolve(); // Resolve anyway to proceed
+            };
+
+            // 🔥 [iOS Fix] 监听暂停事件，可能是系统暂停
+            audio.onpause = () => {
+                console.log(`[TTS Studio] ⏸️ Audio paused by system`);
             };
 
             const start = async () => {
