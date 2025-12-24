@@ -42,31 +42,27 @@ export function PageTransition({ children }: PageTransitionProps) {
         isDragging.current = false;
     };
 
-    // 弹性回弹动画配置
-    const elasticTransition = {
-        type: "spring",
-        stiffness: 400,    // 弹簧刚度（越大越快）
-        damping: 25,       // 阻尼（越小回弹越多）
-        mass: 0.8,         // 质量（越小越轻盈）
-        velocity: 2,       // 初始速度（增加冲击感）
+    // 🔥 优化后的轻量级动画配置
+    const lightTransition = {
+        type: "tween",     // 使用 tween 代替 spring，更轻量
+        duration: 0.25,    // 短时动画
+        ease: [0.25, 0.1, 0.25, 1], // 平滑曲线
     };
 
     // 检查是否是主页面
     const isMainPage = PAGES.includes(pathname || "");
 
-    // 弹性回弹动画变体
+    // 轻量级动画变体（只用 transform，开启 GPU 加速）
     const variants = {
         initial: {
-            x: 60,           // 从右侧进入
-            scale: 0.98,     // 略微缩小
+            x: 40,
+            // 不用 scale 减少计算
         },
         animate: {
             x: 0,
-            scale: 1,
         },
         exit: {
-            x: -40,          // 向左退出
-            scale: 0.96,     // 缩小退出
+            x: -30,
         },
     };
 
@@ -78,8 +74,14 @@ export function PageTransition({ children }: PageTransitionProps) {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                transition={elasticTransition}
-                style={{ width: "100%", height: "100%" }}
+                transition={lightTransition}
+                style={{
+                    width: "100%",
+                    height: "100%",
+                    // 🔥 GPU 加速
+                    willChange: "transform",
+                    transform: "translateZ(0)",
+                }}
             >
                 {children}
             </motion.div>
@@ -93,7 +95,7 @@ export function PageTransition({ children }: PageTransitionProps) {
             initial="initial"
             animate="animate"
             exit="exit"
-            transition={elasticTransition}
+            transition={lightTransition}
             drag="x"
             dragConstraints={{ left: 0, right: 0 }}
             dragElastic={0.15}
@@ -103,6 +105,9 @@ export function PageTransition({ children }: PageTransitionProps) {
                 width: "100%",
                 height: "100%",
                 touchAction: "pan-y",
+                // 🔥 GPU 加速
+                willChange: "transform",
+                transform: "translateZ(0)",
             }}
         >
             {children}
