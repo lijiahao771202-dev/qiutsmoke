@@ -107,11 +107,12 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
         if (!containerRef.current || !canvasRef.current) return;
 
         // 🔥 Mock 数据：如果没有记录，使用 3 个测试莲花
-        const activeRecords = records.length > 0 ? records : [
-            { id: 'mock-1', duration: 5, created_at: '' },
-            { id: 'mock-2', duration: 15, created_at: '' },
-            { id: 'mock-3', duration: 30, created_at: '' }
-        ];
+        // const activeRecords = records.length > 0 ? records : [
+        //     { id: 'mock-1', duration: 5, created_at: '' },
+        //     { id: 'mock-2', duration: 15, created_at: '' },
+        //     { id: 'mock-3', duration: 30, created_at: '' }
+        // ];
+        const activeRecords = records; // 仅显示真实数据
 
         const container = containerRef.current;
         const canvas = canvasRef.current;
@@ -333,8 +334,8 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
                 )}
             </div>
 
-            {/* 调试信息 HUD - 发布时可隐藏 */}
-            <div className="px-3 py-2 rounded-lg bg-black/60 backdrop-blur-md text-white/70 text-[10px] space-y-1 border border-white/10 pointer-events-none">
+            {/* 调试信息 HUD - 发布时隐藏 */}
+            <div className="hidden px-3 py-2 rounded-lg bg-black/60 backdrop-blur-md text-white/70 text-[10px] space-y-1 border border-white/10 pointer-events-none">
                 <div className="flex justify-between w-24"><span>Src:</span> <span className="text-cyan-300">{debugInfo.source}</span></div>
                 <div className="flex justify-between w-24"><span>X:</span> <span className="font-mono">{debugInfo.x.toFixed(2)}</span></div>
                 <div className="flex justify-between w-24"><span>Y:</span> <span className="font-mono">{debugInfo.y.toFixed(2)}</span></div>
