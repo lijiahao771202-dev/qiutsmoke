@@ -109,7 +109,6 @@ function IOS26CompatLayer() {
 
 import { usePathname } from 'next/navigation';
 import { PageTransition } from './PageTransition';
-import { AnimatePresence } from 'framer-motion';
 
 export default function AppWrapper({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
