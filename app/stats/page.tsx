@@ -228,12 +228,7 @@ export default function StatsPage() {
 
 function StatCard({ icon: Icon, label, value, unit, delay, color = "text-rose-400" }: any) {
     return (
-        <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay }}
-            className="group"
-        >
+        <div className="group">
             <GlassCard
                 className="relative overflow-hidden p-5 bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02]"
                 hoverEffect={true}
@@ -248,6 +243,6 @@ function StatCard({ icon: Icon, label, value, unit, delay, color = "text-rose-40
                     <div className="text-xs text-white/40 mt-1 uppercase tracking-wider">{label}</div>
                 </div>
             </GlassCard>
-        </motion.div>
+        </div>
     );
 }

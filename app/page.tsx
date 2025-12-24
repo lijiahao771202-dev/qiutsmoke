@@ -127,10 +127,7 @@ export default function Home() {
       <main className="relative z-10 flex flex-col items-center px-6 pt-20 pb-24 mx-auto w-full max-w-lg min-h-screen">
 
         {/* Header Area */}
-        <motion.header
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+        <header
           className="w-full flex justify-between items-center mb-12"
         >
           <div className="flex flex-col">
@@ -145,13 +142,10 @@ export default function Home() {
               onChange={handleDateChange}
             />
           </GlassCard>
-        </motion.header>
+        </header>
 
         {/* Main Counter - Clickable to change date */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.8, ease: "circOut" }}
+        <div
           className="relative mb-16 text-center"
         >
           <div className="absolute inset-0 bg-blue-500/20 blur-[80px] rounded-full" />
@@ -175,13 +169,10 @@ export default function Home() {
             value={startDate || ''}
             onChange={handleDateChange}
           />
-        </motion.div>
+        </div>
 
         {/* Milestone Tracker (Horizontal) */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.6 }}
+        <div
           className="w-full mb-8"
         >
           <div className="flex justify-between items-end mb-3 px-1">
@@ -203,13 +194,10 @@ export default function Home() {
             <span>0</span>
             <span>{nextMilestone.target} DAYS</span>
           </div>
-        </motion.div>
+        </div>
 
         {/* Health Stats Grid */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
+        <div
           className="grid grid-cols-2 gap-4 w-full"
         >
           {displayMetrics.map((item, idx) => (
@@ -241,7 +229,7 @@ export default function Home() {
               </div>
             </GlassCard>
           ))}
-        </motion.div>
+        </div>
       </main>
     </div>
   );
