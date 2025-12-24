@@ -244,7 +244,7 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
     return (
         <div
             ref={containerRef}
-            className={`relative w-full h-64 rounded-3xl overflow-hidden ${className}`}
+            className={`fixed inset-0 z-0 pointer-events-auto ${className}`}
             style={{ touchAction: "none" }}
         >
             <canvas
@@ -253,7 +253,7 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
             />
 
             {/* 莲花数量指示器 */}
-            <div className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-white/70 text-xs">
+            <div className="absolute top-[calc(env(safe-area-inset-top)+4.5rem)] left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-white/70 text-xs pointer-events-none">
                 <span>🪷</span>
                 <span>{records.length}</span>
             </div>

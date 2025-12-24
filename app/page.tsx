@@ -133,7 +133,8 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen text-white font-sans selection:bg-white/20">
-      {/* Background is handled globally by AppWrapper now */}
+      {/* 🪷 全屏莲花花园背景 */}
+      {lotusRecords.length > 0 && <LotusGarden records={lotusRecords} />}
 
       <main className="relative z-10 flex flex-col items-center px-6 pt-20 pb-24 mx-auto w-full max-w-lg min-h-screen">
 
@@ -206,19 +207,6 @@ export default function Home() {
             <span>{nextMilestone.target} DAYS</span>
           </div>
         </div>
-
-        {/* 🪷 莲花花园 - 冒想成就 */}
-        {lotusRecords.length > 0 && (
-          <div className="w-full mb-8">
-            <div className="flex justify-between items-center mb-3 px-1">
-              <span className="text-sm text-white/60">🪷 冒想花园</span>
-              <span className="text-xs text-white/40">倾斜手机移动莲花</span>
-            </div>
-            <GlassCard className="p-0 overflow-hidden">
-              <LotusGarden records={lotusRecords} className="h-56" />
-            </GlassCard>
-          </div>
-        )}
 
         {/* Health Stats Grid */}
         <div
