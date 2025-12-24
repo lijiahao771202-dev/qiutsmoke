@@ -272,9 +272,11 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
         setDebugInfo({ x: x || 0, y: y || 0, source: src });
 
         if (x !== null && y !== null && x !== undefined && y !== undefined) {
-            // x 轴反向，y 轴正向
-            engineRef.current.gravity.x = -x * 0.1;
-            engineRef.current.gravity.y = y * 0.1;
+            // 修正方向：
+            // X轴: 手机右倾(x>0) -> 物体向右(gravity.x>0) -> 即 x
+            // Y轴: 手机竖立(y<0) -> 物体向下(gravity.y>0) -> 即 -y
+            engineRef.current.gravity.x = x * 0.1;
+            engineRef.current.gravity.y = -y * 0.1;
         }
     };
 
