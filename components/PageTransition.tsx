@@ -23,17 +23,15 @@ export function PageTransition({ children }: PageTransitionProps) {
 
     // 处理滑动手势
     const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-        const threshold = 80; // 滑动阈值
-        const velocity = 500; // 速度阈值
+        const threshold = 80;
+        const velocity = 500;
 
-        // 向右滑动 = 上一页
         if (info.offset.x > threshold || info.velocity.x > velocity) {
             if (currentIndex > 0) {
                 triggerLight();
                 router.push(PAGES[currentIndex - 1]);
             }
         }
-        // 向左滑动 = 下一页
         else if (info.offset.x < -threshold || info.velocity.x < -velocity) {
             if (currentIndex < PAGES.length - 1) {
                 triggerLight();
@@ -44,23 +42,43 @@ export function PageTransition({ children }: PageTransitionProps) {
         isDragging.current = false;
     };
 
-    // 检查是否是主页面（需要滑动支持）
+    // 弹性回弹动画配置
+    const elasticTransition = {
+        type: "spring",
+        stiffness: 400,    // 弹簧刚度（越大越快）
+        damping: 25,       // 阻尼（越小回弹越多）
+        mass: 0.8,         // 质量（越小越轻盈）
+        velocity: 2,       // 初始速度（增加冲击感）
+    };
+
+    // 检查是否是主页面
     const isMainPage = PAGES.includes(pathname || "");
 
+    // 弹性回弹动画变体
+    const variants = {
+        initial: {
+            x: 60,           // 从右侧进入
+            scale: 0.98,     // 略微缩小
+        },
+        animate: {
+            x: 0,
+            scale: 1,
+        },
+        exit: {
+            x: -40,          // 向左退出
+            scale: 0.96,     // 缩小退出
+        },
+    };
+
     if (!isMainPage) {
-        // 非主页面：只用简单的 transform 动画，无 opacity
         return (
             <motion.div
                 key={pathname}
-                initial={{ x: 30 }}
-                animate={{ x: 0 }}
-                exit={{ x: -30 }}
-                transition={{
-                    type: "spring",
-                    stiffness: 300,
-                    damping: 30,
-                    mass: 0.8
-                }}
+                variants={variants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={elasticTransition}
                 style={{ width: "100%", height: "100%" }}
             >
                 {children}
@@ -68,28 +86,23 @@ export function PageTransition({ children }: PageTransitionProps) {
         );
     }
 
-    // 主页面：滑动手势 + transform 过渡动画（无 opacity，避免闪烁）
     return (
         <motion.div
             key={pathname}
-            initial={{ x: 30 }}
-            animate={{ x: 0 }}
-            exit={{ x: -30 }}
-            transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 30,
-                mass: 0.8
-            }}
+            variants={variants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={elasticTransition}
             drag="x"
             dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.2}
+            dragElastic={0.15}
             onDragStart={() => { isDragging.current = true; }}
             onDragEnd={handleDragEnd}
             style={{
                 width: "100%",
                 height: "100%",
-                touchAction: "pan-y", // 允许垂直滚动，水平滑动用于页面切换
+                touchAction: "pan-y",
             }}
         >
             {children}
