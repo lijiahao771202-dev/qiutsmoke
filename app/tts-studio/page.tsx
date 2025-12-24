@@ -2042,10 +2042,10 @@ ${densityRule}
         <AuthGuard>
             <div className="min-h-screen text-white">
                 <div className="relative z-10 max-w-6xl mx-auto px-6 py-12 pt-24 pb-32 min-h-screen">
-                    <div className="text-center mb-8">
-                        <h1 className="text-2xl font-medium tracking-tight text-white/90">声波工坊</h1>
-                        <p className="text-rose-200/60 text-sm mt-1">Text to Speech Studio</p>
-                    </div>
+                    <header className="mb-8">
+                        <h1 className="text-3xl font-thin text-white/90">声波工坊</h1>
+                        <p className="text-white/40 mt-2 font-light">Text to Speech Studio</p>
+                    </header>
                     <GlassInput onAddCard={apiAddCard} />
 
                     <div className="mt-16">

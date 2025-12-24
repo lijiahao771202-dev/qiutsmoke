@@ -1376,6 +1376,12 @@ export default function MeditatePage() {
             <div className="min-h-screen text-slate-200">
                 {/* Main Content */}
                 <div className="flex-1 w-full max-w-4xl mx-auto z-10 overflow-y-auto pb-48 px-4 scrollbar-hide pt-24 min-h-screen">
+                    {/* 页面标题 */}
+                    <header className="mb-8">
+                        <h1 className="text-3xl font-thin text-white/90">正念冥想</h1>
+                        <p className="text-white/40 mt-2 font-light">选择一个主题，开始你的冥想之旅</p>
+                    </header>
+
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-8">
                         {/* Default Topics */}
                         {DEFAULT_TOPICS.map((topic) => (
