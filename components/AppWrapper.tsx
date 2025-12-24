@@ -108,6 +108,8 @@ function IOS26CompatLayer() {
 }
 
 import { usePathname } from 'next/navigation';
+import { PageTransition } from './PageTransition';
+import { AnimatePresence } from 'framer-motion';
 
 export default function AppWrapper({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -119,7 +121,11 @@ export default function AppWrapper({ children }: { children: React.ReactNode }) 
                 <PushSubscriber />
                 {!isAdmin && <BackgroundLayer />}
                 {!isAdmin && <IOS26CompatLayer />}
-                {children}
+                <AnimatePresence mode="wait">
+                    <PageTransition key={pathname}>
+                        {children}
+                    </PageTransition>
+                </AnimatePresence>
                 {!isAdmin && <NavBar />}
                 {!isAdmin && <UserProfile />}
             </AuthProvider>
