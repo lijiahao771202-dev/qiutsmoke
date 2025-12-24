@@ -8,6 +8,7 @@ import AuthGuard from "@/components/AuthGuard";
 import { saveAudioCache, getAudioCache, hasAudioCache, deleteAudioCache } from "@/lib/audioCache";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
+import { getApiUrl } from "@/lib/config";
 
 // TTSCard interface moved to lib/hooks/useData.ts
 // Re-export for backwards compatibility
@@ -1115,6 +1116,20 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         if (cachedSourceRef.current) {
             try { cachedSourceRef.current.stop(); } catch { }
             cachedSourceRef.current = null;
+        }
+
+        // 🪷 记录冥想会话（声波工坊也计入）
+        try {
+            fetch(getApiUrl('/api/meditation/sessions'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    topicId: `tts-${card.id}`,
+                    topicName: card.title || "声波工坊"
+                })
+            }).catch(e => console.error("Failed to record TTS session", e));
+        } catch (e) {
+            console.error("Failed to record session", e);
         }
 
         const segments: QueueItem[] = [];

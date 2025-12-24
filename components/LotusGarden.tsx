@@ -203,9 +203,45 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
         };
     }, [records, drawLotus, triggerLight, triggerMedium]);
 
+    // 陀螺仪权限状态
+    const [gyroEnabled, setGyroEnabled] = useState(false);
+    const [needsPermission, setNeedsPermission] = useState(false);
+
+    // 请求陀螺仪权限（需要用户点击触发）
+    const requestGyroPermission = async () => {
+        if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
+            try {
+                const response = await (DeviceMotionEvent as any).requestPermission();
+                if (response === "granted") {
+                    setGyroEnabled(true);
+                    setNeedsPermission(false);
+                }
+            } catch (e) {
+                console.error("Gyro permission denied:", e);
+            }
+        } else {
+            // 非 iOS 设备直接启用
+            setGyroEnabled(true);
+            setNeedsPermission(false);
+        }
+    };
+
+    // 检查是否需要权限
+    useEffect(() => {
+        if (!isInitialized) return;
+
+        if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
+            // iOS 需要权限
+            setNeedsPermission(true);
+        } else {
+            // 其他设备直接启用
+            setGyroEnabled(true);
+        }
+    }, [isInitialized]);
+
     // 陀螺仪控制重力
     useEffect(() => {
-        if (!isInitialized || !engineRef.current) return;
+        if (!isInitialized || !engineRef.current || !gyroEnabled) return;
 
         const handleDeviceMotion = (event: DeviceMotionEvent) => {
             const { accelerationIncludingGravity } = event;
@@ -219,23 +255,12 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
             }
         };
 
-        // 请求陀螺仪权限（iOS 13+）
-        if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
-            (DeviceMotionEvent as any).requestPermission()
-                .then((response: string) => {
-                    if (response === "granted") {
-                        window.addEventListener("devicemotion", handleDeviceMotion);
-                    }
-                })
-                .catch(console.error);
-        } else {
-            window.addEventListener("devicemotion", handleDeviceMotion);
-        }
+        window.addEventListener("devicemotion", handleDeviceMotion);
 
         return () => {
             window.removeEventListener("devicemotion", handleDeviceMotion);
         };
-    }, [isInitialized]);
+    }, [isInitialized, gyroEnabled]);
 
     if (records.length === 0) {
         return null;
@@ -252,11 +277,24 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
                 className="absolute inset-0 w-full h-full"
             />
 
-            {/* 莲花数量指示器 */}
-            <div className="absolute top-[calc(env(safe-area-inset-top)+4.5rem)] left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-white/70 text-xs pointer-events-none">
-                <span>🪷</span>
-                <span>{records.length}</span>
+            {/* 莲花数量指示器 + 陀螺仪启用按钮 */}
+            <div className="absolute top-[calc(env(safe-area-inset-top)+4.5rem)] left-4 flex items-center gap-2 pointer-events-auto">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-white/70 text-xs">
+                    <span>🪷</span>
+                    <span>{records.length}</span>
+                </div>
+
+                {needsPermission && !gyroEnabled && (
+                    <button
+                        onClick={requestGyroPermission}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-pink-500/20 backdrop-blur-md text-pink-300 text-xs border border-pink-500/30 hover:bg-pink-500/30 transition-colors"
+                    >
+                        <span>📱</span>
+                        <span>启用陀螺仪</span>
+                    </button>
+                )}
             </div>
         </div>
     );
 }
+
