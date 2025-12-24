@@ -42,21 +42,22 @@ export function PageTransition({ children }: PageTransitionProps) {
         isDragging.current = false;
     };
 
-    // 🔥 优化后的轻量级动画配置
-    const lightTransition = {
-        type: "tween",     // 使用 tween 代替 spring，更轻量
-        duration: 0.25,    // 短时动画
-        ease: [0.25, 0.1, 0.25, 1], // 平滑曲线
+    // 🎨 Ease Out Back 曲线 - 有回弹感但性能好
+    const easeOutBack = [0.175, 0.885, 0.32, 1.275];
+
+    const transition = {
+        type: "tween",
+        duration: 0.35,
+        ease: easeOutBack,
     };
 
     // 检查是否是主页面
     const isMainPage = PAGES.includes(pathname || "");
 
-    // 轻量级动画变体（只用 transform，开启 GPU 加速）
+    // 动画变体
     const variants = {
         initial: {
-            x: 40,
-            // 不用 scale 减少计算
+            x: 50,
         },
         animate: {
             x: 0,
@@ -74,11 +75,10 @@ export function PageTransition({ children }: PageTransitionProps) {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                transition={lightTransition}
+                transition={transition}
                 style={{
                     width: "100%",
                     height: "100%",
-                    // 🔥 GPU 加速
                     willChange: "transform",
                     transform: "translateZ(0)",
                 }}
@@ -95,7 +95,7 @@ export function PageTransition({ children }: PageTransitionProps) {
             initial="initial"
             animate="animate"
             exit="exit"
-            transition={lightTransition}
+            transition={transition}
             drag="x"
             dragConstraints={{ left: 0, right: 0 }}
             dragElastic={0.15}
@@ -105,7 +105,6 @@ export function PageTransition({ children }: PageTransitionProps) {
                 width: "100%",
                 height: "100%",
                 touchAction: "pan-y",
-                // 🔥 GPU 加速
                 willChange: "transform",
                 transform: "translateZ(0)",
             }}
