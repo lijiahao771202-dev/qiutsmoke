@@ -44,7 +44,7 @@
     "@capacitor/haptics": "^7.0.3",
     "@capacitor/ios": "^7.4.4",
     "@capacitor/local-notifications": "^7.0.4",
-    "@capacitor/motion": "^8.0.0",
+    "@capacitor/motion": "^7.0.2",
     "@cloudflare/next-on-pages": "^1.13.16",
     "@supabase/auth-ui-react": "^0.4.7",
     "@supabase/auth-ui-shared": "^0.1.8",

@@ -47,6 +47,8 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>NSMotionUsageDescription</key>
+	<string>用于控制莲花花园中的物理效果，让莲花随设备倾斜移动</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>
