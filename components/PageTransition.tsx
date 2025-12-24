@@ -48,14 +48,39 @@ export function PageTransition({ children }: PageTransitionProps) {
     const isMainPage = PAGES.includes(pathname || "");
 
     if (!isMainPage) {
-        // 非主页面直接渲染，不加动画避免闪烁
-        return <>{children}</>;
+        // 非主页面：只用简单的 transform 动画，无 opacity
+        return (
+            <motion.div
+                key={pathname}
+                initial={{ x: 30 }}
+                animate={{ x: 0 }}
+                exit={{ x: -30 }}
+                transition={{
+                    type: "spring",
+                    stiffness: 300,
+                    damping: 30,
+                    mass: 0.8
+                }}
+                style={{ width: "100%", height: "100%" }}
+            >
+                {children}
+            </motion.div>
+        );
     }
 
-    // 主页面：只支持滑动手势，不加 opacity 动画避免闪烁
+    // 主页面：滑动手势 + transform 过渡动画（无 opacity，避免闪烁）
     return (
         <motion.div
             key={pathname}
+            initial={{ x: 30 }}
+            animate={{ x: 0 }}
+            exit={{ x: -30 }}
+            transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 30,
+                mass: 0.8
+            }}
             drag="x"
             dragConstraints={{ left: 0, right: 0 }}
             dragElastic={0.2}
