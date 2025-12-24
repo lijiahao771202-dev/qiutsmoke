@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Matter from "matter-js";
 import { useHaptics } from "@/lib/hooks/useHaptics";
+import { Motion } from "@capacitor/motion";
 
 interface MeditationRecord {
     id: string;
@@ -27,12 +28,16 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const engineRef = useRef<Matter.Engine | null>(null);
-    const renderRef = useRef<Matter.Render | null>(null);
     const runnerRef = useRef<Matter.Runner | null>(null);
     const lotusesRef = useRef<Matter.Body[]>([]);
 
     const { triggerLight, triggerMedium } = useHaptics();
     const [isInitialized, setIsInitialized] = useState(false);
+
+    // 陀螺仪权限状态
+    const [gyroEnabled, setGyroEnabled] = useState(false);
+    const [needsPermission, setNeedsPermission] = useState(false);
+    const listenerHandleRef = useRef<any>(null);
 
     // 绘制莲花
     const drawLotus = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, size: number, angle: number) => {
@@ -110,38 +115,28 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
         // 创建边界墙壁
         const wallThickness = 50;
         const walls = [
-            // 底部
             Matter.Bodies.rectangle(width / 2, height + wallThickness / 2, width, wallThickness, { isStatic: true, label: "wall" }),
-            // 顶部
             Matter.Bodies.rectangle(width / 2, -wallThickness / 2, width, wallThickness, { isStatic: true, label: "wall" }),
-            // 左侧
             Matter.Bodies.rectangle(-wallThickness / 2, height / 2, wallThickness, height, { isStatic: true, label: "wall" }),
-            // 右侧
             Matter.Bodies.rectangle(width + wallThickness / 2, height / 2, wallThickness, height, { isStatic: true, label: "wall" }),
         ];
         Matter.Composite.add(engine.world, walls);
 
         // 创建莲花物体
         const lotuses: Matter.Body[] = [];
-        records.forEach((record, index) => {
+        records.forEach((record) => {
             const size = getLotusSize(record.duration);
             const x = Math.random() * (width - size * 2) + size;
             const y = Math.random() * (height * 0.5) + size;
 
             const lotus = Matter.Bodies.circle(x, y, size, {
-                restitution: 0.6, // 弹性
+                restitution: 0.6,
                 friction: 0.1,
                 frictionAir: 0.02,
                 label: `lotus-${record.id}`,
-                render: {
-                    visible: false // 我们自己绘制
-                }
             });
 
-            // 存储大小信息
             (lotus as any).lotusSize = size;
-            (lotus as any).recordId = record.id;
-
             lotuses.push(lotus);
         });
 
@@ -152,13 +147,9 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
         Matter.Events.on(engine, "collisionStart", (event) => {
             event.pairs.forEach((pair) => {
                 const { bodyA, bodyB } = pair;
-
-                // 莲花之间碰撞
                 if (bodyA.label.startsWith("lotus") && bodyB.label.startsWith("lotus")) {
                     triggerLight();
-                }
-                // 莲花撞墙
-                else if (
+                } else if (
                     (bodyA.label.startsWith("lotus") && bodyB.label === "wall") ||
                     (bodyB.label.startsWith("lotus") && bodyA.label === "wall")
                 ) {
@@ -172,99 +163,93 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
         runnerRef.current = runner;
         Matter.Runner.run(runner, engine);
 
-        // 自定义渲染循环
+        // 渲染循环
         const ctx = canvas.getContext("2d")!;
         let animationId: number;
 
         const render = () => {
             ctx.clearRect(0, 0, width, height);
-
-            // 绘制所有莲花
             lotusesRef.current.forEach((lotus) => {
                 const size = (lotus as any).lotusSize || 30;
                 drawLotus(ctx, lotus.position.x, lotus.position.y, size, lotus.angle);
             });
-
             animationId = requestAnimationFrame(render);
         };
         render();
 
         setIsInitialized(true);
+        setNeedsPermission(true);
 
-        // 清理
         return () => {
             cancelAnimationFrame(animationId);
-            if (runnerRef.current) {
-                Matter.Runner.stop(runnerRef.current);
-            }
-            if (engineRef.current) {
-                Matter.Engine.clear(engineRef.current);
-            }
+            if (runnerRef.current) Matter.Runner.stop(runnerRef.current);
+            if (engineRef.current) Matter.Engine.clear(engineRef.current);
         };
     }, [records, drawLotus, triggerLight, triggerMedium]);
 
-    // 陀螺仪权限状态
-    const [gyroEnabled, setGyroEnabled] = useState(false);
-    const [needsPermission, setNeedsPermission] = useState(false);
-
-    // 请求陀螺仪权限（需要用户点击触发）
+    // 请求陀螺仪权限并启动监听
     const requestGyroPermission = async () => {
-        if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
+        try {
+            // 使用 Capacitor Motion 插件
+            const handle = await Motion.addListener("accel", (event) => {
+                if (!engineRef.current) return;
+                const { x, y } = event.acceleration;
+                if (x !== undefined && y !== undefined) {
+                    engineRef.current.gravity.x = -x * 0.1;
+                    engineRef.current.gravity.y = y * 0.1;
+                }
+            });
+
+            listenerHandleRef.current = handle;
+            setGyroEnabled(true);
+            setNeedsPermission(false);
+            triggerLight();
+        } catch (e) {
+            console.error("Capacitor Motion failed, trying native:", e);
+            // 回退到原生 DeviceMotionEvent
             try {
-                const response = await (DeviceMotionEvent as any).requestPermission();
-                if (response === "granted") {
+                if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
+                    const response = await (DeviceMotionEvent as any).requestPermission();
+                    if (response === "granted") {
+                        setGyroEnabled(true);
+                        setNeedsPermission(false);
+                    }
+                } else {
                     setGyroEnabled(true);
                     setNeedsPermission(false);
                 }
-            } catch (e) {
-                console.error("Gyro permission denied:", e);
+            } catch (e2) {
+                console.error("Fallback also failed:", e2);
             }
-        } else {
-            // 非 iOS 设备直接启用
-            setGyroEnabled(true);
-            setNeedsPermission(false);
         }
     };
 
-    // 检查是否需要权限
+    // 原生 DeviceMotion 回退
     useEffect(() => {
-        if (!isInitialized) return;
-
-        if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
-            // iOS 需要权限
-            setNeedsPermission(true);
-        } else {
-            // 其他设备直接启用
-            setGyroEnabled(true);
-        }
-    }, [isInitialized]);
-
-    // 陀螺仪控制重力
-    useEffect(() => {
-        if (!isInitialized || !engineRef.current || !gyroEnabled) return;
+        if (!isInitialized || !engineRef.current || !gyroEnabled || listenerHandleRef.current) return;
 
         const handleDeviceMotion = (event: DeviceMotionEvent) => {
             const { accelerationIncludingGravity } = event;
             if (!accelerationIncludingGravity || !engineRef.current) return;
-
             const { x, y } = accelerationIncludingGravity;
             if (x !== null && y !== null) {
-                // 调整重力方向（移动设备坐标系）
                 engineRef.current.gravity.x = -x * 0.1;
                 engineRef.current.gravity.y = y * 0.1;
             }
         };
 
         window.addEventListener("devicemotion", handleDeviceMotion);
-
-        return () => {
-            window.removeEventListener("devicemotion", handleDeviceMotion);
-        };
+        return () => window.removeEventListener("devicemotion", handleDeviceMotion);
     }, [isInitialized, gyroEnabled]);
 
-    if (records.length === 0) {
-        return null;
-    }
+    // 清理 Capacitor 监听器
+    useEffect(() => {
+        return () => {
+            if (listenerHandleRef.current) listenerHandleRef.current.remove();
+        };
+    }, []);
+
+    if (records.length === 0) return null;
 
     return (
         <div
@@ -272,12 +257,8 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
             className={`fixed inset-0 z-0 pointer-events-auto ${className}`}
             style={{ touchAction: "none" }}
         >
-            <canvas
-                ref={canvasRef}
-                className="absolute inset-0 w-full h-full"
-            />
+            <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
-            {/* 莲花数量指示器 + 陀螺仪启用按钮 */}
             <div className="absolute top-[calc(env(safe-area-inset-top)+4.5rem)] left-4 flex items-center gap-2 pointer-events-auto">
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-white/70 text-xs">
                     <span>🪷</span>
@@ -287,14 +268,20 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
                 {needsPermission && !gyroEnabled && (
                     <button
                         onClick={requestGyroPermission}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-pink-500/20 backdrop-blur-md text-pink-300 text-xs border border-pink-500/30 hover:bg-pink-500/30 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-pink-500/20 backdrop-blur-md text-pink-300 text-xs border border-pink-500/30 active:scale-95 transition-all"
                     >
                         <span>📱</span>
                         <span>启用陀螺仪</span>
                     </button>
                 )}
+
+                {gyroEnabled && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500/20 backdrop-blur-md text-green-300 text-xs">
+                        <span>✓</span>
+                        <span>已启用</span>
+                    </div>
+                )}
             </div>
         </div>
     );
 }
-
