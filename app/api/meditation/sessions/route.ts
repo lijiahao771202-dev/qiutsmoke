@@ -113,4 +113,35 @@ export async function PATCH(req: Request) {
     }
 }
 
+// DELETE: Delete all meditation sessions for the user
+export async function DELETE(req: Request) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    try {
+        const { searchParams } = new URL(req.url);
+        const deleteAll = searchParams.get("all") === "true";
+
+        if (deleteAll) {
+            // 删除所有冥想记录
+            const { error } = await supabase
+                .from('meditation_sessions')
+                .delete()
+                .eq('user_id', user.id);
+
+            if (error) throw error;
+
+            return NextResponse.json({ success: true, message: "All meditation sessions deleted" });
+        } else {
+            return NextResponse.json({ error: "Missing ?all=true parameter" }, { status: 400 });
+        }
+    } catch (error: any) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}
+
 export const runtime = 'edge';

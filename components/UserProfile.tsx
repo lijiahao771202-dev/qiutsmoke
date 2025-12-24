@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { LogOut, ChevronDown, Bell, Image as ImageIcon, Check, Shuffle, User, Pencil } from "lucide-react";
+import { LogOut, ChevronDown, Bell, Image as ImageIcon, Check, Shuffle, User, Pencil, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import NotificationSettings from "./NotificationSettings";
@@ -18,6 +18,8 @@ export default function UserProfile() {
     const [showNotificationSettings, setShowNotificationSettings] = useState(false);
     const [showWallpaperPicker, setShowWallpaperPicker] = useState(false);
     const [showProfileEditor, setShowProfileEditor] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // 用户资料状态
     const [nickname, setNickname] = useState("");
@@ -105,6 +107,25 @@ export default function UserProfile() {
             console.error("Save profile failed:", e);
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleDeleteMeditationData = async () => {
+        setIsDeleting(true);
+        try {
+            const res = await fetch(getApiUrl("/api/meditation/sessions?all=true"), {
+                method: "DELETE",
+            });
+            if (res.ok) {
+                setShowDeleteConfirm(false);
+                // 刷新页面以更新数据
+                router.refresh();
+                window.location.reload();
+            }
+        } catch (e) {
+            console.error("Delete meditation data failed:", e);
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -204,6 +225,20 @@ export default function UserProfile() {
                                         <Bell className="w-4 h-4" />
                                     </div>
                                     <span className="font-light">每日提醒</span>
+                                </button>
+
+                                {/* Delete Meditation Data */}
+                                <button
+                                    onClick={() => {
+                                        setIsOpen(false);
+                                        setShowDeleteConfirm(true);
+                                    }}
+                                    className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-white/10 text-orange-400 hover:text-orange-300 transition-colors text-sm text-left group"
+                                >
+                                    <div className="p-1.5 rounded-lg bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors">
+                                        <Trash2 className="w-4 h-4" />
+                                    </div>
+                                    <span className="font-light">清除冥想数据</span>
                                 </button>
 
                                 {/* Sign Out */}
@@ -428,6 +463,62 @@ export default function UserProfile() {
                                         </motion.button>
                                     ))}
                                 </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Delete Confirmation Modal */}
+            <AnimatePresence>
+                {showDeleteConfirm && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+                        onClick={() => setShowDeleteConfirm(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full max-w-sm glass-panel rounded-3xl border border-white/10 shadow-2xl overflow-hidden"
+                        >
+                            {/* Header */}
+                            <div className="px-6 py-4 border-b border-white/10 text-center">
+                                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-orange-500/20 flex items-center justify-center">
+                                    <Trash2 className="w-6 h-6 text-orange-400" />
+                                </div>
+                                <h2 className="text-lg font-medium text-white/90">清除冥想数据</h2>
+                            </div>
+
+                            {/* Content */}
+                            <div className="p-6 text-center">
+                                <p className="text-white/60 text-sm mb-2">
+                                    确定要删除所有冥想记录吗？
+                                </p>
+                                <p className="text-orange-400/80 text-xs">
+                                    ⚠️ 此操作不可撤销，莲花花园也将清空
+                                </p>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="px-6 py-4 border-t border-white/10 flex gap-3">
+                                <button
+                                    onClick={() => setShowDeleteConfirm(false)}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 text-sm transition-colors"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={handleDeleteMeditationData}
+                                    disabled={isDeleting}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-400 hover:to-red-400 text-white text-sm font-medium transition-all disabled:opacity-50"
+                                >
+                                    {isDeleting ? "删除中..." : "确认删除"}
+                                </button>
                             </div>
                         </motion.div>
                     </motion.div>
