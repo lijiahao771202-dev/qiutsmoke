@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence, PanInfo } from "framer-motion";
+import { motion, PanInfo } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useRef } from "react";
 import { useHaptics } from "@/lib/hooks/useHaptics";
@@ -44,55 +44,18 @@ export function PageTransition({ children }: PageTransitionProps) {
         isDragging.current = false;
     };
 
-    // 页面过渡动画变体
-    const variants = {
-        initial: {
-            opacity: 0,
-            x: 20,
-        },
-        enter: {
-            opacity: 1,
-            x: 0,
-            transition: {
-                duration: 0.3,
-                ease: [0.25, 0.1, 0.25, 1],
-            },
-        },
-        exit: {
-            opacity: 0,
-            x: -20,
-            transition: {
-                duration: 0.2,
-                ease: [0.25, 0.1, 0.25, 1],
-            },
-        },
-    };
-
     // 检查是否是主页面（需要滑动支持）
     const isMainPage = PAGES.includes(pathname || "");
 
     if (!isMainPage) {
-        // 非主页面只用淡入淡出
-        return (
-            <motion.div
-                key={pathname}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-            >
-                {children}
-            </motion.div>
-        );
+        // 非主页面直接渲染，不加动画避免闪烁
+        return <>{children}</>;
     }
 
+    // 主页面：只支持滑动手势，不加 opacity 动画避免闪烁
     return (
         <motion.div
             key={pathname}
-            variants={variants}
-            initial="initial"
-            animate="enter"
-            exit="exit"
             drag="x"
             dragConstraints={{ left: 0, right: 0 }}
             dragElastic={0.2}
