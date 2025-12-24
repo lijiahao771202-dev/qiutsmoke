@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import Matter from "matter-js";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { Motion } from "@capacitor/motion";
@@ -41,6 +42,10 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
 
     // Debug 状态
     const [debugInfo, setDebugInfo] = useState<{ x: number, y: number, source: string }>({ x: 0, y: 0, source: 'none' });
+
+    // Portal Mounting State
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => { setMounted(true); }, []);
 
     // 绘制莲花
     const drawLotus = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, size: number, angle: number) => {
@@ -199,14 +204,12 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
 
     // 请求陀螺仪权限并启动监听
     const requestGyroPermission = async () => {
-        // alert("Clicked!"); // Debug verify click
+        // alert("Clicked! Portal works!");
         try {
             console.log("Requesting Capacitor Motion permission...");
             // 尝试使用 Capacitor Motion 插件
             const handle = await Motion.addListener("accel", (event) => {
                 if (!engineRef.current) return;
-                // ...
-
 
                 // 🔥 使用 accelerationIncludingGravity
                 const { x, y } = event.accelerationIncludingGravity;
@@ -279,50 +282,56 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
         };
     }, []);
 
-    // 移除 null 返回，允许渲染 Debug UI 即使没有记录
-    // if (records.length === 0) return null;
+    // 控制面板 (通过 Portal 渲染到 Body，确保层级最高)
+    const controls = (
+        <div className="fixed top-[calc(env(safe-area-inset-top)+4.5rem)] left-4 flex flex-col gap-2 pointer-events-auto items-start z-[9999]">
+            <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-white/70 text-xs shadow-sm">
+                    <span>🪷</span>
+                    <span>{records.length > 0 ? records.length : "Demo"}</span>
+                </div>
 
-    return (
-        <div
-            ref={containerRef}
-            className={`fixed inset-0 z-0 pointer-events-auto ${className}`}
-            style={{ touchAction: "none" }}
-        >
-            <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+                {needsPermission && !gyroEnabled && (
+                    <button
+                        onClick={requestGyroPermission}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-pink-500/20 backdrop-blur-md text-pink-300 text-xs border border-pink-500/30 hover:bg-pink-500/30 active:scale-95 transition-all shadow-lg"
+                    >
+                        <span>📱</span>
+                        <span>启用陀螺仪</span>
+                    </button>
+                )}
 
-            <div className="absolute top-[calc(env(safe-area-inset-top)+4.5rem)] left-4 flex flex-col gap-2 pointer-events-auto items-start z-50">
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-white/70 text-xs">
-                        <span>🪷</span>
-                        <span>{records.length > 0 ? records.length : "Demo"}</span>
+                {gyroEnabled && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500/20 backdrop-blur-md text-green-300 text-xs shadow-lg shadow-green-500/10">
+                        <span>✓</span>
+                        <span>已启用</span>
                     </div>
+                )}
+            </div>
 
-                    {needsPermission && !gyroEnabled && (
-                        <button
-                            onClick={requestGyroPermission}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-pink-500/20 backdrop-blur-md text-pink-300 text-xs border border-pink-500/30 hover:bg-pink-500/30 active:scale-95 transition-all"
-                        >
-                            <span>📱</span>
-                            <span>启用陀螺仪</span>
-                        </button>
-                    )}
-
-                    {gyroEnabled && (
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500/20 backdrop-blur-md text-green-300 text-xs shadow-lg shadow-green-500/10">
-                            <span>✓</span>
-                            <span>已启用</span>
-                        </div>
-                    )}
-                </div>
-
-                {/* 调试信息 HUD - 发布时可隐藏 */}
-                <div className="px-3 py-2 rounded-lg bg-black/60 backdrop-blur-md text-white/70 text-[10px] space-y-1 border border-white/10">
-                    <div className="flex justify-between w-24"><span>Src:</span> <span className="text-cyan-300">{debugInfo.source}</span></div>
-                    <div className="flex justify-between w-24"><span>X:</span> <span className="font-mono">{debugInfo.x.toFixed(2)}</span></div>
-                    <div className="flex justify-between w-24"><span>Y:</span> <span className="font-mono">{debugInfo.y.toFixed(2)}</span></div>
-                    {!gyroEnabled && <div className="text-orange-400 mt-1">⚠️ 陀螺仪未启用</div>}
-                </div>
+            {/* 调试信息 HUD - 发布时可隐藏 */}
+            <div className="px-3 py-2 rounded-lg bg-black/60 backdrop-blur-md text-white/70 text-[10px] space-y-1 border border-white/10 pointer-events-none">
+                <div className="flex justify-between w-24"><span>Src:</span> <span className="text-cyan-300">{debugInfo.source}</span></div>
+                <div className="flex justify-between w-24"><span>X:</span> <span className="font-mono">{debugInfo.x.toFixed(2)}</span></div>
+                <div className="flex justify-between w-24"><span>Y:</span> <span className="font-mono">{debugInfo.y.toFixed(2)}</span></div>
+                {!gyroEnabled && <div className="text-orange-400 mt-1">⚠️ 陀螺仪未启用</div>}
             </div>
         </div>
+    );
+
+    return (
+        <>
+            {/* 背景 Canvas */}
+            <div
+                ref={containerRef}
+                className={`fixed inset-0 z-0 pointer-events-auto ${className}`}
+                style={{ touchAction: "none" }}
+            >
+                <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+            </div>
+
+            {/* 前景控制面板 */}
+            {mounted && typeof document !== 'undefined' && createPortal(controls, document.body)}
+        </>
     );
 }
