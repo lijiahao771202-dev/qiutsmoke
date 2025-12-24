@@ -32,7 +32,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" className="hydrating">
+      <head>
+        {/* 防止样式闪烁：在 JS 加载前就移除 hydrating 类 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // 页面完全加载后移除 hydrating 类
+              if (document.readyState === 'complete') {
+                document.documentElement.classList.remove('hydrating');
+              } else {
+                window.addEventListener('load', function() {
+                  document.documentElement.classList.remove('hydrating');
+                });
+              }
+            `,
+          }}
+        />
+      </head>
       <body
         className="antialiased"
         style={{

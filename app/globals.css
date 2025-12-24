@@ -29,6 +29,58 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* =============================================================================
+   🔥 防止样式闪烁 (FOUC Prevention)
+   在 JS 水合之前就预加载关键样式，避免页面切换时的透明闪烁
+   ============================================================================= */
+
+/* 预加载 backdrop-filter - 让浏览器提前准备 GPU 渲染管线 */
+@supports (backdrop-filter: blur(1px)) {
+  body::before {
+    content: '';
+    position: fixed;
+    top: -9999px;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    backdrop-filter: blur(30px) saturate(150%) contrast(125%);
+    -webkit-backdrop-filter: blur(30px) saturate(150%) contrast(125%);
+    pointer-events: none;
+    visibility: hidden;
+  }
+}
+
+/* GlassCard 基础样式 - 确保水合前就有可见样式 */
+[class*="backdrop-blur"] {
+  /* 强制 GPU 加速，减少重排 */
+  transform: translateZ(0);
+  will-change: backdrop-filter, opacity;
+  /* 确保在 JS 加载前就有基础可见性 */
+  opacity: 1 !important;
+}
+
+/* 防止 Framer Motion 初始动画造成的闪烁 */
+/* 只在客户端 hydration 完成后才允许 opacity 动画 */
+@media (prefers-reduced-motion: no-preference) {
+  [data-framer-appear-id] {
+    opacity: 1 !important;
+  }
+}
+
+/* 🚀 Hydration 状态：在 JS 完全加载前禁用动画 */
+html.hydrating * {
+  /* 禁用所有过渡动画，避免水合期间的闪烁 */
+  transition: none !important;
+  animation: none !important;
+}
+
+html.hydrating [class*="backdrop-blur"],
+html.hydrating [class*="glass"] {
+  /* 确保玻璃效果元素在水合期间就可见 */
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
 /* iOS WebView 触摸优化 */
 button,
 a,
