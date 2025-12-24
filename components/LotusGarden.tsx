@@ -39,6 +39,9 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
     const [needsPermission, setNeedsPermission] = useState(false);
     const listenerHandleRef = useRef<any>(null);
 
+    // Debug 状态
+    const [debugInfo, setDebugInfo] = useState<{ x: number, y: number, source: string }>({ x: 0, y: 0, source: 'none' });
+
     // 绘制莲花
     const drawLotus = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, size: number, angle: number) => {
         ctx.save();
@@ -190,14 +193,19 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
     // 请求陀螺仪权限并启动监听
     const requestGyroPermission = async () => {
         try {
-            // 使用 Capacitor Motion 插件
+            console.log("Requesting Capacitor Motion permission...");
+            // 尝试使用 Capacitor Motion 插件
             const handle = await Motion.addListener("accel", (event) => {
                 if (!engineRef.current) return;
 
-                // 🔥 修复：使用 accelerationIncludingGravity 检测倾斜
+                // 🔥 使用 accelerationIncludingGravity
                 const { x, y } = event.accelerationIncludingGravity;
 
+                // 更新 Debug 信息
+                setDebugInfo({ x: x || 0, y: y || 0, source: 'capacitor' });
+
                 if (x !== undefined && y !== undefined) {
+                    // x 轴反向，y 轴正向
                     engineRef.current.gravity.x = -x * 0.1;
                     engineRef.current.gravity.y = y * 0.1;
                 }
@@ -209,6 +217,7 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
             triggerLight();
         } catch (e) {
             console.error("Capacitor Motion failed, trying native:", e);
+
             // 回退到原生 DeviceMotionEvent
             try {
                 if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
@@ -216,6 +225,8 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
                     if (response === "granted") {
                         setGyroEnabled(true);
                         setNeedsPermission(false);
+                    } else {
+                        alert("权限被拒绝，请在设置中允许访问运动与方向");
                     }
                 } else {
                     setGyroEnabled(true);
@@ -223,11 +234,12 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
                 }
             } catch (e2) {
                 console.error("Fallback also failed:", e2);
+                alert("无法启用陀螺仪: " + (e2 instanceof Error ? e2.message : String(e2)));
             }
         }
     };
 
-    // 原生 DeviceMotion 回退
+    // 原生 DeviceMotion 回退 (针对非 Capacitor 环境)
     useEffect(() => {
         if (!isInitialized || !engineRef.current || !gyroEnabled || listenerHandleRef.current) return;
 
@@ -235,6 +247,9 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
             const { accelerationIncludingGravity } = event;
             if (!accelerationIncludingGravity || !engineRef.current) return;
             const { x, y } = accelerationIncludingGravity;
+
+            setDebugInfo({ x: x || 0, y: y || 0, source: 'native' });
+
             if (x !== null && y !== null) {
                 engineRef.current.gravity.x = -x * 0.1;
                 engineRef.current.gravity.y = y * 0.1;
@@ -248,7 +263,9 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
     // 清理 Capacitor 监听器
     useEffect(() => {
         return () => {
-            if (listenerHandleRef.current) listenerHandleRef.current.remove();
+            if (listenerHandleRef.current) {
+                listenerHandleRef.current.remove();
+            }
         };
     }, []);
 
@@ -262,26 +279,37 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
         >
             <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
-            <div className="absolute top-[calc(env(safe-area-inset-top)+4.5rem)] left-4 flex items-center gap-2 pointer-events-auto">
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-white/70 text-xs">
-                    <span>🪷</span>
-                    <span>{records.length}</span>
+            <div className="absolute top-[calc(env(safe-area-inset-top)+4.5rem)] left-4 flex flex-col gap-2 pointer-events-auto items-start">
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-white/70 text-xs">
+                        <span>🪷</span>
+                        <span>{records.length}</span>
+                    </div>
+
+                    {needsPermission && !gyroEnabled && (
+                        <button
+                            onClick={requestGyroPermission}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-pink-500/20 backdrop-blur-md text-pink-300 text-xs border border-pink-500/30 hover:bg-pink-500/30 active:scale-95 transition-all"
+                        >
+                            <span>📱</span>
+                            <span>启用陀螺仪</span>
+                        </button>
+                    )}
+
+                    {gyroEnabled && (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500/20 backdrop-blur-md text-green-300 text-xs shadow-lg shadow-green-500/10">
+                            <span>✓</span>
+                            <span>已启用</span>
+                        </div>
+                    )}
                 </div>
 
-                {needsPermission && !gyroEnabled && (
-                    <button
-                        onClick={requestGyroPermission}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-pink-500/20 backdrop-blur-md text-pink-300 text-xs border border-pink-500/30 active:scale-95 transition-all"
-                    >
-                        <span>📱</span>
-                        <span>启用陀螺仪</span>
-                    </button>
-                )}
-
+                {/* 调试信息 HUD - 发布时可隐藏 */}
                 {gyroEnabled && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500/20 backdrop-blur-md text-green-300 text-xs">
-                        <span>✓</span>
-                        <span>已启用</span>
+                    <div className="px-3 py-2 rounded-lg bg-black/60 backdrop-blur-md text-white/70 text-[10px] space-y-1 border border-white/10">
+                        <div className="flex justify-between w-20"><span>Src:</span> <span className="text-cyan-300">{debugInfo.source}</span></div>
+                        <div className="flex justify-between w-20"><span>X:</span> <span className="font-mono">{debugInfo.x.toFixed(2)}</span></div>
+                        <div className="flex justify-between w-20"><span>Y:</span> <span className="font-mono">{debugInfo.y.toFixed(2)}</span></div>
                     </div>
                 )}
             </div>
