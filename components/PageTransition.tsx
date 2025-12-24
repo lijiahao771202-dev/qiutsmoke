@@ -8,6 +8,9 @@ import { useHaptics } from "@/lib/hooks/useHaptics";
 // 页面路由顺序（用于滑动方向判断）
 const PAGES = ["/", "/meditate", "/tts-studio", "/stats"];
 
+// 🔥 重页面列表 - 这些页面禁用过渡动画
+const HEAVY_PAGES = ["/tts-studio"];
+
 interface PageTransitionProps {
     children: ReactNode;
 }
@@ -42,7 +45,34 @@ export function PageTransition({ children }: PageTransitionProps) {
         isDragging.current = false;
     };
 
-    // 🎨 Ease Out Back 曲线 - 有回弹感但性能好
+    // 检查是否是主页面
+    const isMainPage = PAGES.includes(pathname || "");
+
+    // 🔥 检查是否是重页面
+    const isHeavyPage = HEAVY_PAGES.includes(pathname || "");
+
+    // 重页面：不加过渡动画，只支持滑动手势
+    if (isHeavyPage) {
+        return (
+            <motion.div
+                key={pathname}
+                drag="x"
+                dragConstraints={{ left: 0, right: 0 }}
+                dragElastic={0.15}
+                onDragStart={() => { isDragging.current = true; }}
+                onDragEnd={handleDragEnd}
+                style={{
+                    width: "100%",
+                    height: "100%",
+                    touchAction: "pan-y",
+                }}
+            >
+                {children}
+            </motion.div>
+        );
+    }
+
+    // Ease Out Back 曲线
     const easeOutBack = [0.175, 0.885, 0.32, 1.275];
 
     const transition = {
@@ -51,20 +81,10 @@ export function PageTransition({ children }: PageTransitionProps) {
         ease: easeOutBack,
     };
 
-    // 检查是否是主页面
-    const isMainPage = PAGES.includes(pathname || "");
-
-    // 动画变体
     const variants = {
-        initial: {
-            x: 50,
-        },
-        animate: {
-            x: 0,
-        },
-        exit: {
-            x: -30,
-        },
+        initial: { x: 50 },
+        animate: { x: 0 },
+        exit: { x: -30 },
     };
 
     if (!isMainPage) {
