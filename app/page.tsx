@@ -6,7 +6,8 @@ import { motion } from "framer-motion";
 import { Droplets, Wind, Activity, Zap, Heart, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GlassCard } from "@/components/ui/GlassCard";
-// FluidBackground removed to use global background system
+import { LotusGarden } from "@/components/LotusGarden";
+import { useMeditationSessions } from "@/lib/hooks/useData";
 
 const MILESTONES = [1, 3, 7, 14, 30, 60, 100, 365];
 
@@ -15,6 +16,16 @@ export default function Home() {
   const [startDate, setStartDate] = useState<string | null>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const { triggerLight, triggerMedium } = useHaptics();
+
+  // 获取冒想会话记录用于莲花花园
+  const { sessions } = useMeditationSessions();
+
+  // 转换为莲花花园需要的格式
+  const lotusRecords = sessions.map(s => ({
+    id: s.id,
+    duration: Math.round((s.duration_seconds || 0) / 60), // 转换为分钟
+    created_at: s.started_at
+  }));
 
   // --- Logic Preserved from Original ---
   useEffect(() => {
@@ -195,6 +206,19 @@ export default function Home() {
             <span>{nextMilestone.target} DAYS</span>
           </div>
         </div>
+
+        {/* 🪷 莲花花园 - 冒想成就 */}
+        {lotusRecords.length > 0 && (
+          <div className="w-full mb-8">
+            <div className="flex justify-between items-center mb-3 px-1">
+              <span className="text-sm text-white/60">🪷 冒想花园</span>
+              <span className="text-xs text-white/40">倾斜手机移动莲花</span>
+            </div>
+            <GlassCard className="p-0 overflow-hidden">
+              <LotusGarden records={lotusRecords} className="h-56" />
+            </GlassCard>
+          </div>
+        )}
 
         {/* Health Stats Grid */}
         <div
