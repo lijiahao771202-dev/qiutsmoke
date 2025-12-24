@@ -99,7 +99,14 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
 
     // 初始化物理世界
     useEffect(() => {
-        if (!containerRef.current || !canvasRef.current || records.length === 0) return;
+        if (!containerRef.current || !canvasRef.current) return;
+
+        // 🔥 Mock 数据：如果没有记录，使用 3 个测试莲花
+        const activeRecords = records.length > 0 ? records : [
+            { id: 'mock-1', duration: 5, created_at: '' },
+            { id: 'mock-2', duration: 15, created_at: '' },
+            { id: 'mock-3', duration: 30, created_at: '' }
+        ];
 
         const container = containerRef.current;
         const canvas = canvasRef.current;
@@ -127,7 +134,7 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
 
         // 创建莲花物体
         const lotuses: Matter.Body[] = [];
-        records.forEach((record) => {
+        activeRecords.forEach((record) => {
             const size = getLotusSize(record.duration);
             const x = Math.random() * (width - size * 2) + size;
             const y = Math.random() * (height * 0.5) + size;
@@ -226,7 +233,7 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
                         setGyroEnabled(true);
                         setNeedsPermission(false);
                     } else {
-                        alert("权限被拒绝，请在设置中允许访问运动与方向");
+                        alert("用户拒绝了陀螺仪权限 😢");
                     }
                 } else {
                     setGyroEnabled(true);
@@ -269,7 +276,8 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
         };
     }, []);
 
-    if (records.length === 0) return null;
+    // 移除 null 返回，允许渲染 Debug UI 即使没有记录
+    // if (records.length === 0) return null;
 
     return (
         <div
@@ -283,7 +291,7 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
                 <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-white/70 text-xs">
                         <span>🪷</span>
-                        <span>{records.length}</span>
+                        <span>{records.length > 0 ? records.length : "Demo"}</span>
                     </div>
 
                     {needsPermission && !gyroEnabled && (
@@ -305,13 +313,12 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
                 </div>
 
                 {/* 调试信息 HUD - 发布时可隐藏 */}
-                {gyroEnabled && (
-                    <div className="px-3 py-2 rounded-lg bg-black/60 backdrop-blur-md text-white/70 text-[10px] space-y-1 border border-white/10">
-                        <div className="flex justify-between w-20"><span>Src:</span> <span className="text-cyan-300">{debugInfo.source}</span></div>
-                        <div className="flex justify-between w-20"><span>X:</span> <span className="font-mono">{debugInfo.x.toFixed(2)}</span></div>
-                        <div className="flex justify-between w-20"><span>Y:</span> <span className="font-mono">{debugInfo.y.toFixed(2)}</span></div>
-                    </div>
-                )}
+                <div className="px-3 py-2 rounded-lg bg-black/60 backdrop-blur-md text-white/70 text-[10px] space-y-1 border border-white/10">
+                    <div className="flex justify-between w-24"><span>Src:</span> <span className="text-cyan-300">{debugInfo.source}</span></div>
+                    <div className="flex justify-between w-24"><span>X:</span> <span className="font-mono">{debugInfo.x.toFixed(2)}</span></div>
+                    <div className="flex justify-between w-24"><span>Y:</span> <span className="font-mono">{debugInfo.y.toFixed(2)}</span></div>
+                    {!gyroEnabled && <div className="text-orange-400 mt-1">⚠️ 陀螺仪未启用</div>}
+                </div>
             </div>
         </div>
     );
