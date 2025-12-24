@@ -199,11 +199,14 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
 
     // 请求陀螺仪权限并启动监听
     const requestGyroPermission = async () => {
+        // alert("Clicked!"); // Debug verify click
         try {
             console.log("Requesting Capacitor Motion permission...");
             // 尝试使用 Capacitor Motion 插件
             const handle = await Motion.addListener("accel", (event) => {
                 if (!engineRef.current) return;
+                // ...
+
 
                 // 🔥 使用 accelerationIncludingGravity
                 const { x, y } = event.accelerationIncludingGravity;
@@ -287,7 +290,7 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
         >
             <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
-            <div className="absolute top-[calc(env(safe-area-inset-top)+4.5rem)] left-4 flex flex-col gap-2 pointer-events-auto items-start">
+            <div className="absolute top-[calc(env(safe-area-inset-top)+4.5rem)] left-4 flex flex-col gap-2 pointer-events-auto items-start z-50">
                 <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-white/70 text-xs">
                         <span>🪷</span>
