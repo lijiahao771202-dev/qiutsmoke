@@ -193,7 +193,10 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
             // 使用 Capacitor Motion 插件
             const handle = await Motion.addListener("accel", (event) => {
                 if (!engineRef.current) return;
-                const { x, y } = event.acceleration;
+
+                // 🔥 修复：使用 accelerationIncludingGravity 检测倾斜
+                const { x, y } = event.accelerationIncludingGravity;
+
                 if (x !== undefined && y !== undefined) {
                     engineRef.current.gravity.x = -x * 0.1;
                     engineRef.current.gravity.y = y * 0.1;
