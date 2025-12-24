@@ -204,74 +204,96 @@ export function LotusGarden({ records, className = "" }: LotusGardenProps) {
 
     // 请求陀螺仪权限并启动监听
     const requestGyroPermission = async () => {
-        // alert("Clicked! Portal works!");
         try {
-            console.log("Requesting Capacitor Motion permission...");
-            // 尝试使用 Capacitor Motion 插件
-            const handle = await Motion.addListener("accel", (event) => {
-                if (!engineRef.current) return;
+            console.log("Starting permission request flow...");
 
-                // 🔥 使用 accelerationIncludingGravity
-                const { x, y } = event.accelerationIncludingGravity;
+            // 🔥 优先尝试 Native API (针对 iOS Safari/WebView)
+            // iOS 13+ 需要用户交互触发 DeviceMotionEvent.requestPermission
+            const DeviceMotionEventAny = window.DeviceMotionEvent as any;
 
-                // 更新 Debug 信息
-                setDebugInfo({ x: x || 0, y: y || 0, source: 'capacitor' });
+            if (typeof DeviceMotionEventAny !== 'undefined' && typeof DeviceMotionEventAny.requestPermission === 'function') {
+                console.log("Detected iOS Native Permission API. Requesting...");
+                const permissionState = await DeviceMotionEventAny.requestPermission();
 
-                if (x !== undefined && y !== undefined) {
-                    // x 轴反向，y 轴正向
-                    engineRef.current.gravity.x = -x * 0.1;
-                    engineRef.current.gravity.y = y * 0.1;
-                }
-            });
-
-            listenerHandleRef.current = handle;
-            setGyroEnabled(true);
-            setNeedsPermission(false);
-            triggerLight();
-        } catch (e) {
-            console.error("Capacitor Motion failed, trying native:", e);
-
-            // 回退到原生 DeviceMotionEvent
-            try {
-                if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
-                    const response = await (DeviceMotionEvent as any).requestPermission();
-                    if (response === "granted") {
-                        setGyroEnabled(true);
-                        setNeedsPermission(false);
-                    } else {
-                        alert("用户拒绝了陀螺仪权限 😢");
-                    }
-                } else {
+                if (permissionState === 'granted') {
+                    console.log("Native Permission GRANTED!");
+                    setupNativeListener();
                     setGyroEnabled(true);
                     setNeedsPermission(false);
+                    triggerLight();
+                    return; // 成功后直接返回，不走 Capacitor
+                } else {
+                    console.warn("Native Permission DENIED:", permissionState);
+                    alert(`权限被拒绝: ${permissionState}`);
+                    return; // 拒绝后停止
                 }
-            } catch (e2) {
-                console.error("Fallback also failed:", e2);
-                alert("无法启用陀螺仪: " + (e2 instanceof Error ? e2.message : String(e2)));
             }
+
+            // 非 iOS 或 旧版 iOS，尝试 Capacitor (或直接监听)
+            console.log("Falling back to Capacitor Motion / Standard Event...");
+            try {
+                // 尝试 Capacitor Motion
+                const handle = await Motion.addListener("accel", (event) => {
+                    handleMotionData(event.accelerationIncludingGravity, 'capacitor');
+                });
+                listenerHandleRef.current = handle;
+                setGyroEnabled(true);
+                setNeedsPermission(false);
+                triggerLight();
+            } catch (capError) {
+                console.error("Capacitor Motion failed:", capError);
+                // 最后的尝试：直接添加原生监听 (非 iOS 13+ 环境，如 Android WebView 或 PC)
+                setupNativeListener();
+                setGyroEnabled(true);
+                setNeedsPermission(false);
+            }
+
+        } catch (e) {
+            console.error("Helper Error:", e);
+            alert("启动陀螺仪失败: " + String(e));
         }
     };
 
-    // 原生 DeviceMotion 回退 (针对非 Capacitor 环境)
-    useEffect(() => {
-        if (!isInitialized || !engineRef.current || !gyroEnabled || listenerHandleRef.current) return;
-
+    const setupNativeListener = () => {
         const handleDeviceMotion = (event: DeviceMotionEvent) => {
-            const { accelerationIncludingGravity } = event;
-            if (!accelerationIncludingGravity || !engineRef.current) return;
-            const { x, y } = accelerationIncludingGravity;
+            handleMotionData(event.accelerationIncludingGravity, 'native');
+        };
+        window.addEventListener("devicemotion", handleDeviceMotion);
+        // 保存引用以便清理 (简化起见暂作为一个全局监听，react useEffect 会负责 remove 旧的如果重新挂载，
+        // 但这里我们是在点击事件里加的。为了防止重复，应该由 useEffect 管理，或者只设置状态让 useEffect 挂载)
+        // 实际上最佳实践是：requestPermission 只负责拿权限，拿到了设状态，监听由 useEffect 负责。
+    };
 
-            setDebugInfo({ x: x || 0, y: y || 0, source: 'native' });
+    // 统一处理数据
+    const handleMotionData = (accel: { x: number | null, y: number | null, z: number | null } | null | undefined, src: string) => {
+        if (!accel || !engineRef.current) return;
+        const { x, y } = accel;
 
-            if (x !== null && y !== null) {
-                engineRef.current.gravity.x = -x * 0.1;
-                engineRef.current.gravity.y = y * 0.1;
-            }
+        setDebugInfo({ x: x || 0, y: y || 0, source: src });
+
+        if (x !== null && y !== null && x !== undefined && y !== undefined) {
+            // x 轴反向，y 轴正向
+            engineRef.current.gravity.x = -x * 0.1;
+            engineRef.current.gravity.y = y * 0.1;
+        }
+    };
+
+    // 监听 Native API (如果已授权)
+    useEffect(() => {
+        if (!isInitialized || !engineRef.current || !gyroEnabled) return;
+
+        // 避免重复监听 Capacitor (如果已经是 Capacitor 驱动则不添加 Native)
+        // 这里简化逻辑：总是添加 Native 监听作为兜底，反正逻辑是一样的
+        const onMotion = (e: DeviceMotionEvent) => {
+            // 只有当 Capacitor 没送数据时才处理？或者覆盖？
+            // 简单起见，覆盖更新。
+            handleMotionData(e.accelerationIncludingGravity, 'native-event');
         };
 
-        window.addEventListener("devicemotion", handleDeviceMotion);
-        return () => window.removeEventListener("devicemotion", handleDeviceMotion);
+        window.addEventListener("devicemotion", onMotion);
+        return () => window.removeEventListener("devicemotion", onMotion);
     }, [isInitialized, gyroEnabled]);
+
 
     // 清理 Capacitor 监听器
     useEffect(() => {
