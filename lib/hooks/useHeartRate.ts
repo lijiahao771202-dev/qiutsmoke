@@ -33,7 +33,7 @@ interface UseHeartRateReturn {
 }
 
 const MAX_HISTORY_LENGTH = 30; // Number of data points to keep for the graph
-const POLL_INTERVAL_MS = 5000; // Poll every 5 seconds
+const POLL_INTERVAL_MS = 2000; // Poll every 2 seconds
 
 export function useHeartRate(): UseHeartRateReturn {
     const [currentBPM, setCurrentBPM] = useState<number | null>(null);
