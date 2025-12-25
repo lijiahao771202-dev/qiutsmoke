@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Play, RefreshCw, CheckCircle2, Moon, Waves, Flower2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
+import { KeepAwake } from "@capacitor-community/keep-awake";
 
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED";
@@ -542,6 +543,21 @@ function PracticeContent({ router }: { router: any }) {
             hapticTimers.current.push(t1);
         }
     };
+
+    // --- Keep Awake ---
+    useEffect(() => {
+        const isPracticing = phase === "PRACTICING" || phase === "TRANSITION_TO_PRACTICE" || phase === "COUNTDOWN";
+
+        if (isPracticing) {
+            KeepAwake.keepAwake().catch(console.error);
+        } else {
+            KeepAwake.allowSleep().catch(console.error);
+        }
+
+        return () => {
+            KeepAwake.allowSleep().catch(console.error);
+        };
+    }, [phase]);
 
     useEffect(() => {
         // Sync Ref for Animation Loop
