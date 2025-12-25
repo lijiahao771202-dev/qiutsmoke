@@ -10,6 +10,7 @@ import { useHeartRate } from "@/lib/hooks/useHeartRate";
 import HeartRateIndicator from "@/components/HeartRateGraph";
 import PracticeCompletionView from "@/components/PracticeCompletionView";
 import { KeepAwake } from "@capacitor-community/keep-awake";
+import { getApiUrl } from "@/lib/config";
 
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
@@ -208,6 +209,7 @@ function PracticeContent({ router }: { router: any }) {
     // --- Session Data for Summary ---
     const [sessionHeartRates, setSessionHeartRates] = useState<number[]>([]);
     const [sessionDuration, setSessionDuration] = useState<number>(0);
+    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
     // --- 完成提示音 ---
     const playCompletionSound = () => {
@@ -1201,6 +1203,26 @@ function PracticeContent({ router }: { router: any }) {
         setBreathPhase("INHALE");
         practiceStartTimeRef.current = Date.now();
 
+        // 📊 Record Session Start to Database
+        try {
+            const themeName = THEMES[selectedTheme]?.name || "正式练习";
+            fetch(getApiUrl('/api/meditation/sessions'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    topicId: `practice-${selectedTheme.toLowerCase()}`,
+                    topicName: `正式练习 - ${themeName}`
+                })
+            }).then(async res => {
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data?.id) setCurrentSessionId(data.id);
+                }
+            }).catch(e => console.error("Failed to start session recording", e));
+        } catch (e) {
+            console.error("Failed to start session recording", e);
+        }
+
         // Start Heart Rate Monitoring (if authorized)
         if (!isAuthorized) {
             const granted = await requestPermission();
@@ -1254,6 +1276,20 @@ function PracticeContent({ router }: { router: any }) {
 
         setSessionDuration(elapsedSeconds);
         setSessionHeartRates(currentHRHistory);
+
+        // 📊 Record Session End to Database
+        if (currentSessionId) {
+            fetch(getApiUrl('/api/meditation/sessions'), {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: currentSessionId,
+                    durationSeconds: elapsedSeconds
+                })
+            }).then(() => {
+                setCurrentSessionId(null); // Clear for next session
+            }).catch(e => console.error("Failed to end session recording", e));
+        }
 
         // Stop Heart Rate Monitoring
         stopMonitoring();
