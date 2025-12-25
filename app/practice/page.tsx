@@ -3,13 +3,21 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Play, RefreshCw, CheckCircle2 } from "lucide-react";
+import { X, Play, RefreshCw, CheckCircle2, Moon, Waves, Flower2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
+type Theme = "ROSE" | "ECLIPSE" | "TIDES";
+
+// --- Theme Config ---
+const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
+    ROSE: { name: "Rose", icon: Flower2, color: "text-pink-400" },
+    ECLIPSE: { name: "Eclipse", icon: Moon, color: "text-amber-400" },
+    TIDES: { name: "Tides", icon: Waves, color: "text-cyan-400" },
+};
 
 // --- Configuration ---
 const BREATH_CYCLE = {
@@ -163,6 +171,7 @@ function PracticeContent({ router }: { router: any }) {
     const [timeLeft, setTimeLeft] = useState(0);
     const [breathPhase, setBreathPhase] = useState<BreathPhase>("INHALE");
     const [countdown, setCountdown] = useState(3);
+    const [selectedTheme, setSelectedTheme] = useState<Theme>("ROSE"); // Default Theme
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess } = useHaptics();
 
     // --- Refs ---
@@ -181,6 +190,7 @@ function PracticeContent({ router }: { router: any }) {
         // Sync State (for stale closure fix)
         phase: "IDLE" as Phase,
         breathPhase: "INHALE" as BreathPhase,
+        theme: "ROSE" as Theme, // Sync theme
 
         // Transition
         transitionStartTime: 0,
@@ -234,15 +244,186 @@ function PracticeContent({ router }: { router: any }) {
         animState.current.particles = particles;
     };
 
-    const updateParticles = (timestamp: number, width: number, height: number, ctx: CanvasRenderingContext2D) => {
-        const state = animState.current;
+    // --- Theme Renderers ---
+
+    const renderRose = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // --- 1. Transition Logic (Condense & Bloom) ---
+        state.particles.forEach((p: any, i: number) => {
+            // Update Diffuse
+            p.diffuseX += p.dx;
+            p.diffuseY += p.dy;
+
+            // Update Structured (Orbit)
+            p.angle += p.speed;
+
+            // Bloom Logic Overrides
+            let effectiveDist = p.dist * breathScale;
+            let effectiveAngle = p.angle;
+            let effectiveHue = state.hue;
+            let effectiveAlpha = 0.5 + Math.sin(timestamp * 0.002 + i) * 0.3;
+
+            if (bloomProgress > 0) {
+                const expansion = (width * 0.6) * bloomProgress;
+                effectiveAngle += bloomProgress * Math.PI * 0.5;
+                const petalFactor = Math.sin(effectiveAngle * 5 + i * 0.1) * (50 * bloomProgress);
+                effectiveDist += expansion + petalFactor;
+
+                const isPink = i % 3 !== 0;
+                const targetHue = isPink ? 335 : 45;
+                effectiveHue = state.hue + (targetHue - state.hue) * bloomProgress;
+                effectiveAlpha = 0.6 + bloomProgress * 0.4;
+            } else {
+                effectiveDist += Math.sin(timestamp * 0.005 + p.wobble) * 5;
+            }
+
+            const orbitX = Math.cos(effectiveAngle) * effectiveDist;
+            const orbitY = Math.sin(effectiveAngle) * effectiveDist;
+
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+
+            if (transitionProgress < 1) effectiveAlpha *= 0.6;
+
+            ctx.fillStyle = `hsla(${effectiveHue}, 80%, 70%, ${effectiveAlpha})`;
+            ctx.beginPath();
+            ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    };
+
+    const renderEclipse = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        // Solar colors
+        const solarHue = 45; // Gold
+
+        state.particles.forEach((p: any, i: number) => {
+            p.diffuseX += p.dx;
+            p.diffuseY += p.dy;
+            p.angle += p.speed * 0.5; // Slower, majesty
+
+            // Eclipse Core Logic
+            // Start: Ring forms tightly
+            // Inhale: Ring glows and corona expands
+            // Exhale: Ring collapses (Black hole)
+
+            let effectiveDist = BASE_RADIUS;
+            let effectiveAlpha = 0.3 + Math.random() * 0.2;
+            let effectiveSize = p.size;
+
+            if (transitionProgress > 0) {
+                // Determine ring state based on breath
+                // We override standard breathScale logic for Eclipse unique physics
+
+                // Breath State Logic recalculation just for this theme? 
+                // We can reuse breathScale as a proxy for "Energy"
+
+                // Radius: 
+                // Inhale: Expand slightly -> 150
+                // Hold: Stable
+                // Exhale: Contract to small -> 50
+
+                effectiveDist = BASE_RADIUS * breathScale;
+
+                // Eclipse needs a "Tight" ring. 
+                // Reduce noise/scatter.
+                const noise = Math.sin(timestamp * 0.01 + p.angle * 10) * (5 * breathScale); // Corona noise
+                effectiveDist += noise;
+
+                // Supernova on complete
+                if (bloomProgress > 0) {
+                    effectiveDist += bloomProgress * width; // Blast out
+                    effectiveAlpha = 1 - bloomProgress; // Fade out
+                    effectiveSize *= (1 + bloomProgress * 5);
+                }
+            }
+
+            const orbitX = Math.cos(p.angle) * effectiveDist;
+            const orbitY = Math.sin(p.angle) * effectiveDist;
+
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+
+            if (transitionProgress < 1) effectiveAlpha *= 0.4;
+
+            // Eclipse is GOLD/WHITE
+            ctx.fillStyle = `hsla(${solarHue}, 100%, 70%, ${effectiveAlpha})`;
+            ctx.beginPath();
+            ctx.arc(finalX, finalY, effectiveSize, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // Add Glow manually if structured
+        if (transitionProgress > 0.5) {
+            ctx.globalCompositeOperation = "lighter";
+            // Optional: Render a blurred glow ring?
+            // Canvas render is expensive, stick to particles for now or use large transparent particles
+        }
+    };
+
+    const renderTides = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const oceanHue = 190; // Cyan/Teal
+
+        state.particles.forEach((p: any, i: number) => {
+            p.diffuseX += p.dx * 2; // Water moves faster
+            p.diffuseY += p.dy;
+
+            // Tides Logic
+            // Instead of a circle, we form sine waves or a flowing organic shape
+            // Let's do a "Dual Ring" that twists like water, or just a flowing interference pattern.
+
+            // Map p.angle to x-axis for wave?
+            // Let's stick to Radial but make it "wavy"
+
+            const wave1 = Math.sin(p.angle * 3 + timestamp * 0.002) * 20;
+            const wave2 = Math.cos(p.angle * 5 - timestamp * 0.003) * 15;
+
+            let effectiveDist = p.dist * breathScale + wave1 + wave2;
+
+            // Start: Flood in
+            // Breath: Tides rise (Expand) and fall (Contract)
+            // End: Bubbles rise
+
+            let finalX, finalY;
+            let effectiveAlpha = 0.5 + Math.sin(timestamp * 0.003 + i) * 0.3;
+
+            if (state.phase === "COMPLETED") {
+                // FLOAT UP
+                const rise = (Date.now() - state.completionStartTime) * 0.2;
+                finalX = p.diffuseX + (centerX + Math.cos(p.angle) * effectiveDist - p.diffuseX) * transitionProgress;
+                finalY = p.diffuseY + (centerY + Math.sin(p.angle) * effectiveDist - p.diffuseY) * transitionProgress - rise;
+                effectiveAlpha *= (1 - bloomProgress);
+            } else {
+                const orbitX = Math.cos(p.angle) * effectiveDist;
+                const orbitY = Math.sin(p.angle) * effectiveDist;
+
+                finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+                finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+            }
+
+            if (transitionProgress < 1) effectiveAlpha *= 0.5;
+
+            ctx.fillStyle = `hsla(${oceanHue + Math.sin(i) * 20}, 70%, 60%, ${effectiveAlpha})`;
+            ctx.beginPath();
+            ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    };
+
+    const updateParticles = (timestamp: number, width: number, height: number, ctx: CanvasRenderingContext2D) => {
+        const state = animState.current;
+        const widthHalf = width / 2;
+        const heightHalf = height / 2;
+
+        // --- 1. Transition Logic ---
         const now = Date.now();
-        let transitionProgress = 0; // 0 = Diffuse, 1 = Structured
-        let bloomProgress = 0;      // 0 = Normal, 1 = Full Bloom
+        let transitionProgress = 0;
+        let bloomProgress = 0;
 
         if (state.phase === "TRANSITION_TO_PRACTICE") {
             const elapsed = now - state.transitionStartTime;
@@ -251,23 +432,18 @@ function PracticeContent({ router }: { router: any }) {
         } else if (state.phase === "PRACTICING" || state.phase === "COUNTDOWN") {
             transitionProgress = 1;
         } else if (state.phase === "COMPLETED") {
-            transitionProgress = 1; // Stay structured initially
+            transitionProgress = 1;
             const elapsed = now - (state.completionStartTime || now);
-            bloomProgress = Math.min(elapsed / 3000, 1); // 3s bloom
-            // Ease out elastic or cubic for a grand opening
-            bloomProgress = 1 - Math.pow(1 - bloomProgress, 3);
-        } else {
-            transitionProgress = 0; // IDLE
+            bloomProgress = Math.min(elapsed / 3000, 1);
+            if (state.theme === "ROSE") bloomProgress = 1 - Math.pow(1 - bloomProgress, 3);
+            else bloomProgress = elapsed / 3000; // Linear for others or custom
         }
 
         // --- 2. Breath Logic ---
         let breathScale = 1;
-        // ... (Keep breath logic running to maintain rhythm until bloom takes over)
         if (state.phase === "PRACTICING" || state.phase === "COMPLETED") {
             const elapsed = now - state.phaseStartTime;
-            // ... existing breath calculation ...
             if (state.phase === "PRACTICING") {
-                // Normal breath update...
                 const breathProg = Math.min(elapsed / state.phaseDuration, 1);
                 const smoothedBreath = easeInOutCubic(breathProg);
 
@@ -288,74 +464,18 @@ function PracticeContent({ router }: { router: any }) {
             breathScale = state.currentRadius / BASE_RADIUS;
         }
 
-        // --- 3. Draw ---
-        // Clear Canvas
+        // --- 3. Draw & Dispatch ---
+        // Clear with Fade
         ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
         ctx.fillRect(0, 0, width, height);
 
-        state.particles.forEach((p, i) => {
-            // Update Diffuse
-            p.diffuseX += p.dx;
-            p.diffuseY += p.dy;
-
-            // Update Structured (Orbit)
-            p.angle += p.speed;
-
-            // Bloom Logic Overrides
-            let effectiveDist = p.dist * breathScale;
-            let effectiveAngle = p.angle;
-            let effectiveHue = state.hue;
-            let effectiveAlpha = 0.5 + Math.sin(timestamp * 0.002 + i) * 0.3;
-
-            if (bloomProgress > 0) {
-                // Spiral Bloom
-                const expansion = (width * 0.6) * bloomProgress;
-
-                // Twist angle based on progress and minor offset
-                effectiveAngle += bloomProgress * Math.PI * 0.5;
-
-                // Petal Modulation: sin wave based on angle
-                // 5 petals is standard for a rose-like shape
-                const petalFactor = Math.sin(effectiveAngle * 5 + i * 0.1) * (50 * bloomProgress);
-
-                effectiveDist += expansion + petalFactor;
-
-                // Color Shift: Cyan (200) -> Rose Pink (330) / Gold (45)
-                // Split particles to create depth
-                const isPink = i % 3 !== 0; // 2/3 Pink, 1/3 Gold
-                const targetHue = isPink ? 335 : 45;
-
-                // Simple lerp for hue provided it doesn't cross the messy green zone too much.
-                // 200 -> 335 goes up (200..360..). 200 -> 45 goes down? No, simple number lerp.
-                // To avoid green (120), we can wrap. 
-                // Let's just hard blend.
-                effectiveHue = state.hue + (targetHue - state.hue) * bloomProgress;
-
-                // Increase brightness/alpha for the "shining" effect
-                effectiveAlpha = 0.6 + bloomProgress * 0.4;
-            } else {
-                // Normal breathing wobble
-                effectiveDist += Math.sin(timestamp * 0.005 + p.wobble) * 5;
-            }
-
-            const orbitX = Math.cos(effectiveAngle) * effectiveDist;
-            const orbitY = Math.sin(effectiveAngle) * effectiveDist;
-
-            // Interpolate Position
-            // X = lerp(diffuseX, centerX + orbitX, t)
-            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
-            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
-
-            // Render
-            // Dimmer when diffuse
-            if (transitionProgress < 1) effectiveAlpha *= 0.6;
-
-            ctx.fillStyle = `hsla(${effectiveHue}, 80%, 70%, ${effectiveAlpha})`;
-
-            ctx.beginPath();
-            ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
-            ctx.fill();
-        });
+        if (state.theme === "ECLIPSE") {
+            renderEclipse(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "TIDES") {
+            renderTides(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else {
+            renderRose(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale); // Default
+        }
     };
 
     const draw = (time: number) => {
@@ -427,6 +547,7 @@ function PracticeContent({ router }: { router: any }) {
         // Sync Ref for Animation Loop
         animState.current.phase = phase;
         animState.current.breathPhase = breathPhase;
+        animState.current.theme = selectedTheme; // Update theme in ref
 
         animState.current.phaseStartTime = Date.now();
         if (breathPhase === "INHALE") animState.current.phaseDuration = BREATH_CYCLE.INHALE;
@@ -618,6 +739,37 @@ function PracticeContent({ router }: { router: any }) {
                                     value={durationMinutes}
                                     onChange={setDurationMinutes}
                                 />
+
+                                {/* Theme Selector */}
+                                <div className="flex justify-center gap-4 py-4">
+                                    {(Object.keys(THEMES) as Theme[]).map((themeKey) => {
+                                        const theme = THEMES[themeKey];
+                                        const isSelected = selectedTheme === themeKey;
+                                        const Icon = theme.icon;
+
+                                        return (
+                                            <button
+                                                key={themeKey}
+                                                onClick={() => {
+                                                    setSelectedTheme(themeKey);
+                                                    triggerLight();
+                                                }}
+                                                className={`
+                                                    relative flex flex-col items-center gap-2 p-3 rounded-2xl transition-all
+                                                    ${isSelected ? "bg-white/10 scale-110 border-white/20" : "bg-transparent text-white/40 hover:text-white hover:bg-white/5"}
+                                                    border ${isSelected ? "border-white/20" : "border-transparent"}
+                                                `}
+                                            >
+                                                <div className={`p-2 rounded-full ${isSelected ? theme.color : "text-current"}`}>
+                                                    <Icon size={24} />
+                                                </div>
+                                                <span className="text-[10px] font-medium tracking-widest uppercase">
+                                                    {theme.name}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
 
                                 {/* Start Button */}
                                 <button
