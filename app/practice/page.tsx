@@ -911,17 +911,14 @@ function PracticeContent({ router }: { router: any }) {
         state.particles.forEach((p: any, i: number) => {
             // --- 1. Position Logic: Suspended Crystal Shards ---
 
-            // Idle State: Slow, majestic rotation of a suspended constellation
+            // Idle/Intro State: Chaotic scattered shards that get pulled in
             if (transitionProgress < 1) {
-                // Maintain distance but rotate to prevent "clumping"
-                const idleSpeed = 0.05 + p.speed * 0.1;
-                p.angle += idleSpeed * 0.01;
-
-                // Gentle "breathing" in idle to keep it alive
-                const idleBreath = 1 + Math.sin(now * 0.5 + p.angle) * 0.05;
-
-                p.diffuseX = centerX + Math.cos(p.angle) * p.dist * idleBreath * 1.2; // Spread out more
-                p.diffuseY = centerY + Math.sin(p.angle) * p.dist * idleBreath * 1.2;
+                // Chaotic floating before the practice starts
+                p.diffuseX += Math.cos(p.angle + now) * 0.5;
+                p.diffuseY += Math.sin(p.angle + now) * 0.5;
+                // Strong magnetic pull towards center
+                p.diffuseX += (centerX - p.diffuseX) * 0.015;
+                p.diffuseY += (centerY - p.diffuseY) * 0.015;
             } else {
                 // Active State: Crystalline alignment
                 p.angle += 0.001; // Very slow, rigid rotation
