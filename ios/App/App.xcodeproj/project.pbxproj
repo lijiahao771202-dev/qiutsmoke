@@ -8,13 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		5478F7752EFD62600040A009 /* WatchApp Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5478F7742EFD62600040A009 /* WatchApp Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		54D98D2F2EFD615900D55AD7 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D98D2B2EFD615900D55AD7 /* HapticManager.swift */; };
-		54D98D302EFD615900D55AD7 /* HeartRateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D98D2C2EFD615900D55AD7 /* HeartRateManager.swift */; };
-		54D98D312EFD615900D55AD7 /* BreathingPracticeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D98D282EFD615900D55AD7 /* BreathingPracticeApp.swift */; };
-		54D98D322EFD615900D55AD7 /* BreathingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D98D292EFD615900D55AD7 /* BreathingViewModel.swift */; };
-		54D98D332EFD615900D55AD7 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D98D2A2EFD615900D55AD7 /* ContentView.swift */; };
+		54D98D2F2EFD615900D55AD7 /* WatchApp Watch App/HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D98D2B2EFD615900D55AD7 /* WatchApp Watch App/HapticManager.swift */; };
+		54D98D302EFD615900D55AD7 /* WatchApp Watch App/HeartRateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D98D2C2EFD615900D55AD7 /* WatchApp Watch App/HeartRateManager.swift */; };
+		54D98D312EFD615900D55AD7 /* WatchApp Watch App/BreathingPracticeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D98D282EFD615900D55AD7 /* WatchApp Watch App/BreathingPracticeApp.swift */; };
+		54D98D322EFD615900D55AD7 /* WatchApp Watch App/BreathingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D98D292EFD615900D55AD7 /* WatchApp Watch App/BreathingViewModel.swift */; };
+		54D98D332EFD615900D55AD7 /* WatchApp Watch App/ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D98D2A2EFD615900D55AD7 /* WatchApp Watch App/ContentView.swift */; };
 		54D98D342EFD615A00D55AD7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 54D98D272EFD615900D55AD7 /* Assets.xcassets */; };
-		54D98D352EFD615A00D55AD7 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 54D98D2D2EFD615900D55AD7 /* Info.plist */; };
+/* End PBXBuildFile section */
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,11 +63,11 @@
 		5478F7682EFD625F0040A009 /* WatchApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WatchApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5478F7742EFD62600040A009 /* WatchApp Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "WatchApp Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		54D98D272EFD615900D55AD7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		54D98D282EFD615900D55AD7 /* BreathingPracticeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WatchApp Watch App/BreathingPracticeApp.swift"; sourceTree = SOURCE_ROOT; };
-		54D98D292EFD615900D55AD7 /* BreathingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WatchApp Watch App/BreathingViewModel.swift"; sourceTree = SOURCE_ROOT; };
-		54D98D2A2EFD615900D55AD7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WatchApp Watch App/ContentView.swift"; sourceTree = SOURCE_ROOT; };
-		54D98D2B2EFD615900D55AD7 /* HapticManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WatchApp Watch App/HapticManager.swift"; sourceTree = SOURCE_ROOT; };
-		54D98D2C2EFD615900D55AD7 /* HeartRateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WatchApp Watch App/HeartRateManager.swift"; sourceTree = SOURCE_ROOT; };
+		54D98D282EFD615900D55AD7 /* WatchApp Watch App/BreathingPracticeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WatchApp Watch App/BreathingPracticeApp.swift"; sourceTree = SOURCE_ROOT; };
+		54D98D292EFD615900D55AD7 /* WatchApp Watch App/BreathingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WatchApp Watch App/BreathingViewModel.swift"; sourceTree = SOURCE_ROOT; };
+		54D98D2A2EFD615900D55AD7 /* WatchApp Watch App/ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WatchApp Watch App/ContentView.swift"; sourceTree = SOURCE_ROOT; };
+		54D98D2B2EFD615900D55AD7 /* WatchApp Watch App/HapticManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WatchApp Watch App/HapticManager.swift"; sourceTree = SOURCE_ROOT; };
+		54D98D2C2EFD615900D55AD7 /* WatchApp Watch App/HeartRateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WatchApp Watch App/HeartRateManager.swift"; sourceTree = SOURCE_ROOT; };
 		54D98D2D2EFD615900D55AD7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		54D98D362EFD616B00D55AD7 /* Watchapp Watch App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Watchapp Watch App.entitlements"; sourceTree = "<group>"; };
 		54D98D372EFD616B00D55AD7 /* Watchapp Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Watchapp Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -136,11 +136,11 @@
 			isa = PBXGroup;
 			children = (
 				54D98D272EFD615900D55AD7 /* Assets.xcassets */,
-				54D98D282EFD615900D55AD7 /* BreathingPracticeApp.swift */,
-				54D98D292EFD615900D55AD7 /* BreathingViewModel.swift */,
-				54D98D2A2EFD615900D55AD7 /* ContentView.swift */,
-				54D98D2B2EFD615900D55AD7 /* HapticManager.swift */,
-				54D98D2C2EFD615900D55AD7 /* HeartRateManager.swift */,
+				54D98D282EFD615900D55AD7 /* WatchApp Watch App/BreathingPracticeApp.swift */,
+				54D98D292EFD615900D55AD7 /* WatchApp Watch App/BreathingViewModel.swift */,
+				54D98D2A2EFD615900D55AD7 /* WatchApp Watch App/ContentView.swift */,
+				54D98D2B2EFD615900D55AD7 /* WatchApp Watch App/HapticManager.swift */,
+				54D98D2C2EFD615900D55AD7 /* WatchApp Watch App/HeartRateManager.swift */,
 				54D98D2D2EFD615900D55AD7 /* Info.plist */,
 			);
 			path = WatchApp;
@@ -311,7 +311,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				54D98D342EFD615A00D55AD7 /* Assets.xcassets in Resources */,
-				54D98D352EFD615A00D55AD7 /* Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -379,11 +378,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				54D98D2F2EFD615900D55AD7 /* HapticManager.swift in Sources */,
-				54D98D302EFD615900D55AD7 /* HeartRateManager.swift in Sources */,
-				54D98D312EFD615900D55AD7 /* BreathingPracticeApp.swift in Sources */,
-				54D98D322EFD615900D55AD7 /* BreathingViewModel.swift in Sources */,
-				54D98D332EFD615900D55AD7 /* ContentView.swift in Sources */,
+				54D98D2F2EFD615900D55AD7 /* WatchApp Watch App/HapticManager.swift in Sources */,
+				54D98D302EFD615900D55AD7 /* WatchApp Watch App/HeartRateManager.swift in Sources */,
+				54D98D312EFD615900D55AD7 /* WatchApp Watch App/BreathingPracticeApp.swift in Sources */,
+				54D98D322EFD615900D55AD7 /* WatchApp Watch App/BreathingViewModel.swift in Sources */,
+				54D98D332EFD615900D55AD7 /* WatchApp Watch App/ContentView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

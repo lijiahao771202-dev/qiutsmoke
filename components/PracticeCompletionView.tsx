@@ -39,43 +39,52 @@ export default function PracticeCompletionView({
                 variants={container}
                 initial="hidden"
                 animate="show"
-                className="w-full max-w-sm px-6 flex flex-col items-center gap-12"
+                className="w-full h-full flex flex-col items-center justify-between py-24"
             >
-                {/* Title */}
-                <motion.div variants={item} className="text-center">
-                    <h1 className="text-4xl font-extralight tracking-[0.2em] text-white/90 drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]">
-                        COMPLETED
-                    </h1>
-                    <div className="h-[1px] w-24 bg-gradient-to-r from-transparent via-white/50 to-transparent mx-auto mt-4" />
-                </motion.div>
+                {/* Top Spacer */}
+                <div />
 
                 {/* Stats Cluster - Labels Only (Numbers rendered by Particles) */}
-                <motion.div variants={item} className="flex flex-col gap-24 w-full items-center">
-                    {/* Duration Label */}
-                    <div className="flex flex-col items-center">
-                        {/* Placeholder space for Particle Text (approx 80px) */}
-                        <div className="h-20" />
-                        <span className="text-sm font-medium text-white/50 tracking-widest uppercase">Duration</span>
+                {/* Layout matches canvas: Duration Top, others Bottom */}
+                <motion.div variants={item} className="relative w-full h-[400px]">
+                    {/* Duration Label (Center Top) */}
+                    <div className="absolute top-[35%] left-1/2 -translate-x-1/2 translate-y-24 flex flex-col items-center">
+                        <span className="text-[10px] font-semibold text-white/40 tracking-[0.3em] uppercase">Duration</span>
                     </div>
 
-                    {/* Avg Heart Rate Label */}
-                    <div className="flex flex-col items-center">
-                        {/* Placeholder space for Particle Text (approx 80px) */}
-                        <div className="h-20" />
-                        <span className="text-sm font-medium text-white/50 tracking-widest uppercase">Avg BPM</span>
+                    {/* Avg BPM (Bottom Left) */}
+                    <div className="absolute top-[65%] left-[calc(50%-140px)] -translate-x-1/2 translate-y-16 flex flex-col items-center">
+                        <span className="text-[10px] font-semibold text-white/40 tracking-[0.3em] uppercase">Avg BPM</span>
+                    </div>
+
+                    {/* BPM Drop (Bottom Right) */}
+                    <div className="absolute top-[65%] left-[calc(50%+140px)] -translate-x-1/2 translate-y-16 flex flex-col items-center">
+                        <span className="text-[10px] font-semibold text-white/40 tracking-[0.3em] uppercase">BPM Drop</span>
                     </div>
                 </motion.div>
 
-                {/* Main Action Button */}
-                <motion.div variants={item} className="pt-8 pointer-events-auto">
+                {/* Main Action Button - Minimalist Glass Checkmark */}
+                <motion.div variants={item} className="pointer-events-auto pb-12">
                     <button
                         onClick={onClose}
-                        className="group relative px-12 py-4 rounded-full overflow-hidden transition-all duration-300 hover:scale-105 active:scale-95"
+                        className="group relative flex items-center justify-center w-20 h-20 rounded-full transition-all duration-300 hover:scale-105 active:scale-95"
                     >
-                        <div className="absolute inset-0 bg-white/10 backdrop-blur-sm group-hover:bg-white/20 transition-colors" />
-                        <div className="absolute inset-0 rounded-full border border-white/20 group-hover:border-white/40 transition-colors" />
-                        <span className="relative text-lg font-light tracking-[0.2em] text-white">DONE</span>
+                        {/* Glass Background */}
+                        <div className="absolute inset-0 bg-white/5 backdrop-blur-md rounded-full group-hover:bg-white/10 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.05)] border border-white/10" />
+
+                        {/* Icon */}
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-white/80 group-hover:text-white transition-colors relative z-10">
+                            <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
                     </button>
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 2, duration: 1 }}
+                        className="text-center mt-4"
+                    >
+                        <span className="text-[10px] text-white/20 tracking-widest uppercase">Tap to finish</span>
+                    </motion.div>
                 </motion.div>
             </motion.div>
         </div>
