@@ -870,14 +870,14 @@ function PracticeContent({ router }: { router: any }) {
         clearHapticTimers();
 
         if (phaseType === "INHALE") {
-            // 🌬️ 连续感：24次震动，每167ms一次，从轻到重
-            // Light×8 → Medium×8 → Heavy×8
-            for (let i = 0; i < 24; i++) {
-                const delay = i * 167; // 0, 167, 334, ... 3842
+            // 🌬️ 连续感：48次震动，每83ms一次，从轻到重
+            // Light×16 → Medium×16 → Heavy×16
+            for (let i = 0; i < 48; i++) {
+                const delay = i * 83; // 0, 83, 166, ... 3901
                 let trigger: () => void;
-                if (i < 8) {
+                if (i < 16) {
                     trigger = triggerLight;
-                } else if (i < 16) {
+                } else if (i < 32) {
                     trigger = triggerMedium;
                 } else {
                     trigger = triggerHeavy;
@@ -1013,7 +1013,12 @@ function PracticeContent({ router }: { router: any }) {
         setPhase("COMPLETED");
         animState.current.completionStartTime = Date.now(); // Start dispersion
         cleanup();
-        triggerSuccess();
+
+        // 🎊 完成震动：3次Heavy连击 + Success通知，确保用户感知到
+        triggerHeavy();
+        setTimeout(() => triggerHeavy(), 150);
+        setTimeout(() => triggerHeavy(), 300);
+        setTimeout(() => triggerSuccess(), 500);
     };
 
     const cleanup = () => {
