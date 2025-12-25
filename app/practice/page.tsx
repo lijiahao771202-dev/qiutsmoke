@@ -258,6 +258,8 @@ function PracticeContent({ router }: { router: any }) {
         particles: [] as any[],
         hue: 200,
         textTargets: [] as { x: number, y: number }[], // NEW: Text Particle Targets
+        bpmParticleStartIndex: 0, // NEW: Index where BPM particles start
+        morphStartTime: 0, // NEW: When morphing begins
 
         // Sync State (for stale closure fix)
         phase: "IDLE" as Phase,
@@ -1207,8 +1209,12 @@ function PracticeContent({ router }: { router: any }) {
 
             const canvas = canvasRef.current;
             if (canvas) {
-                const points = getTextPoints(durationText, bpmText, canvas.width, canvas.height);
+                // 3-Phase Animation: Bloom (2s) -> Drift (0.5s) -> Morph
+                animState.current.morphStartTime = Date.now() + 2500;
+
+                const { points, bpmStartIndex } = getTextPoints(durationText, bpmText, canvas.width, canvas.height);
                 animState.current.textTargets = points;
+                animState.current.bpmParticleStartIndex = bpmStartIndex;
             }
         }, 2000);
     };
@@ -1447,47 +1453,61 @@ function PracticeContent({ router }: { router: any }) {
 }
 
 // --- Particle Text Morphing Helpers ---
-const getTextPoints = (text1: string, text2: string, width: number, height: number): { x: number, y: number }[] => {
-    if (typeof document === 'undefined') return []; // Server-side safety
+const getTextPoints = (text1: string, text2: string, width: number, height: number): { points: { x: number, y: number }[], bpmStartIndex: number } => {
+    if (typeof document === 'undefined') return { points: [], bpmStartIndex: 0 };
 
     const offscreen = document.createElement('canvas');
     offscreen.width = width;
     offscreen.height = height;
     const ctx = offscreen.getContext('2d');
-    if (!ctx) return [];
+    if (!ctx) return { points: [], bpmStartIndex: 0 };
 
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Duration (Large)
+    const points: { x: number, y: number }[] = [];
+    const step = 6;
+
+    // 1. Scan Duration Text
     ctx.font = '300 120px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillText(text1, width / 2, height / 2 - 80);
 
-    // BPM (Small)
-    ctx.font = '200 60px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(text2, width / 2, height / 2 + 60);
-
-    const imageData = ctx.getImageData(0, 0, width, height).data;
-    const points = [];
-    const step = 6; // Scan density - Higher number = fewer particles
-
+    let imageData = ctx.getImageData(0, 0, width, height).data;
     for (let y = 0; y < height; y += step) {
         for (let x = 0; x < width; x += step) {
             const index = (y * width + x) * 4;
-            if (imageData[index] > 128) {
-                points.push({ x, y });
-            }
+            if (imageData[index] > 128) points.push({ x, y });
+        }
+    }
+    const bpmStartIndex = points.length; // Mark where duration ends
+
+    // 2. Scan BPM Text (Clear first)
+    ctx.clearRect(0, 0, width, height);
+    ctx.font = '200 60px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(text2, width / 2, height / 2 + 60);
+
+    imageData = ctx.getImageData(0, 0, width, height).data;
+    for (let y = 0; y < height; y += step) {
+        for (let x = 0; x < width; x += step) {
+            const index = (y * width + x) * 4;
+            if (imageData[index] > 128) points.push({ x, y });
         }
     }
 
-    // Shuffle to avoid grid drawing patterns
-    for (let i = points.length - 1; i > 0; i--) {
+    // Shuffle within segments
+    // Shuffle Duration Segment
+    for (let i = bpmStartIndex - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [points[i], points[j]] = [points[j], points[i]];
     }
+    // Shuffle BPM Segment
+    for (let i = points.length - 1; i > bpmStartIndex; i--) {
+        const j = Math.floor(Math.random() * (i - bpmStartIndex + 1)) + bpmStartIndex;
+        [points[i], points[j]] = [points[j], points[i]];
+    }
 
-    return points;
+    return { points, bpmStartIndex };
 };
 
 const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number) => {
@@ -1495,33 +1515,83 @@ const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: numbe
     const targets = state.textTargets;
     if (!targets || targets.length === 0) return;
 
+    const now = Date.now();
+    // Phase 2: Drift (Wait until bloom finishes + buffer)
+    if (now < (state.morphStartTime || 0)) {
+        // Just drift loosely
+        particles.forEach((p: any) => {
+            p.x += (Math.random() - 0.5) * 0.5;
+            p.y += (Math.random() - 0.5) * 0.5;
+            // Use subtle white for drift
+            const alpha = 0.3;
+            ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        return;
+    }
+
     const lerp = 0.08;
+    const beatSpeed = 0.008; // Heartbeat freq
+    const beat = Math.pow(Math.sin(now * beatSpeed), 60); // Sharp spike for heartbeat
+
+    // Theme Colors
+    let baseHue = 0;
+    let baseSat = 0; // 0 = white
+    let dynamicColor = false;
+
+    if (state.theme === "ROSE") { baseHue = 340; baseSat = 80; dynamicColor = true; }
+    else if (state.theme === "AURORA") { baseHue = 160; baseSat = 70; dynamicColor = true; }
+    else if (state.theme === "GALAXY") { baseHue = 260; baseSat = 80; dynamicColor = true; }
+    else if (state.theme === "INFERNO") { baseHue = 20; baseSat = 90; dynamicColor = true; }
+    else if (state.theme === "TIDES") { baseHue = 200; baseSat = 80; dynamicColor = true; }
+    else if (state.theme === "ZEN") { baseHue = 45; baseSat = 60; dynamicColor = true; }
+    else { baseHue = 0; baseSat = 0; }
 
     particles.forEach((p: any, i: number) => {
         let tx = p.x;
         let ty = p.y;
         let targetAlpha = 0;
+        let sizeScale = 1;
 
         if (i < targets.length) {
             tx = targets[i].x;
             ty = targets[i].y;
             targetAlpha = 0.9;
+
+            // BPM Heartbeat Effect (if in BPM range)
+            if (i >= (state.bpmParticleStartIndex || 999999)) {
+                sizeScale = 1 + beat * 0.5;
+                targetAlpha = 0.7 + beat * 0.3;
+                tx += (tx - width / 2) * beat * 0.05;
+                ty += (ty - height / 2) * beat * 0.05;
+            }
+
+            // Liquid Noise
+            const noise = Math.sin(now * 0.002 + i) * 1.5;
+            tx += Math.cos(i) * noise;
+            ty += Math.sin(i) * noise;
         } else {
             // Excess particles drift loosely
-            const angle = Date.now() * 0.0005 + i * 0.1;
-            tx = width / 2 + Math.cos(angle) * (width * 0.4);
-            ty = height / 2 + Math.sin(angle) * (height * 0.4);
+            const angle = now * 0.0005 + i * 0.1;
+            tx = width / 2 + Math.cos(angle) * (width * 0.5);
+            ty = height / 2 + Math.sin(angle) * (height * 0.5);
             targetAlpha = 0.05;
         }
 
-        // Interpolate
         p.x += (tx - p.x) * lerp;
         p.y += (ty - p.y) * lerp;
 
-        // Draw
-        ctx.fillStyle = `rgba(255, 255, 255, ${targetAlpha})`;
+        if (dynamicColor) {
+            const hueOffset = Math.sin(i * 0.1 + now * 0.001) * 30;
+            ctx.fillStyle = `hsla(${baseHue + hueOffset}, ${baseSat}%, 70%, ${targetAlpha})`;
+        } else {
+            ctx.fillStyle = `rgba(255, 255, 255, ${targetAlpha})`;
+        }
+
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 1.5 * sizeScale, 0, Math.PI * 2);
         ctx.fill();
     });
 };
