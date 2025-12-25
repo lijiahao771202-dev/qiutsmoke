@@ -473,7 +473,7 @@ function PracticeContent({ router }: { router: any }) {
                 </header>
 
                 {/* Center UI */}
-                <main className="flex-1 flex flex-col items-center justify-center -mt-20 pointer-events-none z-40">
+                <main className="flex-1 flex flex-col items-center justify-center pointer-events-none z-40">
                     <AnimatePresence mode="wait">
                         {phase === "COUNTDOWN" && (
                             <motion.div
