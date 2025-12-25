@@ -14,7 +14,7 @@ import { KeepAwake } from "@capacitor-community/keep-awake";
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
-type Theme = "ROSE" | "AURORA" | "TIDES" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS";
+type Theme = "ROSE" | "AURORA" | "TIDES" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
 
 // --- Theme Config ---
 const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
@@ -28,6 +28,7 @@ const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
     SAKURA: { name: "Sakura", icon: Cherry, color: "text-pink-300" },
     STARFALL: { name: "Starfall", icon: Star, color: "text-yellow-300" },
     LOTUS: { name: "Lotus", icon: Flower, color: "text-amber-200" },
+    PRISM: { name: "Prism", icon: Gem, color: "text-cyan-300" },
 };
 
 // --- Configuration ---
@@ -897,6 +898,64 @@ function PracticeContent({ router }: { router: any }) {
         });
     };
 
+    const renderPrism = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        state.particles.forEach((p: any, i: number) => {
+            // Initial: Random, shimmering points of light
+            if (transitionProgress < 1) {
+                p.diffuseX += (Math.random() - 0.5) * 1.5;
+                p.diffuseY += (Math.random() - 0.5) * 1.5;
+            } else {
+                p.diffuseX += p.dx * 0.1;
+                p.diffuseY += p.dy * 0.1;
+            }
+            p.angle += p.speed * 0.15;
+
+            // Prism: Geometric, refracting light
+            // Use a hexagonal pattern for the base shape
+            const numSides = 6;
+            const angleOffset = (Math.PI * 2 / numSides) * (i % numSides);
+            const baseAngle = p.angle + angleOffset;
+
+            const shimmer = Math.sin(timestamp * 0.004 + i * 0.2) * 10;
+
+            let effectiveDist = (p.dist * 0.8 + shimmer) * breathScale;
+            let effectiveAlpha = 0.4 + Math.abs(Math.sin(timestamp * 0.002 + p.angle * 3)) * 0.4;
+
+            // Bloom: Iridescent Burst - particles shoot out in rainbow trails
+            let burstX = 0;
+            let burstY = 0;
+            if (bloomProgress > 0) {
+                const burstSpeed = bloomProgress * 800;
+                burstX = Math.cos(baseAngle) * burstSpeed;
+                burstY = Math.sin(baseAngle) * burstSpeed;
+                effectiveAlpha *= (1 - bloomProgress * 0.7); // Fade out
+                p.angle += bloomProgress * 0.1; // Spin faster
+            }
+
+            const orbitX = Math.cos(baseAngle) * effectiveDist + burstX;
+            const orbitY = Math.sin(baseAngle) * effectiveDist + burstY;
+
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+
+            if (transitionProgress < 1) effectiveAlpha *= 0.5;
+
+            // Rainbow colors
+            const hue = (timestamp * 0.02 + i * 0.5) % 360;
+            const saturation = 70 + Math.sin(timestamp * 0.003 + i) * 20;
+            const lightness = 70 + Math.cos(timestamp * 0.002 + i) * 10;
+
+            ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
+            ctx.beginPath();
+            p.x = finalX; p.y = finalY;
+            ctx.arc(finalX, finalY, p.size * 1.1, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    };
+
     const updateParticles = (timestamp: number, width: number, height: number, ctx: CanvasRenderingContext2D) => {
         const state = animState.current;
         const widthHalf = width / 2;
@@ -972,6 +1031,8 @@ function PracticeContent({ router }: { router: any }) {
             renderStarfall(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "LOTUS") {
             renderLotus(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "PRISM") {
+            renderPrism(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else {
             renderRose(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale); // Default
         }
@@ -1575,6 +1636,7 @@ const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: numbe
     else if (state.theme === "INFERNO") { baseHue = 20; baseSat = 90; dynamicColor = true; }
     else if (state.theme === "TIDES") { baseHue = 200; baseSat = 80; dynamicColor = true; }
     else if (state.theme === "ZEN") { baseHue = 45; baseSat = 60; dynamicColor = true; }
+    else if (state.theme === "PRISM") { baseHue = 180; baseSat = 20; dynamicColor = true; } // Iridescent base
     else { baseHue = 0; baseSat = 0; }
 
     particles.forEach((p: any, i: number) => {
@@ -1618,6 +1680,10 @@ const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: numbe
             if (state.dropParticleStartIndex && i >= state.dropParticleStartIndex) {
                 // Drop value is White/Neutral
                 ctx.fillStyle = `rgba(255, 255, 255, ${targetAlpha})`;
+            } else if (state.theme === "PRISM") {
+                // Prism special text effect: Shimmering Holographic
+                const holoHue = (baseHue + now * 0.1 + i * 2) % 360;
+                ctx.fillStyle = `hsla(${holoHue}, 40%, 90%, ${targetAlpha})`;
             } else {
                 // Duration & Avg BPM are Themed
                 const hueOffset = Math.sin(i * 0.1 + now * 0.001) * 30;
