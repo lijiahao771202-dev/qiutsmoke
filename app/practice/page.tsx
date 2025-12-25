@@ -602,7 +602,7 @@ function PracticeContent({ router }: { router: any }) {
         if (phase === "PRACTICING") {
             playHapticPattern(breathPhase);
         }
-    }, [breathPhase, phase]);
+    }, [breathPhase, phase, selectedTheme]); // Added selectedTheme
 
     const handleStart = () => {
         // 1. Trigger Transition (Particles Implode)
