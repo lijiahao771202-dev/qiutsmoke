@@ -350,31 +350,39 @@ function PracticeContent({ router }: { router: any }) {
         const centerY = height / 2;
 
         // Aurora colors: Purple, Cyan, Green
-        const baseHues = [280, 180, 120]; // Purple, Cyan, Green
+        const baseHues = [280, 180, 120];
 
         state.particles.forEach((p: any, i: number) => {
-            // Curtain-like vertical wave motion
-            p.diffuseX += p.dx * 0.5;
-            p.diffuseY += p.dy * 0.3;
+            // Initial: Horizontal magnetic drift (bands)
+            if (transitionProgress < 1) {
+                p.diffuseX += p.dx + Math.sin(timestamp * 0.002 + p.dy) * 0.5; // Wavy horizontal
+                p.diffuseY += p.dy * 0.1; // Slow vertical
+            } else {
+                p.diffuseX += p.dx * 0.5;
+                p.diffuseY += p.dy * 0.3;
+            }
             p.angle += p.speed * 0.3;
 
             // Aurora forms vertical bands that wave horizontally
-            // Use angle to determine horizontal position, dist for height variance
             const waveOffset = Math.sin(timestamp * 0.001 + p.angle * 2) * 50 * breathScale;
             const curtainY = Math.sin(p.angle * 4 + timestamp * 0.002) * 30;
 
             let effectiveDist = (p.dist * 0.5 + 80) * breathScale;
             let effectiveAlpha = 0.4 + Math.sin(timestamp * 0.003 + i * 0.5) * 0.3;
 
-            // Bloom: Dissolve upward like lights fading to sky
+            // Bloom: Flare up and dissolve (Magnetic Storm End)
             let yOffset = 0;
+            let bloomScale = 1;
             if (bloomProgress > 0) {
-                yOffset = -bloomProgress * height * 0.5;
-                effectiveAlpha *= (1 - bloomProgress);
+                // Rise faster + intensify brightness then fade
+                yOffset = -bloomProgress * height * 0.8;
+                effectiveAlpha = (effectiveAlpha + 0.5) * (1 - bloomProgress); // Flash then fade
+                bloomScale = 1 + bloomProgress * 2; // Stretch vertically
+                effectiveDist *= (1 - bloomProgress * 0.5); // Narrow into beam
             }
 
             const orbitX = Math.cos(p.angle) * effectiveDist + waveOffset;
-            const orbitY = Math.sin(p.angle) * effectiveDist * 0.6 + curtainY;
+            const orbitY = (Math.sin(p.angle) * effectiveDist * 0.6 + curtainY) * bloomScale;
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress + yOffset;
@@ -396,29 +404,33 @@ function PracticeContent({ router }: { router: any }) {
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // Zen: Minimalist concentric rings, slow rotation
-        // Colors: Soft white, light grey, subtle gold
-
+        // Zen: Minimalist concentric rings
         state.particles.forEach((p: any, i: number) => {
-            p.diffuseX += p.dx * 0.2; // Very slow drift
-            p.diffuseY += p.dy * 0.2;
-            p.angle += p.speed * 0.15; // Very slow rotation
+            // Initial: Perfect circular orbits even in idle
+            if (transitionProgress < 1) {
+                p.diffuseX = centerX + Math.cos(timestamp * 0.0005 + i) * (p.dist + 50);
+                p.diffuseY = centerY + Math.sin(timestamp * 0.0005 + i) * (p.dist + 50);
+            } else {
+                p.diffuseX += p.dx * 0.2;
+                p.diffuseY += p.dy * 0.2;
+            }
+            p.angle += p.speed * 0.15;
 
-            // Concentric rings - particles stick to their ring distance more strictly
-            // Quantize dist to create distinct rings
-            const ringIndex = Math.floor(p.dist / 30); // 0, 1, 2, 3...
+            // Concentric rings logic
+            const ringIndex = Math.floor(p.dist / 30);
             const ringDist = (ringIndex * 40 + 60) * breathScale;
 
-            let effectiveAlpha = 0.3 + (ringIndex % 2) * 0.2; // Alternating opacity
+            let effectiveAlpha = 0.3 + (ringIndex % 2) * 0.2;
 
-            // Subtle ripple effect on breathing
             const ripple = Math.sin(timestamp * 0.002 - ringIndex * 0.5) * 5;
 
-            // Bloom: Ripples expand outward and fade
+            // Bloom: "Enso" Void - Expand slowly and fade to transparency (Return to Nothingness)
             let expansionOffset = 0;
             if (bloomProgress > 0) {
-                expansionOffset = bloomProgress * width * 0.4;
-                effectiveAlpha *= (1 - bloomProgress * 0.8);
+                expansionOffset = bloomProgress * width * 0.2; // Slow expansion
+                // Fade out from center first
+                const fadeThreshold = bloomProgress * 10;
+                if (ringIndex < fadeThreshold) effectiveAlpha *= (1 - bloomProgress);
             }
 
             const effectiveDist = ringDist + ripple + expansionOffset;
@@ -428,11 +440,11 @@ function PracticeContent({ router }: { router: any }) {
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
-            if (transitionProgress < 1) effectiveAlpha *= 0.4;
+            if (transitionProgress < 1) effectiveAlpha *= 0.3;
 
-            // Zen colors: Warm white to subtle gold
-            const hue = 45 + ringIndex * 5; // Slight gold tint
-            const lightness = 85 - ringIndex * 3; // Outer rings slightly darker
+            // Zen colors
+            const hue = 45 + ringIndex * 5;
+            const lightness = 85 - ringIndex * 3;
 
             ctx.fillStyle = `hsla(${hue}, 15%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
@@ -447,41 +459,51 @@ function PracticeContent({ router }: { router: any }) {
 
         // Galaxy: Deep space colors with spiral arms
         state.particles.forEach((p: any, i: number) => {
-            p.diffuseX += p.dx * 0.3;
-            p.diffuseY += p.dy * 0.3;
+            // Initial: Slow gravitational pull (inward spiral)
+            if (transitionProgress < 1) {
+                const angle = timestamp * 0.0002 + i * 0.01;
+                const radius = p.dist + Math.sin(timestamp * 0.001 + i) * 20;
+                p.diffuseX = centerX + Math.cos(angle) * radius;
+                p.diffuseY = centerY + Math.sin(angle) * radius;
+            } else {
+                p.diffuseX += p.dx * 0.3;
+                p.diffuseY += p.dy * 0.3;
+            }
 
-            // Spiral rotation - angle increases with distance for twist effect
+            // Spiral rotation
             const spiralFactor = p.dist * 0.01;
-            p.angle += p.speed * 0.4 + spiralFactor * 0.001;
+            // Bloom: Rapid spin acceleration
+            const spinAccel = bloomProgress > 0 ? bloomProgress * 0.5 : 0;
+            p.angle += p.speed * 0.4 + spiralFactor * 0.001 + spinAccel;
 
-            // Spiral arm effect: particles cluster in spiral bands
+            // Spiral arm effect
             const armPhase = (p.angle * 2 + p.dist * 0.02 + timestamp * 0.0005) % (Math.PI * 2);
-            const armIntensity = (Math.sin(armPhase) + 1) * 0.5; // 0-1
+            const armIntensity = (Math.sin(armPhase) + 1) * 0.5;
 
             let effectiveDist = p.dist * breathScale * (0.8 + armIntensity * 0.4);
-            let effectiveAlpha = 0.2 + armIntensity * 0.6; // Brighter in spiral arms
+            let effectiveAlpha = 0.2 + armIntensity * 0.6;
 
-            // Bloom: Galaxy explosion - particles fly outward rapidly
+            // Bloom: Centrifugal Ejection - particles fly outward tangentially
             if (bloomProgress > 0) {
-                effectiveDist += bloomProgress * width * 0.8;
-                effectiveAlpha *= (1 - bloomProgress);
+                // Fly out based on current angle
+                effectiveDist += Math.pow(bloomProgress, 2) * 800; // Exponential flyout
+                effectiveAlpha *= (1 - bloomProgress * 0.5); // Fade slower
             }
 
             const orbitX = Math.cos(p.angle) * effectiveDist;
-            const orbitY = Math.sin(p.angle) * effectiveDist * 0.6; // Flatten for tilted galaxy
+            const orbitY = Math.sin(p.angle) * effectiveDist * 0.6;
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
             if (transitionProgress < 1) effectiveAlpha *= 0.5;
 
-            // Galaxy colors: Deep purple, blue, with star-white highlights
-            const baseHue = 260 + Math.sin(p.angle) * 30; // Purple to blue
-            const isStarCore = i % 20 === 0; // Some particles are bright stars
-            const lightness = isStarCore ? 90 : 50 + armIntensity * 20;
-            const saturation = isStarCore ? 20 : 70;
+            // Galaxy colors
+            const baseHue = 260 + Math.sin(p.angle) * 30;
+            const isStarCore = i % 20 === 0;
+            const lightness = isStarCore ? 90 + Math.random() * 10 : 50 + armIntensity * 20;
 
-            ctx.fillStyle = `hsla(${baseHue}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
+            ctx.fillStyle = `hsla(${baseHue}, ${isStarCore ? 20 : 70}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
             ctx.arc(finalX, finalY, isStarCore ? p.size * 2 : p.size, 0, Math.PI * 2);
             ctx.fill();
@@ -492,45 +514,66 @@ function PracticeContent({ router }: { router: any }) {
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // Inferno: Flames rising upward, fiery colors
+        // Inferno: Flames rising upward
         state.particles.forEach((p: any, i: number) => {
-            // Flames flicker and rise
-            p.diffuseX += p.dx + Math.sin(timestamp * 0.01 + i) * 0.5;
-            p.diffuseY += p.dy - 0.5; // Rise upward
+            // Initial: Embers rising loosely
+            if (transitionProgress < 1) {
+                p.diffuseX += Math.sin(timestamp * 0.01 + i) * 1;
+                p.diffuseY -= 1 + Math.random(); // Fast rise
+                if (p.diffuseY < 0) p.diffuseY = height; // Loop for idle effect
+            } else {
+                p.diffuseX += p.dx + Math.sin(timestamp * 0.01 + i) * 0.5;
+                p.diffuseY += p.dy - 0.5;
+            }
             p.angle += p.speed * 0.5;
 
-            // Flame shape: particles form a teardrop/flame shape
             const flickerSpeed = 0.008;
             const flicker = Math.sin(timestamp * flickerSpeed + p.angle * 3 + i * 0.1) * 15;
 
             let effectiveDist = p.dist * breathScale + flicker;
             let effectiveAlpha = 0.4 + Math.sin(timestamp * 0.005 + i) * 0.3;
 
-            // Fire rises toward top - offset Y
             const riseOffset = Math.sin(p.angle) * 30 * breathScale;
 
-            // Bloom: Explosion - flames burst in all directions
+            // Bloom: Burnt to Ash - Turn grey/black and float away rapidly
+            let ashY = 0;
+            let ashColor = false;
             if (bloomProgress > 0) {
-                effectiveDist += bloomProgress * width * 0.5;
-                effectiveAlpha *= (1 - bloomProgress * 0.7);
+                effectiveDist += bloomProgress * width * 0.2; // Minor expansion
+                ashY = -bloomProgress * height * 0.8; // Fly up
+                ashColor = true;
+                effectiveAlpha *= (1 - bloomProgress * 0.3); // Fade slowly
             }
 
             const orbitX = Math.cos(p.angle) * effectiveDist;
-            const orbitY = Math.sin(p.angle) * effectiveDist - riseOffset;
+            const orbitY = Math.sin(p.angle) * effectiveDist - riseOffset + ashY;
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
             if (transitionProgress < 1) effectiveAlpha *= 0.5;
 
-            // Fire colors: Red core -> Orange -> Yellow tips
-            const distRatio = p.dist / 150; // Normalize distance
-            const hue = 0 + distRatio * 45; // Red (0) to Orange (30) to Yellow (45)
-            const lightness = 50 + distRatio * 20;
+            // Color Logic
+            let hue = 0;
+            let saturation = 100;
+            let lightness = 50;
 
-            ctx.fillStyle = `hsla(${hue}, 100%, ${lightness}%, ${effectiveAlpha})`;
+            if (ashColor) {
+                // Transition from Fire to Ash Grey
+                const distRatio = p.dist / 150;
+                const fireHue = 0 + distRatio * 45;
+                hue = fireHue; // Keep hue but desaturate
+                saturation = 100 * (1 - bloomProgress); // 100 -> 0
+                lightness = 50 + bloomProgress * 20; // 50 -> 70 (Grey smoke)
+            } else {
+                const distRatio = p.dist / 150;
+                hue = 0 + distRatio * 45;
+                lightness = 50 + distRatio * 20;
+            }
+
+            ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
-            ctx.arc(finalX, finalY, p.size * (1 + distRatio * 0.5), 0, Math.PI * 2); // Larger at edges
+            ctx.arc(finalX, finalY, p.size * (1 + (p.dist / 150) * 0.5), 0, Math.PI * 2);
             ctx.fill();
         });
     };
@@ -539,37 +582,48 @@ function PracticeContent({ router }: { router: any }) {
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // Crystal: Rainbow prism effect, structured facets
+        // Crystal: Rainbow prism effect
         state.particles.forEach((p: any, i: number) => {
-            p.diffuseX += p.dx * 0.2;
-            p.diffuseY += p.dy * 0.2;
+            // Initial: Jittery refraction noise (nervous energy before forming)
+            if (transitionProgress < 1) {
+                p.diffuseX += (Math.random() - 0.5) * 2;
+                p.diffuseY += (Math.random() - 0.5) * 2;
+            } else {
+                p.diffuseX += p.dx * 0.2;
+                p.diffuseY += p.dy * 0.2;
+            }
             p.angle += p.speed * 0.2;
 
-            // Crystal facets: Particles form hexagonal-ish patterns
-            const facetAngle = Math.floor(p.angle / (Math.PI / 3)) * (Math.PI / 3); // Snap to 60-degree segments
+            // Crystal facets
+            const facetAngle = Math.floor(p.angle / (Math.PI / 3)) * (Math.PI / 3);
             const shimmer = Math.sin(timestamp * 0.003 + i * 0.5) * 10;
 
             let effectiveDist = p.dist * breathScale + shimmer;
-            let effectiveAlpha = 0.3 + Math.abs(Math.sin(timestamp * 0.002 + p.angle * 2)) * 0.5; // Sparkle
+            let effectiveAlpha = 0.3 + Math.abs(Math.sin(timestamp * 0.002 + p.angle * 2)) * 0.5;
 
-            // Bloom: Shatter - particles scatter like breaking crystal
-            let shatterOffset = 0;
+            // Bloom: Shatter - high velocity linear expansion
+            let shatterX = 0;
+            let shatterY = 0;
             if (bloomProgress > 0) {
-                shatterOffset = bloomProgress * (Math.random() - 0.5) * 200;
-                effectiveDist += bloomProgress * width * 0.3;
-                effectiveAlpha *= (1 - bloomProgress * 0.6);
+                const shatterSpeed = 800 * bloomProgress; // Fast!
+                shatterX = Math.cos(p.angle) * shatterSpeed;
+                shatterY = Math.sin(p.angle) * shatterSpeed;
+
+                // Spin while shattering
+                p.angle += bloomProgress * 0.2;
+                effectiveAlpha *= (1 - bloomProgress * 0.5);
             }
 
-            const orbitX = Math.cos(p.angle) * effectiveDist + shatterOffset;
-            const orbitY = Math.sin(p.angle) * effectiveDist + shatterOffset * 0.5;
+            const orbitX = Math.cos(p.angle) * effectiveDist + shatterX;
+            const orbitY = Math.sin(p.angle) * effectiveDist * 0.5 + shatterY; // Flattened hexagon
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
             if (transitionProgress < 1) effectiveAlpha *= 0.4;
 
-            // Rainbow prism: Hue cycles based on angle position
-            const hue = (p.angle * 180 / Math.PI + timestamp * 0.05) % 360; // Full rainbow cycle
+            // Rainbow prism colors
+            const hue = (p.angle * 180 / Math.PI + timestamp * 0.05) % 360;
             const saturation = 80 + Math.sin(timestamp * 0.002 + i) * 15;
 
             ctx.fillStyle = `hsla(${hue}, ${saturation}%, 70%, ${effectiveAlpha})`;
@@ -583,37 +637,46 @@ function PracticeContent({ router }: { router: any }) {
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // Sakura: Cherry blossoms drifting down gently
+        // Sakura: Cherry blossoms drifting
         state.particles.forEach((p: any, i: number) => {
-            // Gentle falling motion with side-to-side sway
-            p.diffuseX += p.dx + Math.sin(timestamp * 0.002 + i * 0.5) * 0.3;
-            p.diffuseY += p.dy + 0.3; // Fall downward
+            // Initial: Falling petals even in idle
+            if (transitionProgress < 1) {
+                p.diffuseX += Math.sin(timestamp * 0.002 + i) * 0.5; // Sway
+                p.diffuseY += 0.5; // Fall
+                if (p.diffuseY > height) p.diffuseY = 0; // Loop
+            } else {
+                p.diffuseX += p.dx + Math.sin(timestamp * 0.002 + i * 0.5) * 0.3;
+                p.diffuseY += p.dy + 0.3;
+            }
             p.angle += p.speed * 0.1;
 
-            // Sway pattern for petal-like motion
             const sway = Math.sin(timestamp * 0.003 + p.angle * 2) * 30 * breathScale;
             const flutter = Math.cos(timestamp * 0.005 + i) * 10;
 
             let effectiveDist = p.dist * breathScale * 0.8 + sway;
             let effectiveAlpha = 0.4 + Math.sin(timestamp * 0.002 + i * 0.3) * 0.3;
 
-            // Bloom: Petals scatter in a gentle wind burst
+            // Bloom: Wind Gust - Blow away to top-right
+            let windX = 0;
+            let windY = 0;
             if (bloomProgress > 0) {
-                const scatter = bloomProgress * (Math.random() - 0.3) * 300;
-                effectiveDist += scatter;
-                effectiveAlpha *= (1 - bloomProgress * 0.7);
+                const windSpeed = bloomProgress * 600;
+                windX = windSpeed;
+                windY = -windSpeed * 0.5;
+                effectiveAlpha *= (1 - bloomProgress * 0.6);
+                p.angle += 0.1; // Rotate faster in wind
             }
 
-            const orbitX = Math.cos(p.angle) * effectiveDist + flutter;
-            const orbitY = Math.sin(p.angle) * effectiveDist * 0.7;
+            const orbitX = Math.cos(p.angle) * effectiveDist + flutter + windX;
+            const orbitY = Math.sin(p.angle) * effectiveDist * 0.7 + windY;
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
             if (transitionProgress < 1) effectiveAlpha *= 0.5;
 
-            // Sakura colors: Soft pink to white
-            const hue = 340 + Math.sin(i * 0.1) * 15; // Pink range
+            // Sakura colors
+            const hue = 340 + Math.sin(i * 0.1) * 15;
             const lightness = 80 + Math.sin(timestamp * 0.002 + i) * 10;
 
             ctx.fillStyle = `hsla(${hue}, 60%, ${lightness}%, ${effectiveAlpha})`;
@@ -627,24 +690,30 @@ function PracticeContent({ router }: { router: any }) {
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // Starfall: Shooting stars with trails
+        // Starfall: Shooting stars
         state.particles.forEach((p: any, i: number) => {
-            // Fast diagonal motion for shooting star effect
-            const speed = 0.5 + (i % 10) * 0.1;
-            p.diffuseX += p.dx * speed;
-            p.diffuseY += p.dy * speed + 0.2;
+            // Initial: Slowly drifting stars (Night sky)
+            if (transitionProgress < 1) {
+                p.diffuseX += p.dx * 0.1; // Very slow
+                p.diffuseY += p.dy * 0.1;
+                // Occasional shooting star in background?
+            } else {
+                const speed = 0.5 + (i % 10) * 0.1;
+                p.diffuseX += p.dx * speed;
+                p.diffuseY += p.dy * speed + 0.2;
+            }
             p.angle += p.speed * 0.6;
 
-            // Streak effect - elongated motion
             const streakLength = 15 + Math.sin(timestamp * 0.01 + i) * 5;
 
             let effectiveDist = p.dist * breathScale;
-            let effectiveAlpha = 0.3 + Math.random() * 0.4; // Twinkle
+            let effectiveAlpha = 0.3 + Math.random() * 0.4;
 
-            // Bloom: Stars explode outward in all directions
+            // Bloom: Supernova - Massive expansion and blinding white flash
             if (bloomProgress > 0) {
-                effectiveDist += bloomProgress * width * 0.6;
-                effectiveAlpha *= (1 - bloomProgress);
+                effectiveDist += bloomProgress * width; // Rapid expansion
+                // Flash white at start of bloom
+                effectiveAlpha = (1 - bloomProgress) * 1.0;
             }
 
             const orbitX = Math.cos(p.angle) * effectiveDist;
@@ -655,16 +724,20 @@ function PracticeContent({ router }: { router: any }) {
 
             if (transitionProgress < 1) effectiveAlpha *= 0.4;
 
-            // Star colors: Golden yellow to white
+            // Star colors
             const hue = 45 + Math.sin(i * 0.2) * 15;
-            const lightness = 70 + Math.sin(timestamp * 0.003 + i) * 20;
+            let lightness = 70 + Math.sin(timestamp * 0.003 + i) * 20;
             const isMainStar = i % 15 === 0;
 
-            ctx.fillStyle = `hsla(${hue}, 80%, ${lightness}%, ${effectiveAlpha})`;
+            // Supernova whiteness
+            if (bloomProgress > 0) {
+                lightness = 100 - (bloomProgress * 20); // Start white, fade slightly
+            }
+
+            ctx.fillStyle = `hsla(${hue}, ${bloomProgress > 0 ? 0 : 80}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
 
-            if (isMainStar && transitionProgress > 0.5) {
-                // Draw streak for main stars
+            if (isMainStar && transitionProgress > 0.5 && bloomProgress === 0) {
                 const trailX = finalX - Math.cos(p.angle) * streakLength;
                 const trailY = finalY - Math.sin(p.angle) * streakLength;
                 ctx.moveTo(trailX, trailY);
@@ -683,46 +756,51 @@ function PracticeContent({ router }: { router: any }) {
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // Lotus: Peaceful multi-layered petals opening
+        // Lotus: Peaceful multi-layered petals
         state.particles.forEach((p: any, i: number) => {
-            p.diffuseX += p.dx * 0.1; // Very slow
-            p.diffuseY += p.dy * 0.1;
-            p.angle += p.speed * 0.08; // Slow rotation
+            // Initial: Bobbing on water (vertical sine wave)
+            if (transitionProgress < 1) {
+                p.diffuseX += p.dx * 0.1;
+                p.diffuseY = centerY + Math.sin(timestamp * 0.002 + p.diffuseX * 0.01) * 10;
+            } else {
+                p.diffuseX += p.dx * 0.1;
+                p.diffuseY += p.dy * 0.1;
+            }
+            p.angle += p.speed * 0.08;
 
-            // Layer-based petal arrangement (inner to outer)
-            const layer = Math.floor(p.dist / 40); // 0, 1, 2, 3...
-            const petalCount = 8 + layer * 4; // More petals in outer layers
-            const petalWidth = (Math.PI * 2) / petalCount;
-            const petalPhase = Math.floor(p.angle / petalWidth) * petalWidth;
+            const layer = Math.floor(p.dist / 40);
 
-            // Petal opening animation tied to breath
             const openAmount = breathScale * (1 + layer * 0.3);
             let effectiveDist = (layer * 45 + 50) * openAmount;
 
-            // Gentle floating motion
             const float = Math.sin(timestamp * 0.001 + layer) * 3;
             effectiveDist += float;
 
             let effectiveAlpha = 0.4 + (1 - layer * 0.1);
 
-            // Bloom: Petals gently open and ascend
+            // Bloom: Ascension - Petals glow and float UPwards like lanterns
+            let ascendY = 0;
             if (bloomProgress > 0) {
-                effectiveDist += bloomProgress * 100;
+                ascendY = -bloomProgress * height * 0.6; // Float up
+                effectiveDist += bloomProgress * 20; // Slight expansion
                 effectiveAlpha *= (1 - bloomProgress * 0.5);
             }
 
             const orbitX = Math.cos(p.angle) * effectiveDist;
-            const orbitY = Math.sin(p.angle) * effectiveDist * 0.9;
+            const orbitY = Math.sin(p.angle) * effectiveDist * 0.9 + ascendY;
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
             if (transitionProgress < 1) effectiveAlpha *= 0.4;
 
-            // Lotus colors: White center to soft gold/cream outer
-            const hue = 40 + layer * 5; // Gold tint increases outward
+            // Lotus colors
+            const hue = 40 + layer * 5;
             const saturation = 20 + layer * 10;
-            const lightness = 90 - layer * 5;
+            let lightness = 90 - layer * 5;
+
+            // Bloom glow
+            if (bloomProgress > 0) lightness = Math.min(100, lightness + bloomProgress * 20);
 
             ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
@@ -737,45 +815,50 @@ function PracticeContent({ router }: { router: any }) {
         const oceanHue = 190; // Cyan/Teal
 
         state.particles.forEach((p: any, i: number) => {
-            p.diffuseX += p.dx * 2; // Water moves faster
-            p.diffuseY += p.dy;
+            // Initial: Rocking boat motion
+            if (transitionProgress < 1) {
+                p.diffuseX += Math.sin(timestamp * 0.001) * 0.5;
+                p.diffuseY += Math.cos(timestamp * 0.001) * 0.5;
+            } else {
+                p.diffuseX += p.dx * 2;
+                p.diffuseY += p.dy;
+            }
 
-            // Tides Logic
-            // Instead of a circle, we form sine waves or a flowing organic shape
-            // Let's do a "Dual Ring" that twists like water, or just a flowing interference pattern.
-
-            // Map p.angle to x-axis for wave?
-            // Let's stick to Radial but make it "wavy"
-
+            // Tides Logic: Wavy dual rings
             const wave1 = Math.sin(p.angle * 3 + timestamp * 0.002) * 20;
             const wave2 = Math.cos(p.angle * 5 - timestamp * 0.003) * 15;
 
             let effectiveDist = p.dist * breathScale + wave1 + wave2;
-
-            // Start: Flood in
-            // Breath: Tides rise (Expand) and fall (Contract)
-            // End: Bubbles rise
-
-            let finalX, finalY;
             let effectiveAlpha = 0.5 + Math.sin(timestamp * 0.003 + i) * 0.3;
 
-            if (state.phase === "COMPLETED") {
-                // FLOAT UP
-                const rise = (Date.now() - state.completionStartTime) * 0.2;
-                finalX = p.diffuseX + (centerX + Math.cos(p.angle) * effectiveDist - p.diffuseX) * transitionProgress;
-                finalY = p.diffuseY + (centerY + Math.sin(p.angle) * effectiveDist - p.diffuseY) * transitionProgress - rise;
-                effectiveAlpha *= (1 - bloomProgress);
-            } else {
-                const orbitX = Math.cos(p.angle) * effectiveDist;
-                const orbitY = Math.sin(p.angle) * effectiveDist;
-
-                finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
-                finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+            // Bloom: Tsunami Crash - Surge forward (down-right) then foam dissipates
+            let surgeX = 0;
+            let surgeY = 0;
+            if (bloomProgress > 0) {
+                const surgeAmount = bloomProgress * 200;
+                surgeX = surgeAmount;
+                surgeY = surgeAmount * 0.5;
+                effectiveDist += bloomProgress * 100;
+                effectiveAlpha *= (1 - bloomProgress); // Foam fades
             }
+
+            const orbitX = Math.cos(p.angle) * effectiveDist + surgeX;
+            const orbitY = Math.sin(p.angle) * effectiveDist + surgeY;
+
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
             if (transitionProgress < 1) effectiveAlpha *= 0.5;
 
-            ctx.fillStyle = `hsla(${oceanHue + Math.sin(i) * 20}, 70%, 60%, ${effectiveAlpha})`;
+            // Color shift to white foam on bloom
+            let saturation = 70;
+            let lightness = 60;
+            if (bloomProgress > 0) {
+                saturation *= (1 - bloomProgress);
+                lightness = 60 + bloomProgress * 40; // Turn white
+            }
+
+            ctx.fillStyle = `hsla(${oceanHue + Math.sin(i) * 20}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
             ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
             ctx.fill();
