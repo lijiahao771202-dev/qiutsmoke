@@ -11,6 +11,7 @@ import HeartRateIndicator from "@/components/HeartRateGraph";
 import PracticeCompletionView from "@/components/PracticeCompletionView";
 import { KeepAwake } from "@capacitor-community/keep-awake";
 import { getApiUrl } from "@/lib/config";
+import { useBinauralBeats, BINAURAL_PRESETS } from "@/lib/hooks/useBinauralBeats";
 
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
@@ -246,6 +247,21 @@ function PracticeContent({ router }: { router: any }) {
     const [sessionHeartRates, setSessionHeartRates] = useState<number[]>([]);
     const [sessionDuration, setSessionDuration] = useState<number>(0);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+    // --- Binaural Beats ---
+    const [binauralEnabled, setBinauralEnabled] = useState<boolean>(() => {
+        if (typeof window !== "undefined") {
+            return localStorage.getItem("binauralEnabled") === "true";
+        }
+        return false;
+    });
+    const [selectedBinaural, setSelectedBinaural] = useState<string>(() => {
+        if (typeof window !== "undefined") {
+            return localStorage.getItem("binauralPreset") || "alpha";
+        }
+        return "alpha";
+    });
+    const { start: startBinaural, stop: stopBinaural, isPlaying: isBinauralPlaying } = useBinauralBeats();
 
     // --- 完成提示音 ---
     const playCompletionSound = () => {
@@ -1267,6 +1283,12 @@ function PracticeContent({ router }: { router: any }) {
             startMonitoring();
         }
 
+        // 🎵 Start Binaural Beats if enabled
+        if (binauralEnabled) {
+            const preset = BINAURAL_PRESETS.find(p => p.id === selectedBinaural);
+            if (preset) startBinaural(preset);
+        }
+
         // Start Recursive Cycle
         runBreathingCycle("INHALE");
 
@@ -1339,6 +1361,9 @@ function PracticeContent({ router }: { router: any }) {
 
         // Stop Heart Rate Monitoring
         stopMonitoring();
+
+        // 🎵 Stop Binaural Beats
+        stopBinaural();
 
         if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
@@ -1577,6 +1602,52 @@ function PracticeContent({ router }: { router: any }) {
                                             );
                                         })}
                                     </div>
+                                </div>
+
+                                {/* Binaural Beats Toggle & Selector */}
+                                <div className="w-full">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="text-xs text-white/40 uppercase tracking-wider">双耳节拍</div>
+                                        <button
+                                            onClick={() => {
+                                                const newValue = !binauralEnabled;
+                                                setBinauralEnabled(newValue);
+                                                localStorage.setItem("binauralEnabled", String(newValue));
+                                                triggerLight();
+                                            }}
+                                            className={`w-12 h-6 rounded-full transition-all relative ${binauralEnabled ? 'bg-cyan-500/50' : 'bg-white/10'}`}
+                                        >
+                                            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${binauralEnabled ? 'left-7' : 'left-1'}`} />
+                                        </button>
+                                    </div>
+
+                                    {binauralEnabled && (
+                                        <div className="flex gap-2 flex-wrap justify-center">
+                                            {BINAURAL_PRESETS.map((preset) => {
+                                                const isSelected = selectedBinaural === preset.id;
+                                                return (
+                                                    <button
+                                                        key={preset.id}
+                                                        onClick={() => {
+                                                            setSelectedBinaural(preset.id);
+                                                            localStorage.setItem("binauralPreset", preset.id);
+                                                            triggerLight();
+                                                        }}
+                                                        className={`
+                                                            px-3 py-2 rounded-xl text-xs transition-all
+                                                            ${isSelected
+                                                                ? "bg-cyan-500/20 border-cyan-400/30 text-white"
+                                                                : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white"}
+                                                            border ${isSelected ? "border-cyan-400/30" : "border-transparent"}
+                                                        `}
+                                                    >
+                                                        <div className="font-medium">{preset.icon} {preset.name}</div>
+                                                        <div className="text-[10px] text-white/30 mt-0.5">{preset.beatFrequency}Hz</div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Start Button */}
