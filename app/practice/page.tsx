@@ -1181,10 +1181,10 @@ function PracticeContent({ router }: { router: any }) {
             playCompletionSound();
         }, 500);
 
-        // Show summary after animation completes
+        // Show summary after animation completes - wait for "Session Complete" to be fully appreciated
         window.setTimeout(() => {
             setPhase("SUMMARY");
-        }, 2000);
+        }, 4500);
     };
 
     const cleanup = () => {
