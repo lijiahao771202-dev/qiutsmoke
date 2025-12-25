@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { motion } from "framer-motion";
-import { Droplets, Wind, Activity, Zap, Heart, Calendar } from "lucide-react";
+import { Droplets, Wind, Activity, Zap, Heart, Calendar, Play, ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { LotusGarden } from "@/components/LotusGarden";
@@ -241,6 +242,31 @@ export default function Home() {
               </div>
             </GlassCard>
           ))}
+        </div>
+
+        {/* --- Added: Practice Entry Point --- */}
+        <div className="w-full mt-12 mb-8">
+          <Link href="/practice">
+            <GlassCard
+              className="p-6 flex items-center justify-between group overflow-hidden relative cursor-pointer active:scale-[0.98] transition-all"
+              hoverEffect
+            >
+              {/* Background Glow */}
+              <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-32 h-32 bg-blue-400/20 blur-[40px] rounded-full group-hover:bg-blue-400/30 transition-colors" />
+
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="p-3 rounded-2xl bg-white/10 text-white shadow-lg">
+                  <Play className="w-6 h-6 fill-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">正式练习</h3>
+                  <p className="text-sm text-white/50">4-7-8 呼吸冥想引导</p>
+                </div>
+              </div>
+
+              <ChevronRight className="w-6 h-6 text-white/30 group-hover:text-white/60 transition-colors relative z-10" />
+            </GlassCard>
+          </Link>
         </div>
       </main>
     </div>
