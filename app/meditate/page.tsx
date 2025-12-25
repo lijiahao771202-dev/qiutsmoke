@@ -1280,7 +1280,6 @@ export default function MeditatePage() {
 
     const handleCardClick = async (id: string) => {
         triggerLight(); // 立即触发轻触震动
-        console.log('[Haptics] 🔔 Card clicked, triggerLight called');
 
         // 🚀 Auto-play Logic
         try {

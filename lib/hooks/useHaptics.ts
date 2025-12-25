@@ -8,12 +8,8 @@ export const useHaptics = () => {
      */
     const triggerLight = useCallback(async () => {
         try {
-            console.log('[Haptics] 🔔 triggerLight called');
             await Haptics.impact({ style: ImpactStyle.Light });
-            console.log('[Haptics] ✅ Light impact executed');
-        } catch (e) {
-            console.warn('[Haptics] ⚠️ Light impact failed:', e);
-        }
+        } catch (e) { }
     }, []);
 
     /**
