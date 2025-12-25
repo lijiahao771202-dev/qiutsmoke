@@ -903,7 +903,7 @@ function PracticeContent({ router }: { router: any }) {
     };
 
     // --- Render Prism (Restored & Enhanced) ---
-    const renderPrism = (ctx: CanvasCanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+    const renderPrism = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
         const centerY = height / 2;
 
@@ -1116,570 +1116,572 @@ function PracticeContent({ router }: { router: any }) {
         let bloomProgress = 0;
         let breathScale = 1;
 
-        bloomProgress = Math.min(elapsed / 1000, 1); // 1s dispersion
-        transitionProgress = 1;
-    }
-
-    if (state.phase === "PRACTICING") {
-        transitionProgress = 1;
-        const phaseElapsed = now - state.phaseStartTime;
-        const cycleProgress = Math.min(phaseElapsed / state.phaseDuration, 1);
-        const smoothedBreath = easeInOutCubic(cycleProgress);
-
-        if (state.breathPhase === "INHALE") {
-            state.currentRadius = BASE_RADIUS + (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
-            state.hue = 200 + (20 * smoothedBreath);
-        } else if (state.breathPhase === "HOLD") {
-            state.currentRadius = EXPAND_RADIUS + Math.sin(timestamp * 0.003) * 5;
-            state.hue = 220;
-        } else if (state.breathPhase === "EXHALE") {
-            state.currentRadius = EXPAND_RADIUS - (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
-            state.hue = 220 - (20 * smoothedBreath);
+        if (state.phase === "COMPLETED") {
+            const elapsed = now - state.completionStartTime;
+            bloomProgress = Math.min(elapsed / 1000, 1); // 1s dispersion
+            transitionProgress = 1;
         }
-        breathScale = state.currentRadius / BASE_RADIUS;
-    } else if (state.phase === "IDLE") {
-        // Idle Breath Animation
-        state.currentRadius = BASE_RADIUS + Math.sin(timestamp * 0.001) * 10;
-        breathScale = state.currentRadius / BASE_RADIUS;
 
-        // Allow transitionProgress to be 0 for opening effect, 
-        // but for IDLE rendering we usually want full visibility or specific idle handling.
-        // Let's keep transitionProgress at 0, and handle it inside renderLiquid/renderPrism.
-        transitionProgress = 0;
-    }
+        if (state.phase === "PRACTICING") {
+            transitionProgress = 1;
+            const phaseElapsed = now - state.phaseStartTime;
+            const cycleProgress = Math.min(phaseElapsed / state.phaseDuration, 1);
+            const smoothedBreath = easeInOutCubic(cycleProgress);
 
-    // --- 3. Draw & Dispatch ---
-    // Clear with Fade
-    ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
-    ctx.fillRect(0, 0, width, height);
+            if (state.breathPhase === "INHALE") {
+                state.currentRadius = BASE_RADIUS + (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
+                state.hue = 200 + (20 * smoothedBreath);
+            } else if (state.breathPhase === "HOLD") {
+                state.currentRadius = EXPAND_RADIUS + Math.sin(timestamp * 0.003) * 5;
+                state.hue = 220;
+            } else if (state.breathPhase === "EXHALE") {
+                state.currentRadius = EXPAND_RADIUS - (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
+                state.hue = 220 - (20 * smoothedBreath);
+            }
+            breathScale = state.currentRadius / BASE_RADIUS;
+        } else if (state.phase === "IDLE") {
+            // Idle Breath Animation
+            state.currentRadius = BASE_RADIUS + Math.sin(timestamp * 0.001) * 10;
+            breathScale = state.currentRadius / BASE_RADIUS;
 
-    if (state.phase === "SUMMARY" && state.textTargets && state.textTargets.length > 0) {
-        // Determine text color based on theme for better contrast
-        let textColor = "white";
-        if (state.theme === "LIQUID") {
-            textColor = "rgba(173, 216, 230, 0.9)"; // Light blue for Liquid
-        } else if (state.theme === "ZEN") {
-            textColor = "rgba(255, 255, 255, 0.9)"; // White for Zen
-        } else if (state.theme === "SAKURA") {
-            textColor = "rgba(255, 200, 220, 0.9)"; // Pink for Sakura
-        } else if (state.theme === "TIDES") {
-            textColor = "rgba(173, 216, 230, 0.9)"; // Light blue for Tides
+            // Allow transitionProgress to be 0 for opening effect, 
+            // but for IDLE rendering we usually want full visibility or specific idle handling.
+            // Let's keep transitionProgress at 0, and handle it inside renderLiquid/renderPrism.
+            transitionProgress = 0;
+        }
+
+        // --- 3. Draw & Dispatch ---
+        // Clear with Fade
+        ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+        ctx.fillRect(0, 0, width, height);
+
+        if (state.phase === "SUMMARY" && state.textTargets && state.textTargets.length > 0) {
+            // Determine text color based on theme for better contrast
+            let textColor = "white";
+            if (state.theme === "LIQUID") {
+                textColor = "rgba(173, 216, 230, 0.9)"; // Light blue for Liquid
+            } else if (state.theme === "ZEN") {
+                textColor = "rgba(255, 255, 255, 0.9)"; // White for Zen
+            } else if (state.theme === "SAKURA") {
+                textColor = "rgba(255, 200, 220, 0.9)"; // Pink for Sakura
+            } else if (state.theme === "TIDES") {
+                textColor = "rgba(173, 216, 230, 0.9)"; // Light blue for Tides
+            } else if (state.theme === "AURORA") {
+                textColor = "rgba(200, 255, 200, 0.9)"; // Light green for Aurora
+            } else if (state.theme === "GALAXY") {
+                textColor = "rgba(220, 200, 255, 0.9)"; // Light purple for Galaxy
+            } else if (state.theme === "INFERNO") {
+                textColor = "rgba(255, 200, 150, 0.9)"; // Orange for Inferno
+            } else if (state.theme === "CRYSTAL") {
+                textColor = "rgba(200, 255, 255, 0.9)"; // Cyan for Crystal
+            } else if (state.theme === "STARFALL") {
+                textColor = "rgba(255, 255, 200, 0.9)"; // Yellow for Starfall
+            } else if (state.theme === "LOTUS") {
+                textColor = "rgba(255, 240, 200, 0.9)"; // Cream for Lotus
+            } else if (state.theme === "PRISM") {
+                textColor = "rgba(255, 255, 255, 0.9)"; // White for Prism
+            }
+            renderTextMorph(ctx, state, width, height, textColor);
+        } else if (state.theme === "LIQUID") {
+            renderLiquidGlass(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "AURORA") {
-            textColor = "rgba(200, 255, 200, 0.9)"; // Light green for Aurora
+            renderAurora(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "TIDES") {
+            renderTides(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "ZEN") {
+            renderZen(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "GALAXY") {
-            textColor = "rgba(220, 200, 255, 0.9)"; // Light purple for Galaxy
+            renderGalaxy(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "INFERNO") {
-            textColor = "rgba(255, 200, 150, 0.9)"; // Orange for Inferno
+            renderInferno(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "CRYSTAL") {
-            textColor = "rgba(200, 255, 255, 0.9)"; // Cyan for Crystal
+            renderCrystal(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "SAKURA") {
+            renderSakura(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "STARFALL") {
-            textColor = "rgba(255, 255, 200, 0.9)"; // Yellow for Starfall
+            renderStarfall(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "LOTUS") {
-            textColor = "rgba(255, 240, 200, 0.9)"; // Cream for Lotus
+            renderLotus(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "PRISM") {
-            textColor = "rgba(255, 255, 255, 0.9)"; // White for Prism
+            renderPrism(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else {
+            renderRose(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale); // Default
         }
-        renderTextMorph(ctx, state, width, height, textColor);
-    } else if (state.theme === "LIQUID") {
-        renderLiquidGlass(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-    } else if (state.theme === "AURORA") {
-        renderAurora(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-    } else if (state.theme === "TIDES") {
-        renderTides(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-    } else if (state.theme === "ZEN") {
-        renderZen(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-    } else if (state.theme === "GALAXY") {
-        renderGalaxy(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-    } else if (state.theme === "INFERNO") {
-        renderInferno(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-    } else if (state.theme === "CRYSTAL") {
-        renderCrystal(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-    } else if (state.theme === "SAKURA") {
-        renderSakura(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-    } else if (state.theme === "STARFALL") {
-        renderStarfall(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-    } else if (state.theme === "LOTUS") {
-        renderLotus(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-    } else if (state.theme === "PRISM") {
-        renderPrism(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-    } else {
-        renderRose(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale); // Default
-    }
-};
+    };
 
-const draw = (time: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const draw = (time: number) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
 
-    updateParticles(time, canvas.width, canvas.height, ctx);
-    requestRef.current = requestAnimationFrame(draw);
-};
-
-useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        initParticles(canvas.width, canvas.height);
+        updateParticles(time, canvas.width, canvas.height, ctx);
         requestRef.current = requestAnimationFrame(draw);
-    }
+    };
 
-    const handleResize = () => {
+    useEffect(() => {
+        const canvas = canvasRef.current;
         if (canvas) {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            initParticles(canvas.width, canvas.height);
+            requestRef.current = requestAnimationFrame(draw);
         }
-    };
 
-    window.addEventListener("resize", handleResize);
-    return () => {
-        window.removeEventListener("resize", handleResize);
-        cancelAnimationFrame(requestRef.current);
-    };
-}, []);
-
-// --- Save Theme Preference ---
-useEffect(() => {
-    localStorage.setItem("practiceTheme", selectedTheme);
-}, [selectedTheme]);
-
-// --- Logic ---
-const clearHapticTimers = () => {
-    hapticTimers.current.forEach(t => clearTimeout(t));
-    hapticTimers.current = [];
-};
-
-const playHapticPattern = (phaseType: BreathPhase) => {
-    clearHapticTimers();
-
-    if (phaseType === "INHALE") {
-        // 🌬️ 连续感：70次震动，每57ms一次，从轻到重
-        // Light×23 → Medium×23 → Heavy×24
-        for (let i = 0; i < 70; i++) {
-            const delay = i * 57; // 0, 57, 114, ... 3933
-            let trigger: () => void;
-            if (i < 23) {
-                trigger = triggerLight;
-            } else if (i < 46) {
-                trigger = triggerMedium;
-            } else {
-                trigger = triggerHeavy;
+        const handleResize = () => {
+            if (canvas) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
             }
-            hapticTimers.current.push(setTimeout(trigger, delay));
-        }
-    } else if (phaseType === "HOLD") {
-        // 💓 心跳感：双击节奏 (thump-thump... thump-thump...)
-        // 每对心跳间隔约2秒
-        const heartbeat = (delay: number) => {
-            hapticTimers.current.push(
-                setTimeout(triggerMedium, delay),
-                setTimeout(triggerLight, delay + 150),
-            );
         };
-        heartbeat(0);
-        heartbeat(2000);
-        heartbeat(4000);
-        heartbeat(6000);
-    } else if (phaseType === "EXHALE") {
-        // 🍃 连续释放感：32次震动，每250ms一次，从重到轻
-        // Heavy×11 → Medium×11 → Light×10
-        for (let i = 0; i < 32; i++) {
-            const delay = i * 250; // 0, 250, 500, ... 7750
-            let trigger: () => void;
-            if (i < 11) {
-                trigger = triggerHeavy;
-            } else if (i < 22) {
-                trigger = triggerMedium;
-            } else {
-                trigger = triggerLight;
-            }
-            hapticTimers.current.push(setTimeout(trigger, delay));
-        }
-    }
-};
 
-// --- Keep Awake ---
-useEffect(() => {
-    const isPracticing = phase === "PRACTICING" || phase === "TRANSITION_TO_PRACTICE" || phase === "COUNTDOWN";
+        window.addEventListener("resize", handleResize);
+        return () => {
+            window.removeEventListener("resize", handleResize);
+            cancelAnimationFrame(requestRef.current);
+        };
+    }, []);
 
-    if (isPracticing) {
-        KeepAwake.keepAwake().catch(console.error);
-    } else {
-        KeepAwake.allowSleep().catch(console.error);
-    }
+    // --- Save Theme Preference ---
+    useEffect(() => {
+        localStorage.setItem("practiceTheme", selectedTheme);
+    }, [selectedTheme]);
 
-    return () => {
-        KeepAwake.allowSleep().catch(console.error);
+    // --- Logic ---
+    const clearHapticTimers = () => {
+        hapticTimers.current.forEach(t => clearTimeout(t));
+        hapticTimers.current = [];
     };
-}, [phase]);
 
-useEffect(() => {
-    // Sync Ref for Animation Loop
-    animState.current.phase = phase;
-    animState.current.breathPhase = breathPhase;
-    animState.current.theme = selectedTheme; // Update theme in ref
+    const playHapticPattern = (phaseType: BreathPhase) => {
+        clearHapticTimers();
 
-    animState.current.phaseStartTime = Date.now();
-    if (breathPhase === "INHALE") animState.current.phaseDuration = BREATH_CYCLE.INHALE;
-    if (breathPhase === "HOLD") animState.current.phaseDuration = BREATH_CYCLE.HOLD;
-    if (breathPhase === "EXHALE") animState.current.phaseDuration = BREATH_CYCLE.EXHALE;
+        if (phaseType === "INHALE") {
+            // 🌬️ 连续感：70次震动，每57ms一次，从轻到重
+            // Light×23 → Medium×23 → Heavy×24
+            for (let i = 0; i < 70; i++) {
+                const delay = i * 57; // 0, 57, 114, ... 3933
+                let trigger: () => void;
+                if (i < 23) {
+                    trigger = triggerLight;
+                } else if (i < 46) {
+                    trigger = triggerMedium;
+                } else {
+                    trigger = triggerHeavy;
+                }
+                hapticTimers.current.push(setTimeout(trigger, delay));
+            }
+        } else if (phaseType === "HOLD") {
+            // 💓 心跳感：双击节奏 (thump-thump... thump-thump...)
+            // 每对心跳间隔约2秒
+            const heartbeat = (delay: number) => {
+                hapticTimers.current.push(
+                    setTimeout(triggerMedium, delay),
+                    setTimeout(triggerLight, delay + 150),
+                );
+            };
+            heartbeat(0);
+            heartbeat(2000);
+            heartbeat(4000);
+            heartbeat(6000);
+        } else if (phaseType === "EXHALE") {
+            // 🍃 连续释放感：32次震动，每250ms一次，从重到轻
+            // Heavy×11 → Medium×11 → Light×10
+            for (let i = 0; i < 32; i++) {
+                const delay = i * 250; // 0, 250, 500, ... 7750
+                let trigger: () => void;
+                if (i < 11) {
+                    trigger = triggerHeavy;
+                } else if (i < 22) {
+                    trigger = triggerMedium;
+                } else {
+                    trigger = triggerLight;
+                }
+                hapticTimers.current.push(setTimeout(trigger, delay));
+            }
+        }
+    };
 
-    // Haptics Trigger
-    if (phase === "PRACTICING") {
-        playHapticPattern(breathPhase);
-    }
-}, [breathPhase, phase, selectedTheme]); // Added selectedTheme
+    // --- Keep Awake ---
+    useEffect(() => {
+        const isPracticing = phase === "PRACTICING" || phase === "TRANSITION_TO_PRACTICE" || phase === "COUNTDOWN";
 
-const handleStart = () => {
-    // 1. Trigger Transition (Particles Implode)
-    setPhase("TRANSITION_TO_PRACTICE");
-    animState.current.transitionStartTime = Date.now();
-    triggerMedium();
+        if (isPracticing) {
+            KeepAwake.keepAwake().catch(console.error);
+        } else {
+            KeepAwake.allowSleep().catch(console.error);
+        }
 
-    // 2. Wait for transition (2s) then start countdown
-    setTimeout(() => {
-        setPhase("COUNTDOWN");
-        setCountdown(3);
+        return () => {
+            KeepAwake.allowSleep().catch(console.error);
+        };
+    }, [phase]);
 
-        const countInterval = setInterval(() => {
-            setCountdown((prev) => {
+    useEffect(() => {
+        // Sync Ref for Animation Loop
+        animState.current.phase = phase;
+        animState.current.breathPhase = breathPhase;
+        animState.current.theme = selectedTheme; // Update theme in ref
+
+        animState.current.phaseStartTime = Date.now();
+        if (breathPhase === "INHALE") animState.current.phaseDuration = BREATH_CYCLE.INHALE;
+        if (breathPhase === "HOLD") animState.current.phaseDuration = BREATH_CYCLE.HOLD;
+        if (breathPhase === "EXHALE") animState.current.phaseDuration = BREATH_CYCLE.EXHALE;
+
+        // Haptics Trigger
+        if (phase === "PRACTICING") {
+            playHapticPattern(breathPhase);
+        }
+    }, [breathPhase, phase, selectedTheme]); // Added selectedTheme
+
+    const handleStart = () => {
+        // 1. Trigger Transition (Particles Implode)
+        setPhase("TRANSITION_TO_PRACTICE");
+        animState.current.transitionStartTime = Date.now();
+        triggerMedium();
+
+        // 2. Wait for transition (2s) then start countdown
+        setTimeout(() => {
+            setPhase("COUNTDOWN");
+            setCountdown(3);
+
+            const countInterval = setInterval(() => {
+                setCountdown((prev) => {
+                    if (prev <= 1) {
+                        clearInterval(countInterval);
+                        startPractice();
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        }, 2000); // 2s transition matches animState.transitionDuration
+    };
+
+    const startPractice = async () => {
+        setPhase("PRACTICING");
+        setBreathPhase("INHALE");
+        practiceStartTimeRef.current = Date.now();
+
+        // Start Heart Rate Monitoring (if authorized)
+        if (!isAuthorized) {
+            const granted = await requestPermission();
+            if (granted) startMonitoring(true); // Pass true to bypass state timing issue
+        } else {
+            startMonitoring();
+        }
+
+        // Start Recursive Cycle
+        runBreathingCycle("INHALE");
+
+        // Timer
+        practiceTimerRef.current = setInterval(() => {
+            setTimeLeft((prev) => {
                 if (prev <= 1) {
-                    clearInterval(countInterval);
-                    startPractice();
+                    completePractice();
                     return 0;
                 }
                 return prev - 1;
             });
         }, 1000);
-    }, 2000); // 2s transition matches animState.transitionDuration
-};
+    };
 
-const startPractice = async () => {
-    setPhase("PRACTICING");
-    setBreathPhase("INHALE");
-    practiceStartTimeRef.current = Date.now();
+    const runBreathingCycle = (currentPhase: BreathPhase) => {
+        // Use a ref-based check for the phase to avoid stale closure issues
+        if (animState.current.phase === "COMPLETED" || animState.current.phase === "SUMMARY") return;
 
-    // Start Heart Rate Monitoring (if authorized)
-    if (!isAuthorized) {
-        const granted = await requestPermission();
-        if (granted) startMonitoring(true); // Pass true to bypass state timing issue
-    } else {
-        startMonitoring();
-    }
+        let nextPhase: BreathPhase;
+        let duration: number;
 
-    // Start Recursive Cycle
-    runBreathingCycle("INHALE");
-
-    // Timer
-    practiceTimerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-            if (prev <= 1) {
-                completePractice();
-                return 0;
-            }
-            return prev - 1;
-        });
-    }, 1000);
-};
-
-const runBreathingCycle = (currentPhase: BreathPhase) => {
-    // Use a ref-based check for the phase to avoid stale closure issues
-    if (animState.current.phase === "COMPLETED" || animState.current.phase === "SUMMARY") return;
-
-    let nextPhase: BreathPhase;
-    let duration: number;
-
-    switch (currentPhase) {
-        case "INHALE": nextPhase = "HOLD"; duration = BREATH_CYCLE.INHALE; break;
-        case "HOLD": nextPhase = "EXHALE"; duration = BREATH_CYCLE.HOLD; break;
-        case "EXHALE": nextPhase = "INHALE"; duration = BREATH_CYCLE.EXHALE; break;
-    }
-
-    setBreathPhase(currentPhase);
-
-    breathTimerRef.current = setTimeout(() => {
-        runBreathingCycle(nextPhase);
-    }, duration);
-};
-
-const completePractice = () => {
-    setPhase("COMPLETED");
-    animState.current.completionStartTime = Date.now(); // Start dispersion
-
-    // 1. Capture Session Data IMMEDIATELY
-    const elapsedSeconds = Math.round((Date.now() - practiceStartTimeRef.current) / 1000);
-    const currentHRHistory = [...heartRateHistory];
-
-    setSessionDuration(elapsedSeconds);
-    setSessionHeartRates(currentHRHistory);
-
-    // Stop Heart Rate Monitoring
-    stopMonitoring();
-
-    if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
-    if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
-    clearHapticTimers();
-
-    // 🎊 完成反馈
-    triggerHeavy();
-    window.setTimeout(() => triggerHeavy(), 150);
-    window.setTimeout(() => triggerHeavy(), 300);
-    window.setTimeout(() => {
-        triggerSuccess();
-        playCompletionSound();
-    }, 500);
-
-    // Show summary after animation completes
-    window.setTimeout(() => {
-        setPhase("SUMMARY");
-
-        // --- Generate Text Targets for Particles ---
-        const durationText = formatTime(elapsedSeconds);
-
-        // Calculate Stats
-        const avgBpm = currentHRHistory.length > 0
-            ? Math.round(currentHRHistory.reduce((a, b) => a + b, 0) / currentHRHistory.length)
-            : 0;
-        const bpmText = avgBpm > 0 ? avgBpm.toString() : "--"; // Just the number is cleaner
-
-        // Calculate BPM Difference
-        const startBpm = currentHRHistory[0] || 0;
-        const endBpm = currentHRHistory[currentHRHistory.length - 1] || 0;
-        const diff = endBpm - startBpm;
-        const diffText = diff === 0 ? "±0" : (diff > 0 ? "+" + diff : diff.toString());
-
-        const canvas = canvasRef.current;
-        if (canvas) {
-            animState.current.morphStartTime = Date.now() + 3000;
-            animState.current.sessionHeartRates = currentHRHistory;
-
-            const { points, bpmStartIndex, dropStartIndex } = getTextPoints(durationText, bpmText, diffText, canvas.width, canvas.height);
-            animState.current.textTargets = points;
-            animState.current.bpmParticleStartIndex = bpmStartIndex;
-            animState.current.dropParticleStartIndex = dropStartIndex;
+        switch (currentPhase) {
+            case "INHALE": nextPhase = "HOLD"; duration = BREATH_CYCLE.INHALE; break;
+            case "HOLD": nextPhase = "EXHALE"; duration = BREATH_CYCLE.HOLD; break;
+            case "EXHALE": nextPhase = "INHALE"; duration = BREATH_CYCLE.EXHALE; break;
         }
-    }, 5000);
-};
 
-const cleanup = () => {
-    if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
-    if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
-    clearHapticTimers();
-};
+        setBreathPhase(currentPhase);
 
-const handleExit = () => {
-    cleanup();
-    if (phase === "IDLE") {
-        // If already in IDLE, go back to home
-        router.back();
-    } else {
-        // Otherwise, return to IDLE state (not home)
-        setPhase("IDLE");
-        setBreathPhase("INHALE");
-        setCountdown(3);
-    }
-};
+        breathTimerRef.current = setTimeout(() => {
+            runBreathingCycle(nextPhase);
+        }, duration);
+    };
+
+    const completePractice = () => {
+        setPhase("COMPLETED");
+        animState.current.completionStartTime = Date.now(); // Start dispersion
+
+        // 1. Capture Session Data IMMEDIATELY
+        const elapsedSeconds = Math.round((Date.now() - practiceStartTimeRef.current) / 1000);
+        const currentHRHistory = [...heartRateHistory];
+
+        setSessionDuration(elapsedSeconds);
+        setSessionHeartRates(currentHRHistory);
+
+        // Stop Heart Rate Monitoring
+        stopMonitoring();
+
+        if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
+        if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
+        clearHapticTimers();
+
+        // 🎊 完成反馈
+        triggerHeavy();
+        window.setTimeout(() => triggerHeavy(), 150);
+        window.setTimeout(() => triggerHeavy(), 300);
+        window.setTimeout(() => {
+            triggerSuccess();
+            playCompletionSound();
+        }, 500);
+
+        // Show summary after animation completes
+        window.setTimeout(() => {
+            setPhase("SUMMARY");
+
+            // --- Generate Text Targets for Particles ---
+            const durationText = formatTime(elapsedSeconds);
+
+            // Calculate Stats
+            const avgBpm = currentHRHistory.length > 0
+                ? Math.round(currentHRHistory.reduce((a, b) => a + b, 0) / currentHRHistory.length)
+                : 0;
+            const bpmText = avgBpm > 0 ? avgBpm.toString() : "--"; // Just the number is cleaner
+
+            // Calculate BPM Difference
+            const startBpm = currentHRHistory[0] || 0;
+            const endBpm = currentHRHistory[currentHRHistory.length - 1] || 0;
+            const diff = endBpm - startBpm;
+            const diffText = diff === 0 ? "±0" : (diff > 0 ? "+" + diff : diff.toString());
+
+            const canvas = canvasRef.current;
+            if (canvas) {
+                animState.current.morphStartTime = Date.now() + 3000;
+                animState.current.sessionHeartRates = currentHRHistory;
+
+                const { points, bpmStartIndex, dropStartIndex } = getTextPoints(durationText, bpmText, diffText, canvas.width, canvas.height);
+                animState.current.textTargets = points;
+                animState.current.bpmParticleStartIndex = bpmStartIndex;
+                animState.current.dropParticleStartIndex = dropStartIndex;
+            }
+        }, 5000);
+    };
+
+    const cleanup = () => {
+        if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
+        if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
+        clearHapticTimers();
+    };
+
+    const handleExit = () => {
+        cleanup();
+        if (phase === "IDLE") {
+            // If already in IDLE, go back to home
+            router.back();
+        } else {
+            // Otherwise, return to IDLE state (not home)
+            setPhase("IDLE");
+            setBreathPhase("INHALE");
+            setCountdown(3);
+        }
+    };
 
 
-return (
-    <div className="fixed inset-0 z-[99999] bg-black text-white font-sans overflow-hidden animate-in fade-in duration-500">
+    return (
+        <div className="fixed inset-0 z-[99999] bg-black text-white font-sans overflow-hidden animate-in fade-in duration-500">
 
-        {/* Canvas */}
-        <canvas ref={canvasRef} className="absolute inset-0 block touch-none" />
+            {/* Canvas */}
+            <canvas ref={canvasRef} className="absolute inset-0 block touch-none" />
 
-        <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-safe">
+            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-safe">
 
-            {/* Header */}
-            <header className="w-full p-6 flex justify-between items-start pointer-events-auto z-50">
-                <button
-                    onClick={handleExit}
-                    className="p-3 bg-white/5 backdrop-blur-md rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all border border-white/5 group"
-                >
-                    <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
-                </button>
-                <div className="w-[46px]" />
-            </header>
-
-
-
-            {/* Center UI - Absolute Layer for Perfect Centering */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
-                <AnimatePresence mode="wait">
-                    {phase === "COUNTDOWN" && (
-                        <motion.div
-                            key="cnt"
-                            initial={{ opacity: 0, scale: 0.5 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 2 }}
-                            className="text-9xl font-thin text-white mix-blend-screen"
-                        >
-                            {countdown}
-                        </motion.div>
-                    )}
-
-                    {phase === "PRACTICING" && (
-                        <motion.div
-                            key={breathPhase}
-                            initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }}
-                            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                            exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
-                            transition={{ duration: 1 }}
-                            className="text-center mix-blend-screen"
-                        >
-                            <span className="text-4xl md:text-5xl font-light tracking-[0.3em] uppercase text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-                                {breathPhase === "INHALE" && "吸 气"}
-                                {breathPhase === "HOLD" && "屏 气"}
-                                {breathPhase === "EXHALE" && "呼 气"}
-                            </span>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </div>
-
-            {/* Heart Rate Indicator - Top Right */}
-            {phase === "PRACTICING" && (
-                <HeartRateIndicator
-                    currentBPM={currentBPM}
-                    isMonitoring={isMonitoring}
-                    error={heartRateError}
-                />
-            )}
-
-            {phase === "COMPLETED" && (
-                <motion.div
-                    key="done"
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="flex flex-col items-center justify-center gap-4 text-center"
-                >
-                    <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ type: "spring", damping: 12 }}
-                        className="p-4 rounded-full bg-green-500/20 text-green-400 mb-2"
+                {/* Header */}
+                <header className="w-full p-6 flex justify-between items-start pointer-events-auto z-50">
+                    <button
+                        onClick={handleExit}
+                        className="p-3 bg-white/5 backdrop-blur-md rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all border border-white/5 group"
                     >
-                        <CheckCircle2 size={48} />
-                    </motion.div>
-                    <h1 className="text-3xl font-light text-white tracking-widest">
-                        Session Complete
-                    </h1>
-                </motion.div>
-            )}
+                        <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
+                    </button>
+                    <div className="w-[46px]" />
+                </header>
 
 
-            {/* Footer UI (Independent of Center UI) */}
-            <div className="w-full flex flex-col items-center justify-end pointer-events-none z-40 flex-1">
 
-            </div>
+                {/* Center UI - Absolute Layer for Perfect Centering */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
+                    <AnimatePresence mode="wait">
+                        {phase === "COUNTDOWN" && (
+                            <motion.div
+                                key="cnt"
+                                initial={{ opacity: 0, scale: 0.5 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 2 }}
+                                className="text-9xl font-thin text-white mix-blend-screen"
+                            >
+                                {countdown}
+                            </motion.div>
+                        )}
 
-            {/* Footer */}
-            <footer className="w-full max-w-sm pb-12 px-6 pointer-events-auto z-50">
-                <AnimatePresence>
-                    {/* IDLE UI */}
-                    {phase === "IDLE" && (
+                        {phase === "PRACTICING" && (
+                            <motion.div
+                                key={breathPhase}
+                                initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }}
+                                animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                                exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
+                                transition={{ duration: 1 }}
+                                className="text-center mix-blend-screen"
+                            >
+                                <span className="text-4xl md:text-5xl font-light tracking-[0.3em] uppercase text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+                                    {breathPhase === "INHALE" && "吸 气"}
+                                    {breathPhase === "HOLD" && "屏 气"}
+                                    {breathPhase === "EXHALE" && "呼 气"}
+                                </span>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
+
+                {/* Heart Rate Indicator - Top Right */}
+                {phase === "PRACTICING" && (
+                    <HeartRateIndicator
+                        currentBPM={currentBPM}
+                        isMonitoring={isMonitoring}
+                        error={heartRateError}
+                    />
+                )}
+
+                {phase === "COMPLETED" && (
+                    <motion.div
+                        key="done"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="flex flex-col items-center justify-center gap-4 text-center"
+                    >
                         <motion.div
-                            initial={{ opacity: 0, y: 50 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 50 }}
-                            className="flex flex-col gap-10"
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: "spring", damping: 12 }}
+                            className="p-4 rounded-full bg-green-500/20 text-green-400 mb-2"
                         >
-                            {/* Scale Selector */}
-                            <RulerTimeSelector
-                                value={durationMinutes}
-                                onChange={setDurationMinutes}
-                            />
+                            <CheckCircle2 size={48} />
+                        </motion.div>
+                        <h1 className="text-3xl font-light text-white tracking-widest">
+                            Session Complete
+                        </h1>
+                    </motion.div>
+                )}
 
-                            {/* Theme Selector - Scrollable */}
-                            <div className="w-full overflow-x-auto scrollbar-hide py-4 -mx-4 px-4">
-                                <div className="flex gap-3 w-max snap-x snap-mandatory">
-                                    {(Object.keys(THEMES) as Theme[]).map((themeKey) => {
-                                        const theme = THEMES[themeKey];
-                                        const isSelected = selectedTheme === themeKey;
-                                        const Icon = theme.icon;
 
-                                        return (
-                                            <button
-                                                key={themeKey}
-                                                onClick={() => {
-                                                    setSelectedTheme(themeKey);
-                                                    triggerLight();
-                                                }}
-                                                className={`
+                {/* Footer UI (Independent of Center UI) */}
+                <div className="w-full flex flex-col items-center justify-end pointer-events-none z-40 flex-1">
+
+                </div>
+
+                {/* Footer */}
+                <footer className="w-full max-w-sm pb-12 px-6 pointer-events-auto z-50">
+                    <AnimatePresence>
+                        {/* IDLE UI */}
+                        {phase === "IDLE" && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 50 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 50 }}
+                                className="flex flex-col gap-10"
+                            >
+                                {/* Scale Selector */}
+                                <RulerTimeSelector
+                                    value={durationMinutes}
+                                    onChange={setDurationMinutes}
+                                />
+
+                                {/* Theme Selector - Scrollable */}
+                                <div className="w-full overflow-x-auto scrollbar-hide py-4 -mx-4 px-4">
+                                    <div className="flex gap-3 w-max snap-x snap-mandatory">
+                                        {(Object.keys(THEMES) as Theme[]).map((themeKey) => {
+                                            const theme = THEMES[themeKey];
+                                            const isSelected = selectedTheme === themeKey;
+                                            const Icon = theme.icon;
+
+                                            return (
+                                                <button
+                                                    key={themeKey}
+                                                    onClick={() => {
+                                                        setSelectedTheme(themeKey);
+                                                        triggerLight();
+                                                    }}
+                                                    className={`
                                                         snap-center flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all min-w-[70px]
                                                         ${isSelected ? "bg-white/15 scale-105 border-white/30" : "bg-white/5 text-white/50 hover:text-white hover:bg-white/10"}
                                                         border ${isSelected ? "border-white/30" : "border-transparent"}
                                                     `}
-                                            >
-                                                <div className={`p-1.5 rounded-full ${isSelected ? theme.color : "text-current"}`}>
-                                                    <Icon size={22} />
-                                                </div>
-                                                <span className="text-[9px] font-medium tracking-wider uppercase whitespace-nowrap">
-                                                    {theme.name}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
+                                                >
+                                                    <div className={`p-1.5 rounded-full ${isSelected ? theme.color : "text-current"}`}>
+                                                        <Icon size={22} />
+                                                    </div>
+                                                    <span className="text-[9px] font-medium tracking-wider uppercase whitespace-nowrap">
+                                                        {theme.name}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Start Button */}
-                            <button
-                                onClick={handleStart}
-                                className="w-full py-5 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10 text-xl font-light tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+                                {/* Start Button */}
+                                <button
+                                    onClick={handleStart}
+                                    className="w-full py-5 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10 text-xl font-light tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+                                >
+                                    <Play size={20} fill="currentColor" />
+                                    <span>BEGIN</span>
+                                </button>
+                            </motion.div>
+                        )}
+
+                        {phase === "PRACTICING" && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="w-full py-5 text-center"
                             >
-                                <Play size={20} fill="currentColor" />
-                                <span>BEGIN</span>
-                            </button>
-                        </motion.div>
-                    )}
+                                <span className="text-2xl font-thin tracking-widest text-white/50 tabular-nums">
+                                    {formatTime(timeLeft)}
+                                </span>
+                            </motion.div>
+                        )}
 
-                    {phase === "PRACTICING" && (
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="w-full py-5 text-center"
-                        >
-                            <span className="text-2xl font-thin tracking-widest text-white/50 tabular-nums">
-                                {formatTime(timeLeft)}
-                            </span>
-                        </motion.div>
-                    )}
+                        {phase === "COMPLETED" && (
+                            <motion.button
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                onClick={() => setPhase("IDLE")}
+                                className="w-full py-4 glass-panel rounded-full flex items-center justify-center gap-2 hover:bg-white/10 transition-colors pointer-events-auto"
+                            >
+                                <RefreshCw size={18} />
+                                <span>Repeat Session</span>
+                            </motion.button>
+                        )}
+                    </AnimatePresence>
+                </footer>
+            </div >
 
-                    {phase === "COMPLETED" && (
-                        <motion.button
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            onClick={() => setPhase("IDLE")}
-                            className="w-full py-4 glass-panel rounded-full flex items-center justify-center gap-2 hover:bg-white/10 transition-colors pointer-events-auto"
-                        >
-                            <RefreshCw size={18} />
-                            <span>Repeat Session</span>
-                        </motion.button>
-                    )}
-                </AnimatePresence>
-            </footer>
-        </div >
+            {/* Practice Summary - Immersive Overlay */}
+            {phase === "SUMMARY" && (
+                <PracticeCompletionView
+                    duration={sessionDuration}
+                    heartRateHistory={sessionHeartRates}
+                    theme={selectedTheme}
+                    onClose={() => {
+                        setPhase("IDLE");
+                        setBreathPhase("INHALE");
+                        setCountdown(3);
+                        setTimeLeft(durationMinutes * 60);
+                    }}
+                />
+            )}
 
-        {/* Practice Summary - Immersive Overlay */}
-        {phase === "SUMMARY" && (
-            <PracticeCompletionView
-                duration={sessionDuration}
-                heartRateHistory={sessionHeartRates}
-                theme={selectedTheme}
-                onClose={() => {
-                    setPhase("IDLE");
-                    setBreathPhase("INHALE");
-                    setCountdown(3);
-                    setTimeLeft(durationMinutes * 60);
-                }}
-            />
-        )}
-
-        <style jsx global>{`
+            <style jsx global>{`
         .hide-scrollbar::-webkit-scrollbar {
             display: none;
         }
@@ -1692,8 +1694,8 @@ return (
              padding-bottom: env(safe-area-inset-bottom);
         }
       `}</style>
-    </div >
-);
+        </div >
+    );
 }
 
 // --- Particle Text Morphing Helpers ---
