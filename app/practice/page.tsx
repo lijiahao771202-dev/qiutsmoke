@@ -8,10 +8,11 @@ import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { useHeartRate } from "@/lib/hooks/useHeartRate";
 import HeartRateIndicator from "@/components/HeartRateGraph";
+import PracticeSummary from "@/components/PracticeSummary";
 import { KeepAwake } from "@capacitor-community/keep-awake";
 
 // --- Types ---
-type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED";
+type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
 type Theme = "ROSE" | "AURORA" | "TIDES" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS";
 
@@ -202,6 +203,10 @@ function PracticeContent({ router }: { router: any }) {
         startMonitoring,
         stopMonitoring,
     } = useHeartRate();
+
+    // --- Session Data for Summary ---
+    const [sessionHeartRates, setSessionHeartRates] = useState<number[]>([]);
+    const [sessionDuration, setSessionDuration] = useState<number>(0);
 
     // --- 完成提示音 ---
     const playCompletionSound = () => {
@@ -1155,6 +1160,10 @@ function PracticeContent({ router }: { router: any }) {
         setPhase("COMPLETED");
         animState.current.completionStartTime = Date.now(); // Start dispersion
 
+        // Save session data for summary
+        setSessionHeartRates([...heartRateHistory]);
+        setSessionDuration(selectedDuration * 60 - timeLeft);
+
         // Stop Heart Rate Monitoring
         stopMonitoring();
 
@@ -1163,22 +1172,19 @@ function PracticeContent({ router }: { router: any }) {
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
         clearHapticTimers();
 
-        // 🎊 完成反馈：震动 + 提示音（使用 window.setTimeout 独立于组件生命周期）
-        console.log('[Practice] 🎊 Triggering completion feedback...');
+        // 🎊 完成反馈：震动 + 提示音
         triggerHeavy();
+        window.setTimeout(() => triggerHeavy(), 150);
+        window.setTimeout(() => triggerHeavy(), 300);
         window.setTimeout(() => {
-            console.log('[Practice] Heavy 2');
-            triggerHeavy();
-        }, 150);
-        window.setTimeout(() => {
-            console.log('[Practice] Heavy 3');
-            triggerHeavy();
-        }, 300);
-        window.setTimeout(() => {
-            console.log('[Practice] Success + Sound');
             triggerSuccess();
             playCompletionSound();
         }, 500);
+
+        // Show summary after animation completes
+        window.setTimeout(() => {
+            setPhase("SUMMARY");
+        }, 2000);
     };
 
     const cleanup = () => {
@@ -1285,6 +1291,20 @@ function PracticeContent({ router }: { router: any }) {
                             Session Complete
                         </h1>
                     </motion.div>
+                )}
+
+                {/* Practice Summary Modal */}
+                {phase === "SUMMARY" && (
+                    <PracticeSummary
+                        duration={sessionDuration}
+                        heartRateHistory={sessionHeartRates}
+                        onClose={() => {
+                            setPhase("IDLE");
+                            setBreathPhase("INHALE");
+                            setCountdown(3);
+                            setTimeLeft(selectedDuration * 60);
+                        }}
+                    />
                 )}
 
                 {/* Footer UI (Independent of Center UI) */}
