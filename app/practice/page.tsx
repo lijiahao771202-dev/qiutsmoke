@@ -1293,19 +1293,6 @@ function PracticeContent({ router }: { router: any }) {
                     </motion.div>
                 )}
 
-                {/* Practice Summary Modal */}
-                {phase === "SUMMARY" && (
-                    <PracticeSummary
-                        duration={sessionDuration}
-                        heartRateHistory={sessionHeartRates}
-                        onClose={() => {
-                            setPhase("IDLE");
-                            setBreathPhase("INHALE");
-                            setCountdown(3);
-                            setTimeLeft(durationMinutes * 60);
-                        }}
-                    />
-                )}
 
                 {/* Footer UI (Independent of Center UI) */}
                 <div className="w-full flex flex-col items-center justify-end pointer-events-none z-40 flex-1">
@@ -1400,6 +1387,20 @@ function PracticeContent({ router }: { router: any }) {
                     </AnimatePresence>
                 </footer>
             </div >
+
+            {/* Practice Summary Modal - Outside pointer-events-none container */}
+            {phase === "SUMMARY" && (
+                <PracticeSummary
+                    duration={sessionDuration}
+                    heartRateHistory={sessionHeartRates}
+                    onClose={() => {
+                        setPhase("IDLE");
+                        setBreathPhase("INHALE");
+                        setCountdown(3);
+                        setTimeLeft(durationMinutes * 60);
+                    }}
+                />
+            )}
 
             <style jsx global>{`
         .hide-scrollbar::-webkit-scrollbar {
