@@ -61,29 +61,40 @@ export function useHeartRate(): UseHeartRateReturn {
 
     // Request HealthKit authorization
     const requestPermission = useCallback(async (): Promise<boolean> => {
+        console.log('[HeartRate] requestPermission called, isNativeIOS:', isNativeIOS, 'plugin:', !!CapacitorHealthkit);
+
         if (!isNativeIOS) {
+            console.log('[HeartRate] Not iOS, skipping');
             setError('HealthKit 仅在 iOS 设备上可用');
             return false;
         }
 
         if (!CapacitorHealthkit) {
+            console.log('[HeartRate] Plugin not loaded');
             setError('HealthKit 插件未加载');
             return false;
         }
 
         try {
+            // First check if HealthKit is available on this device
+            console.log('[HeartRate] Checking HealthKit availability...');
+            await CapacitorHealthkit.isAvailable();
+            console.log('[HeartRate] HealthKit is available!');
+
             // Request read permission for heart rate
+            console.log('[HeartRate] Requesting authorization...');
             await CapacitorHealthkit.requestAuthorization({
                 all: [],
                 read: ['heartRate'],
                 write: [],
             });
+            console.log('[HeartRate] Authorization granted!');
 
             setIsAuthorized(true);
             setError(null);
             return true;
         } catch (err: any) {
-            console.error('HealthKit authorization failed:', err);
+            console.error('[HeartRate] Authorization failed:', err, JSON.stringify(err));
             setError(err.message || '无法获取健康数据权限');
             setIsAuthorized(false);
             return false;
