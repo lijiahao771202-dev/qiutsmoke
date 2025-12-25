@@ -179,7 +179,14 @@ function PracticeContent({ router }: { router: any }) {
     const [timeLeft, setTimeLeft] = useState(0);
     const [breathPhase, setBreathPhase] = useState<BreathPhase>("INHALE");
     const [countdown, setCountdown] = useState(3);
-    const [selectedTheme, setSelectedTheme] = useState<Theme>("ROSE"); // Default Theme
+    const [selectedTheme, setSelectedTheme] = useState<Theme>(() => {
+        // Load saved theme from localStorage
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("practiceTheme") as Theme | null;
+            if (saved && THEMES[saved]) return saved;
+        }
+        return "ROSE";
+    });
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess } = useHaptics();
 
     // --- Refs ---
@@ -848,6 +855,11 @@ function PracticeContent({ router }: { router: any }) {
         };
     }, []);
 
+    // --- Save Theme Preference ---
+    useEffect(() => {
+        localStorage.setItem("practiceTheme", selectedTheme);
+    }, [selectedTheme]);
+
     // --- Logic ---
     const clearHapticTimers = () => {
         hapticTimers.current.forEach(t => clearTimeout(t));
@@ -858,14 +870,14 @@ function PracticeContent({ router }: { router: any }) {
         clearHapticTimers();
 
         if (phaseType === "INHALE") {
-            // 🌬️ 连续感：16次震动，每250ms一次，从轻到重
-            // Light×5 → Medium×5 → Heavy×6
-            for (let i = 0; i < 16; i++) {
-                const delay = i * 250; // 0, 250, 500, ... 3750
+            // 🌬️ 连续感：24次震动，每167ms一次，从轻到重
+            // Light×8 → Medium×8 → Heavy×8
+            for (let i = 0; i < 24; i++) {
+                const delay = i * 167; // 0, 167, 334, ... 3842
                 let trigger: () => void;
-                if (i < 5) {
+                if (i < 8) {
                     trigger = triggerLight;
-                } else if (i < 10) {
+                } else if (i < 16) {
                     trigger = triggerMedium;
                 } else {
                     trigger = triggerHeavy;
@@ -886,14 +898,14 @@ function PracticeContent({ router }: { router: any }) {
             heartbeat(4000);
             heartbeat(6000);
         } else if (phaseType === "EXHALE") {
-            // 🍃 连续释放感：16次震动，每500ms一次，从重到轻
-            // Heavy×5 → Medium×5 → Light×6
-            for (let i = 0; i < 16; i++) {
-                const delay = i * 500; // 0, 500, 1000, ... 7500
+            // 🍃 连续释放感：32次震动，每250ms一次，从重到轻
+            // Heavy×11 → Medium×11 → Light×10
+            for (let i = 0; i < 32; i++) {
+                const delay = i * 250; // 0, 250, 500, ... 7750
                 let trigger: () => void;
-                if (i < 5) {
+                if (i < 11) {
                     trigger = triggerHeavy;
-                } else if (i < 10) {
+                } else if (i < 22) {
                     trigger = triggerMedium;
                 } else {
                     trigger = triggerLight;
@@ -1012,7 +1024,15 @@ function PracticeContent({ router }: { router: any }) {
 
     const handleExit = () => {
         cleanup();
-        router.back();
+        if (phase === "IDLE") {
+            // If already in IDLE, go back to home
+            router.back();
+        } else {
+            // Otherwise, return to IDLE state (not home)
+            setPhase("IDLE");
+            setBreathPhase("INHALE");
+            setCountdown(3);
+        }
     };
 
 
