@@ -165,10 +165,11 @@ function PracticeContent({ router }: { router: any }) {
     const [timeLeft, setTimeLeft] = useState(0);
     const [breathPhase, setBreathPhase] = useState<BreathPhase>("INHALE");
     const [countdown, setCountdown] = useState(3);
-    const { triggerHeavy, triggerMedium, triggerSuccess } = useHaptics();
+    const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess } = useHaptics();
 
     // --- Refs ---
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const hapticTimers = useRef<NodeJS.Timeout[]>([]);
     const requestRef = useRef<number>(0);
     const practiceTimerRef = useRef<NodeJS.Timeout | null>(null);
     const breathTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -357,6 +358,37 @@ function PracticeContent({ router }: { router: any }) {
     }, []);
 
     // --- Logic ---
+    const clearHapticTimers = () => {
+        hapticTimers.current.forEach(t => clearTimeout(t));
+        hapticTimers.current = [];
+    };
+
+    const playHapticPattern = (phaseType: BreathPhase) => {
+        clearHapticTimers();
+
+        if (phaseType === "INHALE") {
+            // Ramp up: Light -> Light -> Medium -> Heavy
+            const t1 = setTimeout(triggerLight, 0);
+            const t2 = setTimeout(triggerLight, 1000);
+            const t3 = setTimeout(triggerMedium, 2000);
+            const t4 = setTimeout(triggerHeavy, 3000);
+            hapticTimers.current.push(t1, t2, t3, t4);
+        } else if (phaseType === "HOLD") {
+            // Heartbeat: Light..... Light.....
+            const beat = () => { triggerLight(); setTimeout(triggerLight, 150); }; // double tap? or just single? Plan says single/heartbeat. Let's do single gentle pulses.
+            // Actually plan said: T+0, 2, 4, 6.
+            const p1 = setTimeout(triggerLight, 0);
+            const p2 = setTimeout(triggerLight, 2000);
+            const p3 = setTimeout(triggerLight, 4000);
+            const p4 = setTimeout(triggerLight, 6000);
+            hapticTimers.current.push(p1, p2, p3, p4);
+        } else if (phaseType === "EXHALE") {
+            // Release: Heavy -> Silence
+            const t1 = setTimeout(triggerHeavy, 0);
+            hapticTimers.current.push(t1);
+        }
+    };
+
     useEffect(() => {
         // Sync Ref for Animation Loop
         animState.current.phase = phase;
@@ -369,7 +401,7 @@ function PracticeContent({ router }: { router: any }) {
 
         // Haptics Trigger
         if (phase === "PRACTICING") {
-            triggerHeavy();
+            playHapticPattern(breathPhase);
         }
     }, [breathPhase, phase]);
 
@@ -445,6 +477,7 @@ function PracticeContent({ router }: { router: any }) {
     const cleanup = () => {
         if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
+        clearHapticTimers();
     };
 
     const handleExit = () => {
@@ -472,8 +505,10 @@ function PracticeContent({ router }: { router: any }) {
                     <div className="w-[46px]" />
                 </header>
 
-                {/* Center UI */}
-                <main className="flex-1 flex flex-col items-center justify-center pointer-events-none z-40">
+
+
+                {/* Center UI - Absolute Layer for Perfect Centering */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
                     <AnimatePresence mode="wait">
                         {phase === "COUNTDOWN" && (
                             <motion.div
@@ -490,17 +525,17 @@ function PracticeContent({ router }: { router: any }) {
                         {phase === "PRACTICING" && (
                             <motion.div
                                 key={breathPhase}
-                                initial={{ opacity: 0, y: 20, filter: 'blur(10px)' }}
-                                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                                exit={{ opacity: 0, y: -20, filter: 'blur(10px)' }}
+                                initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }}
+                                animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                                exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
                                 transition={{ duration: 1 }}
                                 className="text-center mix-blend-screen"
                             >
-                                <h1 className="text-4xl md:text-5xl font-extralight tracking-[0.2em] uppercase text-white drop-shadow-[0_0_15px_rgba(100,200,255,0.5)]">
+                                <span className="text-4xl md:text-5xl font-light tracking-[0.3em] uppercase text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">
                                     {breathPhase === "INHALE" && "吸 气"}
                                     {breathPhase === "HOLD" && "屏 气"}
                                     {breathPhase === "EXHALE" && "呼 气"}
-                                </h1>
+                                </span>
                             </motion.div>
                         )}
 
@@ -526,7 +561,12 @@ function PracticeContent({ router }: { router: any }) {
                             </motion.div>
                         )}
                     </AnimatePresence>
-                </main>
+                </div>
+
+                {/* Footer UI (Independent of Center UI) */}
+                <div className="w-full flex flex-col items-center justify-end pointer-events-none z-40 flex-1">
+
+                </div>
 
                 {/* Footer */}
                 <footer className="w-full max-w-sm pb-12 px-6 pointer-events-auto z-50">
@@ -597,6 +637,6 @@ function PracticeContent({ router }: { router: any }) {
              padding-bottom: env(safe-area-inset-bottom);
         }
       `}</style>
-        </div>
+        </div >
     );
 }
