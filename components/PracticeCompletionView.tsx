@@ -16,21 +16,6 @@ export default function PracticeCompletionView({
     onClose,
     theme
 }: PracticeCompletionViewProps) {
-    // Calculate stats
-    const hasData = heartRateHistory && heartRateHistory.length >= 2;
-    const avgBPM = hasData
-        ? Math.round(heartRateHistory.reduce((a, b) => a + b, 0) / heartRateHistory.length)
-        : null;
-    const minBPM = hasData ? Math.min(...heartRateHistory) : null;
-    const maxBPM = hasData ? Math.max(...heartRateHistory) : null;
-
-    const formatDuration = (seconds: number) => {
-        if (!seconds || seconds < 0) return '0:00';
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.round(seconds % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
-
     // Staggered animation variants
     const container = {
         hidden: { opacity: 0 },
@@ -64,34 +49,20 @@ export default function PracticeCompletionView({
                     <div className="h-[1px] w-24 bg-gradient-to-r from-transparent via-white/50 to-transparent mx-auto mt-4" />
                 </motion.div>
 
-                {/* Stats Cluster */}
-                <motion.div variants={item} className="grid grid-cols-2 gap-x-12 gap-y-8 w-full">
-                    {/* Duration */}
+                {/* Stats Cluster - Labels Only (Numbers rendered by Particles) */}
+                <motion.div variants={item} className="flex flex-col gap-24 w-full items-center">
+                    {/* Duration Label */}
                     <div className="flex flex-col items-center">
-                        <span className="text-sm font-medium text-white/50 tracking-widest uppercase mb-1">Duration</span>
-                        <span className="text-5xl font-light tabular-nums tracking-widest drop-shadow-md">
-                            {formatDuration(duration)}
-                        </span>
+                        {/* Placeholder space for Particle Text (approx 80px) */}
+                        <div className="h-20" />
+                        <span className="text-sm font-medium text-white/50 tracking-widest uppercase">Duration</span>
                     </div>
 
-                    {/* Avg Heart Rate */}
+                    {/* Avg Heart Rate Label */}
                     <div className="flex flex-col items-center">
-                        <span className="text-sm font-medium text-white/50 tracking-widest uppercase mb-1">Avg BPM</span>
-                        <span className="text-5xl font-light tabular-nums tracking-widest drop-shadow-md">
-                            {avgBPM || '--'}
-                        </span>
-                    </div>
-
-                    {/* Min/Max (Smaller) */}
-                    <div className="col-span-2 flex justify-center gap-16 mt-2 opacity-80">
-                        <div className="flex flex-col items-center">
-                            <span className="text-xs text-white/40 tracking-wider">MIN</span>
-                            <span className="text-xl font-light">{minBPM || '--'}</span>
-                        </div>
-                        <div className="flex flex-col items-center">
-                            <span className="text-xs text-white/40 tracking-wider">MAX</span>
-                            <span className="text-xl font-light">{maxBPM || '--'}</span>
-                        </div>
+                        {/* Placeholder space for Particle Text (approx 80px) */}
+                        <div className="h-20" />
+                        <span className="text-sm font-medium text-white/50 tracking-widest uppercase">Avg BPM</span>
                     </div>
                 </motion.div>
 

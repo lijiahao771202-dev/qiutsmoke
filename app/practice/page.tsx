@@ -257,6 +257,7 @@ function PracticeContent({ router }: { router: any }) {
     const animState = useRef({
         particles: [] as any[],
         hue: 200,
+        textTargets: [] as { x: number, y: number }[], // NEW: Text Particle Targets
 
         // Sync State (for stale closure fix)
         phase: "IDLE" as Phase,
@@ -359,6 +360,7 @@ function PracticeContent({ router }: { router: any }) {
 
             ctx.fillStyle = `hsla(${effectiveHue}, 80%, 70%, ${effectiveAlpha})`;
             ctx.beginPath();
+            p.x = finalX; p.y = finalY;
             ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
             ctx.fill();
         });
@@ -414,6 +416,7 @@ function PracticeContent({ router }: { router: any }) {
 
             ctx.fillStyle = `hsla(${hue}, 70%, 65%, ${effectiveAlpha})`;
             ctx.beginPath();
+            p.x = finalX; p.y = finalY;
             ctx.arc(finalX, finalY, p.size * 1.2, 0, Math.PI * 2);
             ctx.fill();
         });
@@ -467,6 +470,7 @@ function PracticeContent({ router }: { router: any }) {
 
             ctx.fillStyle = `hsla(${hue}, 15%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
+            p.x = finalX; p.y = finalY;
             ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
             ctx.fill();
         });
@@ -524,6 +528,7 @@ function PracticeContent({ router }: { router: any }) {
 
             ctx.fillStyle = `hsla(${baseHue}, ${isStarCore ? 20 : 70}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
+            p.x = finalX; p.y = finalY;
             ctx.arc(finalX, finalY, isStarCore ? p.size * 2 : p.size, 0, Math.PI * 2);
             ctx.fill();
         });
@@ -592,6 +597,7 @@ function PracticeContent({ router }: { router: any }) {
 
             ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
+            p.x = finalX; p.y = finalY;
             ctx.arc(finalX, finalY, p.size * (1 + (p.dist / 150) * 0.5), 0, Math.PI * 2);
             ctx.fill();
         });
@@ -647,6 +653,7 @@ function PracticeContent({ router }: { router: any }) {
 
             ctx.fillStyle = `hsla(${hue}, ${saturation}%, 70%, ${effectiveAlpha})`;
             ctx.beginPath();
+            p.x = finalX; p.y = finalY;
             ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
             ctx.fill();
         });
@@ -700,6 +707,7 @@ function PracticeContent({ router }: { router: any }) {
 
             ctx.fillStyle = `hsla(${hue}, 60%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
+            p.x = finalX; p.y = finalY;
             ctx.arc(finalX, finalY, p.size * 1.3, 0, Math.PI * 2);
             ctx.fill();
         });
@@ -766,6 +774,7 @@ function PracticeContent({ router }: { router: any }) {
                 ctx.stroke();
             }
 
+            p.x = finalX; p.y = finalY;
             ctx.arc(finalX, finalY, isMainStar ? p.size * 2 : p.size, 0, Math.PI * 2);
             ctx.fill();
         });
@@ -823,6 +832,7 @@ function PracticeContent({ router }: { router: any }) {
 
             ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
+            p.x = finalX; p.y = finalY;
             ctx.arc(finalX, finalY, p.size * (1 + layer * 0.2), 0, Math.PI * 2);
             ctx.fill();
         });
@@ -879,6 +889,7 @@ function PracticeContent({ router }: { router: any }) {
 
             ctx.fillStyle = `hsla(${oceanHue + Math.sin(i) * 20}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
+            p.x = finalX; p.y = finalY;
             ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
             ctx.fill();
         });
@@ -904,7 +915,8 @@ function PracticeContent({ router }: { router: any }) {
             transitionProgress = 1;
             const elapsed = now - (state.completionStartTime || now);
             bloomProgress = Math.min(elapsed / 3000, 1);
-            if (state.theme === "ROSE") bloomProgress = 1 - Math.pow(1 - bloomProgress, 3);
+            if (state.phase === "SUMMARY") bloomProgress = 1; // Keep fully bloomed
+            else if (state.theme === "ROSE") bloomProgress = 1 - Math.pow(1 - bloomProgress, 3);
             else bloomProgress = elapsed / 3000; // Linear for others or custom
         }
 
@@ -938,7 +950,9 @@ function PracticeContent({ router }: { router: any }) {
         ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
         ctx.fillRect(0, 0, width, height);
 
-        if (state.theme === "AURORA") {
+        if (state.phase === "SUMMARY" && state.textTargets && state.textTargets.length > 0) {
+            renderTextMorph(ctx, state, width, height);
+        } else if (state.theme === "AURORA") {
             renderAurora(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "TIDES") {
             renderTides(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
@@ -1184,6 +1198,18 @@ function PracticeContent({ router }: { router: any }) {
         // Show summary after animation completes
         window.setTimeout(() => {
             setPhase("SUMMARY");
+
+            // --- Generate Text Targets for Particles ---
+            const durationText = formatTime(durationMinutes * 60 - timeLeft);
+            const bpmText = heartRateHistory.length > 0
+                ? (Math.round(heartRateHistory.reduce((a, b) => a + b, 0) / heartRateHistory.length) + " BPM")
+                : "-- BPM";
+
+            const canvas = canvasRef.current;
+            if (canvas) {
+                const points = getTextPoints(durationText, bpmText, canvas.width, canvas.height);
+                animState.current.textTargets = points;
+            }
         }, 2000);
     };
 
@@ -1419,3 +1445,83 @@ function PracticeContent({ router }: { router: any }) {
         </div >
     );
 }
+
+// --- Particle Text Morphing Helpers ---
+const getTextPoints = (text1: string, text2: string, width: number, height: number): { x: number, y: number }[] => {
+    if (typeof document === 'undefined') return []; // Server-side safety
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = width;
+    offscreen.height = height;
+    const ctx = offscreen.getContext('2d');
+    if (!ctx) return [];
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Duration (Large)
+    ctx.font = '300 120px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(text1, width / 2, height / 2 - 80);
+
+    // BPM (Small)
+    ctx.font = '200 60px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(text2, width / 2, height / 2 + 60);
+
+    const imageData = ctx.getImageData(0, 0, width, height).data;
+    const points = [];
+    const step = 6; // Scan density - Higher number = fewer particles
+
+    for (let y = 0; y < height; y += step) {
+        for (let x = 0; x < width; x += step) {
+            const index = (y * width + x) * 4;
+            if (imageData[index] > 128) {
+                points.push({ x, y });
+            }
+        }
+    }
+
+    // Shuffle to avoid grid drawing patterns
+    for (let i = points.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [points[i], points[j]] = [points[j], points[i]];
+    }
+
+    return points;
+};
+
+const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number) => {
+    const particles = state.particles;
+    const targets = state.textTargets;
+    if (!targets || targets.length === 0) return;
+
+    const lerp = 0.08;
+
+    particles.forEach((p: any, i: number) => {
+        let tx = p.x;
+        let ty = p.y;
+        let targetAlpha = 0;
+
+        if (i < targets.length) {
+            tx = targets[i].x;
+            ty = targets[i].y;
+            targetAlpha = 0.9;
+        } else {
+            // Excess particles drift loosely
+            const angle = Date.now() * 0.0005 + i * 0.1;
+            tx = width / 2 + Math.cos(angle) * (width * 0.4);
+            ty = height / 2 + Math.sin(angle) * (height * 0.4);
+            targetAlpha = 0.05;
+        }
+
+        // Interpolate
+        p.x += (tx - p.x) * lerp;
+        p.y += (ty - p.y) * lerp;
+
+        // Draw
+        ctx.fillStyle = `rgba(255, 255, 255, ${targetAlpha})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+    });
+};
