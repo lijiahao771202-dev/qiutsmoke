@@ -5,9 +5,10 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Play, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useHaptics } from "@/lib/hooks/useHaptics";
 
 // --- Types ---
-type Phase = "IDLE" | "COUNTDOWN" | "PRACTICING" | "COMPLETED";
+type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
 
 // --- Configuration ---
@@ -19,13 +20,123 @@ const BREATH_CYCLE = {
 
 const PARTICLE_COUNT = 2000;
 const BASE_RADIUS = 100;
-const EXPAND_RADIUS = 280; // Mobile friendly max radius
+const EXPAND_RADIUS = 280;
+
+// --- Helper Functions ---
+function easeInOutCubic(t: number): number {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// -----------------------------------------------------------------------------
+// Component: Ruler Time Selector
+// -----------------------------------------------------------------------------
+const RulerTimeSelector = ({
+    value,
+    onChange,
+    min = 5,
+    max = 60
+}: {
+    value: number,
+    onChange: (val: number) => void,
+    min?: number,
+    max?: number
+}) => {
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const { triggerLight } = useHaptics();
+    const lastValue = useRef(value);
+
+    // Generate ticks: each minute is a tick.
+    // We want some padding before and after so the first/last items can be centered.
+    // Let's say 1 minute = 10px width.
+    const TICK_WIDTH = 12;
+
+    useEffect(() => {
+        if (scrollRef.current) {
+            // Initial scroll position alignment
+            // value 5 -> index 0. value = min + index.
+            const index = value - min;
+            scrollRef.current.scrollLeft = index * TICK_WIDTH;
+        }
+    }, []); // Run once on mount to set initial position
+
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const scrollLeft = e.currentTarget.scrollLeft;
+
+        // Calculate raw value
+        const rawIndex = scrollLeft / TICK_WIDTH;
+        const index = Math.round(rawIndex);
+        let newValue = min + index;
+
+        // Clamp
+        if (newValue < min) newValue = min;
+        if (newValue > max) newValue = max;
+
+        if (newValue !== lastValue.current) {
+            triggerLight();
+            lastValue.current = newValue;
+            onChange(newValue);
+        }
+    };
+
+    return (
+        <div className="w-full relative h-24 flex flex-col items-center justify-center">
+            {/* Current Value Display */}
+            <div className="text-4xl font-light mb-2 text-white tabular-nums tracking-widest">
+                {value}<span className="text-base text-white/40 ml-1">min</span>
+            </div>
+
+            {/* Ruler Container */}
+            <div className="relative w-full h-12 overflow-hidden">
+                {/* Center Indicator Line (Red/Accent) */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[2px] h-8 bg-red-500 z-10 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"></div>
+
+                {/* Scrollable Area */}
+                <div
+                    ref={scrollRef}
+                    className="absolute inset-0 overflow-x-auto hide-scrollbar snap-x snap-mandatory"
+                    onScroll={handleScroll}
+                    style={{ scrollBehavior: 'smooth' }}
+                >
+                    <div
+                        className="flex items-end h-full px-[50%]"
+                        style={{ width: 'max-content' }}
+                    >
+                        {Array.from({ length: max - min + 1 }).map((_, i) => {
+                            const val = min + i;
+                            const isMajor = val % 5 === 0;
+                            return (
+                                <div
+                                    key={val}
+                                    className="flex flex-col items-center justify-end shrink-0 snap-center"
+                                    style={{ width: TICK_WIDTH }}
+                                >
+                                    <div
+                                        className={`w-[1px] bg-white/40 rounded-full`}
+                                        style={{ height: isMajor ? 24 : 12, opacity: isMajor ? 0.8 : 0.3 }}
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Fade Edges */}
+                <div className="absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-black to-transparent pointer-events-none" />
+                <div className="absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-black to-transparent pointer-events-none" />
+            </div>
+        </div>
+    );
+};
+
+
+// -----------------------------------------------------------------------------
+// Component: Main Page
+// -----------------------------------------------------------------------------
 
 export default function ImmersivePracticePage() {
     const router = useRouter();
     const [mounted, setMounted] = useState(false);
 
-    // Ensure we only render portal on client
     useEffect(() => {
         setMounted(true);
         return () => setMounted(false);
@@ -40,6 +151,8 @@ export default function ImmersivePracticePage() {
 }
 
 function PracticeContent({ router }: { router: any }) {
+    const { triggerHeavy, triggerMedium } = useHaptics();
+
     // --- State ---
     const [phase, setPhase] = useState<Phase>("IDLE");
     const [durationMinutes, setDurationMinutes] = useState(15);
@@ -53,15 +166,20 @@ function PracticeContent({ router }: { router: any }) {
     const practiceTimerRef = useRef<NodeJS.Timeout | null>(null);
     const breathTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Animation State Refs
+    // Animation State
+    // We add 'diffuse' properties for the idle cloud state
     const animState = useRef({
-        currentRadius: BASE_RADIUS,
-        targetRadius: BASE_RADIUS,
         particles: [] as any[],
-        hue: 200, // Cyan base
+        hue: 200,
+
+        // Transition
+        transitionStartTime: 0,
+        transitionDuration: 2000,
+
+        // Breath Cycle
+        currentRadius: BASE_RADIUS,
         phaseStartTime: 0,
         phaseDuration: 0,
-        globalAlpha: 0.5,
     });
 
     // --- Initialization ---
@@ -73,16 +191,31 @@ function PracticeContent({ router }: { router: any }) {
     const initParticles = (width: number, height: number) => {
         const particles = [];
         for (let i = 0; i < PARTICLE_COUNT; i++) {
+            // Structured (Target) Properties
             const angle = Math.random() * Math.PI * 2;
             const dist = (Math.random() * 0.5 + 0.5) * BASE_RADIUS;
 
+            // Diffuse (Initial/Idle) Properties - Random Galaxy
+            const diffuseX = (Math.random() - 0.5) * width * 1.5;
+            const diffuseY = (Math.random() - 0.5) * height * 1.5;
+
             particles.push({
-                x: 0,
-                y: 0,
+                // Current Pos (Starts as diffuse)
+                x: diffuseX,
+                y: diffuseY,
+
+                // Diffuse State (Drift)
+                dx: (Math.random() - 0.5) * 0.5,
+                dy: (Math.random() - 0.5) * 0.5,
+                diffuseX,
+                diffuseY,
+
+                // Structured State (Orbit)
                 angle,
-                initialAngle: angle,
                 dist,
                 speed: 0.005 + Math.random() * 0.02,
+
+                // Visuals
                 size: Math.random() * 2 + 0.5,
                 wobble: Math.random() * 20,
             });
@@ -92,58 +225,83 @@ function PracticeContent({ router }: { router: any }) {
 
     const updateParticles = (timestamp: number, width: number, height: number, ctx: CanvasRenderingContext2D) => {
         const state = animState.current;
-
-        // Smooth Radius Transition
-        const now = Date.now();
-        let progress = 0;
-
-        if (phase === "PRACTICING") {
-            const elapsed = now - state.phaseStartTime;
-            progress = Math.min(elapsed / state.phaseDuration, 1);
-
-            // Easing
-            const easeNodes = (t: number) => t < .5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1;
-            const smoothedProgress = easeNodes(progress);
-
-            if (breathPhase === "INHALE") {
-                // Expand
-                state.currentRadius = BASE_RADIUS + (EXPAND_RADIUS - BASE_RADIUS) * smoothedProgress;
-                state.hue = 200 + (20 * smoothedProgress);
-            } else if (breathPhase === "HOLD") {
-                // Maintain
-                state.currentRadius = EXPAND_RADIUS + Math.sin(timestamp * 0.002) * 10;
-                state.hue = 220;
-            } else if (breathPhase === "EXHALE") {
-                // Contract
-                state.currentRadius = EXPAND_RADIUS - (EXPAND_RADIUS - BASE_RADIUS) * smoothedProgress;
-                state.hue = 220 - (20 * smoothedProgress);
-            }
-        } else if (phase === "IDLE") {
-            // Idling
-            state.currentRadius = BASE_RADIUS + Math.sin(timestamp * 0.001) * 20;
-        }
-
-        // Clear Canvas with Fade
-        ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
-        ctx.fillRect(0, 0, width, height);
-
         const centerX = width / 2;
         const centerY = height / 2;
 
+        // --- 1. Transition Logic (Condense) ---
+        const now = Date.now();
+        let transitionProgress = 0; // 0 = Diffuse, 1 = Structured
+
+        if (phase === "TRANSITION_TO_PRACTICE") {
+            const elapsed = now - state.transitionStartTime;
+            transitionProgress = Math.min(elapsed / state.transitionDuration, 1);
+            transitionProgress = easeInOutCubic(transitionProgress); // Smooth implosion
+        } else if (phase === "PRACTICING" || phase === "COUNTDOWN") {
+            transitionProgress = 1;
+        } else {
+            transitionProgress = 0; // IDLE
+        }
+
+        // --- 2. Breath Logic (Only matters if transitionProgress > 0) ---
+        let breathScale = 1;
+        if (phase === "PRACTICING") {
+            const elapsed = now - state.phaseStartTime;
+            const breathProg = Math.min(elapsed / state.phaseDuration, 1);
+            const smoothedBreath = easeInOutCubic(breathProg);
+
+            if (breathPhase === "INHALE") {
+                // Expand
+                state.currentRadius = BASE_RADIUS + (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
+                state.hue = 200 + (20 * smoothedBreath);
+            } else if (breathPhase === "HOLD") {
+                // Maintain
+                state.currentRadius = EXPAND_RADIUS + Math.sin(timestamp * 0.003) * 5;
+                state.hue = 220;
+            } else if (breathPhase === "EXHALE") {
+                // Contract
+                state.currentRadius = EXPAND_RADIUS - (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
+                state.hue = 220 - (20 * smoothedBreath);
+            }
+            breathScale = state.currentRadius / BASE_RADIUS;
+        } else {
+            // Idle breathing for the circle itself
+            state.currentRadius = BASE_RADIUS + Math.sin(timestamp * 0.001) * 10;
+            breathScale = state.currentRadius / BASE_RADIUS;
+        }
+
+
+        // --- 3. Draw ---
+        // Clear Canvas
+        ctx.fillStyle = "rgba(0, 0, 0, 0.15)"; // Slightly more trail for the "implosion" effect
+        ctx.fillRect(0, 0, width, height);
+
         state.particles.forEach((p, i) => {
+            // Update Diffuse State (Drift)
+            p.diffuseX += p.dx;
+            p.diffuseY += p.dy;
+            // Wrap around screen? simpler to just let them drift, they are placeholders
+
+            // Update Structured State (Orbit)
             p.angle += p.speed;
+            const currentOrbitDist = p.dist * breathScale + Math.sin(timestamp * 0.005 + p.wobble) * 5;
+            const orbitX = Math.cos(p.angle) * currentOrbitDist;
+            const orbitY = Math.sin(p.angle) * currentOrbitDist;
 
-            const scaleFactor = state.currentRadius / BASE_RADIUS;
-            const currentDist = p.dist * scaleFactor + Math.sin(timestamp * 0.005 + p.wobble) * 5;
+            // Interpolate Position
+            // X = lerp(diffuseX, centerX + orbitX, t)
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
-            const x = centerX + Math.cos(p.angle) * currentDist;
-            const y = centerY + Math.sin(p.angle) * currentDist;
+            // Color Logic
+            // Diffuse = Dimmer, White/Blue
+            // Structured = Brighter, Cyan
+            let alpha = 0.5 + Math.sin(timestamp * 0.002 + i) * 0.3;
+            if (transitionProgress < 1) alpha *= 0.6; // dimmer when diffuse
 
-            const alpha = 0.5 + Math.sin(timestamp * 0.002 + i) * 0.3;
             ctx.fillStyle = `hsla(${state.hue}, 80%, 70%, ${alpha})`;
 
             ctx.beginPath();
-            ctx.arc(x, y, p.size, 0, Math.PI * 2);
+            ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
             ctx.fill();
         });
     };
@@ -158,7 +316,6 @@ function PracticeContent({ router }: { router: any }) {
         requestRef.current = requestAnimationFrame(draw);
     };
 
-    // Resize Handler
     useEffect(() => {
         const canvas = canvasRef.current;
         if (canvas) {
@@ -182,35 +339,51 @@ function PracticeContent({ router }: { router: any }) {
         };
     }, []);
 
-    // --- Control Logic ---
+    // --- Logic ---
     useEffect(() => {
         animState.current.phaseStartTime = Date.now();
         if (breathPhase === "INHALE") animState.current.phaseDuration = BREATH_CYCLE.INHALE;
         if (breathPhase === "HOLD") animState.current.phaseDuration = BREATH_CYCLE.HOLD;
         if (breathPhase === "EXHALE") animState.current.phaseDuration = BREATH_CYCLE.EXHALE;
-    }, [breathPhase]);
+
+        // Haptics Trigger
+        if (phase === "PRACTICING") {
+            triggerHeavy();
+        }
+    }, [breathPhase, phase]);
 
     const handleStart = () => {
-        setPhase("COUNTDOWN");
-        setCountdown(3);
+        // 1. Trigger Transition (Particles Implode)
+        setPhase("TRANSITION_TO_PRACTICE");
+        animState.current.transitionStartTime = Date.now();
+        triggerMedium();
 
-        const countInterval = setInterval(() => {
-            setCountdown((prev) => {
-                if (prev <= 1) {
-                    clearInterval(countInterval);
-                    startPractice();
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
+        // 2. Wait for transition (2s) then start countdown
+        setTimeout(() => {
+            setPhase("COUNTDOWN");
+            setCountdown(3);
+
+            const countInterval = setInterval(() => {
+                setCountdown((prev) => {
+                    if (prev <= 1) {
+                        clearInterval(countInterval);
+                        startPractice();
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        }, 2000); // 2s transition matches animState.transitionDuration
     };
 
     const startPractice = () => {
         setPhase("PRACTICING");
         setBreathPhase("INHALE");
+
+        // Start Recursive Cycle
         runBreathingCycle("INHALE");
 
+        // Timer
         practiceTimerRef.current = setInterval(() => {
             setTimeLeft((prev) => {
                 if (prev <= 1) {
@@ -244,6 +417,7 @@ function PracticeContent({ router }: { router: any }) {
     const completePractice = () => {
         setPhase("COMPLETED");
         cleanup();
+        triggerMedium();
     };
 
     const cleanup = () => {
@@ -263,7 +437,6 @@ function PracticeContent({ router }: { router: any }) {
             {/* Canvas */}
             <canvas ref={canvasRef} className="absolute inset-0 block touch-none" />
 
-            {/* UI Overlay */}
             <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-safe">
 
                 {/* Header */}
@@ -277,7 +450,7 @@ function PracticeContent({ router }: { router: any }) {
                     <div className="w-[46px]" />
                 </header>
 
-                {/* Center Content */}
+                {/* Center UI */}
                 <main className="flex-1 flex flex-col items-center justify-center -mt-20 pointer-events-none z-40">
                     <AnimatePresence mode="wait">
                         {phase === "COUNTDOWN" && (
@@ -308,48 +481,30 @@ function PracticeContent({ router }: { router: any }) {
                                 </h1>
                             </motion.div>
                         )}
-
-                        {phase === "COMPLETED" && (
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                className="text-center"
-                            >
-                                <h2 className="text-3xl font-light mb-2">Practice Complete</h2>
-                            </motion.div>
-                        )}
                     </AnimatePresence>
                 </main>
 
                 {/* Footer */}
                 <footer className="w-full max-w-sm pb-12 px-6 pointer-events-auto z-50">
                     <AnimatePresence>
+                        {/* IDLE UI */}
                         {phase === "IDLE" && (
                             <motion.div
                                 initial={{ opacity: 0, y: 50 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: 50 }}
-                                className="flex flex-col gap-8"
+                                className="flex flex-col gap-10"
                             >
-                                <div className="space-y-4">
-                                    <div className="flex justify-between text-white/60 text-sm font-medium tracking-wide">
-                                        <span>Duration</span>
-                                        <span>{durationMinutes} min</span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min="5"
-                                        max="60"
-                                        step="5"
-                                        value={durationMinutes}
-                                        onChange={(e) => setDurationMinutes(parseInt(e.target.value))}
-                                        className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer outline-none"
-                                    />
-                                </div>
+                                {/* Scale Selector */}
+                                <RulerTimeSelector
+                                    value={durationMinutes}
+                                    onChange={setDurationMinutes}
+                                />
 
+                                {/* Start Button */}
                                 <button
                                     onClick={handleStart}
-                                    className="w-full py-5 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10 text-xl font-light tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-3"
+                                    className="w-full py-5 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10 text-xl font-light tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
                                 >
                                     <Play size={20} fill="currentColor" />
                                     <span>BEGIN</span>
@@ -362,7 +517,7 @@ function PracticeContent({ router }: { router: any }) {
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 onClick={() => setPhase("IDLE")}
-                                className="w-full py-4 glass-panel rounded-full flex items-center justify-center gap-2 hover:bg-white/10 transition-colors"
+                                className="w-full py-4 glass-panel rounded-full flex items-center justify-center gap-2 hover:bg-white/10 transition-colors pointer-events-auto"
                             >
                                 <RefreshCw size={18} />
                                 <span>Repeat Session</span>
@@ -373,13 +528,12 @@ function PracticeContent({ router }: { router: any }) {
             </div>
 
             <style jsx global>{`
-        input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: white;
-            box-shadow: 0 0 10px rgba(255,255,255,0.8);
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
         }
         .p-safe {
              padding-top: env(safe-area-inset-top);
