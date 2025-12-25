@@ -27,6 +27,12 @@ function easeInOutCubic(t: number): number {
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
+function formatTime(seconds: number): string {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 // -----------------------------------------------------------------------------
 // Component: Ruler Time Selector
 // -----------------------------------------------------------------------------
@@ -200,8 +206,8 @@ function PracticeContent({ router }: { router: any }) {
             const dist = (Math.random() * 0.5 + 0.5) * BASE_RADIUS;
 
             // Diffuse (Initial/Idle) Properties - Random Galaxy
-            const diffuseX = (Math.random() - 0.5) * width * 1.5;
-            const diffuseY = (Math.random() - 0.5) * height * 1.5;
+            const diffuseX = (Math.random() - 0.5) * width * 1.5 + width / 2;
+            const diffuseY = (Math.random() - 0.5) * height * 1.5 + height / 2;
 
             particles.push({
                 // Current Pos (Starts as diffuse)
@@ -517,6 +523,19 @@ function PracticeContent({ router }: { router: any }) {
                                     <Play size={20} fill="currentColor" />
                                     <span>BEGIN</span>
                                 </button>
+                            </motion.div>
+                        )}
+
+                        {phase === "PRACTICING" && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="w-full py-5 text-center"
+                            >
+                                <span className="text-2xl font-thin tracking-widest text-white/50 tabular-nums">
+                                    {formatTime(timeLeft)}
+                                </span>
                             </motion.div>
                         )}
 
