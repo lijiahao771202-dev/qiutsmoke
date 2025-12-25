@@ -157,8 +157,6 @@ export default function ImmersivePracticePage() {
 }
 
 function PracticeContent({ router }: { router: any }) {
-    const { triggerHeavy, triggerMedium } = useHaptics();
-
     // --- State ---
     const [phase, setPhase] = useState<Phase>("IDLE");
     const [durationMinutes, setDurationMinutes] = useState(15);
