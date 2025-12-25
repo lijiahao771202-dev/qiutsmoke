@@ -4,9 +4,10 @@ const nextConfig = {
         unoptimized: true,
     },
     typescript: {
-        // Ignore TypeScript errors during build
         ignoreBuildErrors: true,
     },
+    // 添加空的 turbopack 配置以避免警告
+    turbopack: {},
     // 强制禁用 JS 文件缓存，确保 iOS WebView 每次获取最新代码
     async headers() {
         return [
