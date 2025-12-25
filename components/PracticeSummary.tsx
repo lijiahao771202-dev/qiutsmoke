@@ -16,8 +16,8 @@ export default function PracticeSummary({
 }: PracticeSummaryProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
-    // Calculate statistics
-    const hasData = heartRateHistory.length > 0;
+    // Calculate statistics - need at least 2 data points for a curve
+    const hasData = heartRateHistory && heartRateHistory.length >= 2;
     const avgBPM = hasData
         ? Math.round(heartRateHistory.reduce((a, b) => a + b, 0) / heartRateHistory.length)
         : null;
@@ -26,89 +26,94 @@ export default function PracticeSummary({
 
     // Format duration
     const formatDuration = (seconds: number) => {
+        if (!seconds || seconds < 0) return '0:00';
         const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
+        const secs = Math.round(seconds % 60);
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
     // Draw heart rate curve
     useEffect(() => {
+        if (typeof window === 'undefined') return;
+
         const canvas = canvasRef.current;
         if (!canvas || !hasData) return;
 
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        const dpr = window.devicePixelRatio || 1;
-        const rect = canvas.getBoundingClientRect();
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        ctx.scale(dpr, dpr);
+        try {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return;
 
-        const width = rect.width;
-        const height = rect.height;
-        const padding = 20;
-        const chartWidth = width - padding * 2;
-        const chartHeight = height - padding * 2;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
 
-        // Clear
-        ctx.clearRect(0, 0, width, height);
+            const width = rect.width;
+            const height = rect.height;
+            const padding = 20;
+            const chartWidth = width - padding * 2;
+            const chartHeight = height - padding * 2;
 
-        // Calculate range with some padding
-        const range = (maxBPM! - minBPM!) || 10;
-        const yMin = minBPM! - range * 0.1;
-        const yMax = maxBPM! + range * 0.1;
+            // Clear
+            ctx.clearRect(0, 0, width, height);
 
-        // Draw gradient fill
-        const gradient = ctx.createLinearGradient(0, padding, 0, height - padding);
-        gradient.addColorStop(0, 'rgba(239, 68, 68, 0.3)');
-        gradient.addColorStop(1, 'rgba(239, 68, 68, 0.05)');
+            // Calculate range with some padding
+            const range = Math.max((maxBPM! - minBPM!), 10);
+            const yMin = minBPM! - range * 0.1;
+            const yMax = maxBPM! + range * 0.1;
+            const dataLen = heartRateHistory.length;
 
-        ctx.beginPath();
-        ctx.moveTo(padding, height - padding);
+            // Draw gradient fill
+            const gradient = ctx.createLinearGradient(0, padding, 0, height - padding);
+            gradient.addColorStop(0, 'rgba(239, 68, 68, 0.3)');
+            gradient.addColorStop(1, 'rgba(239, 68, 68, 0.05)');
 
-        heartRateHistory.forEach((bpm, index) => {
-            const x = padding + (index / (heartRateHistory.length - 1)) * chartWidth;
-            const y = height - padding - ((bpm - yMin) / (yMax - yMin)) * chartHeight;
-            if (index === 0) {
-                ctx.lineTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        });
-
-        ctx.lineTo(padding + chartWidth, height - padding);
-        ctx.closePath();
-        ctx.fillStyle = gradient;
-        ctx.fill();
-
-        // Draw line
-        ctx.beginPath();
-        heartRateHistory.forEach((bpm, index) => {
-            const x = padding + (index / (heartRateHistory.length - 1)) * chartWidth;
-            const y = height - padding - ((bpm - yMin) / (yMax - yMin)) * chartHeight;
-            if (index === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        });
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
-        ctx.lineWidth = 2;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-
-        // Draw dots at data points
-        heartRateHistory.forEach((bpm, index) => {
-            const x = padding + (index / (heartRateHistory.length - 1)) * chartWidth;
-            const y = height - padding - ((bpm - yMin) / (yMax - yMin)) * chartHeight;
             ctx.beginPath();
-            ctx.arc(x, y, 3, 0, Math.PI * 2);
-            ctx.fillStyle = '#ef4444';
-            ctx.fill();
-        });
+            ctx.moveTo(padding, height - padding);
 
+            heartRateHistory.forEach((bpm, index) => {
+                const x = padding + (dataLen > 1 ? (index / (dataLen - 1)) * chartWidth : chartWidth / 2);
+                const y = height - padding - ((bpm - yMin) / (yMax - yMin)) * chartHeight;
+                ctx.lineTo(x, y);
+            });
+
+            ctx.lineTo(padding + chartWidth, height - padding);
+            ctx.closePath();
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Draw line
+            ctx.beginPath();
+            heartRateHistory.forEach((bpm, index) => {
+                const x = padding + (dataLen > 1 ? (index / (dataLen - 1)) * chartWidth : chartWidth / 2);
+                const y = height - padding - ((bpm - yMin) / (yMax - yMin)) * chartHeight;
+                if (index === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+
+            // Draw dots at data points
+            heartRateHistory.forEach((bpm, index) => {
+                const x = padding + (dataLen > 1 ? (index / (dataLen - 1)) * chartWidth : chartWidth / 2);
+                const y = height - padding - ((bpm - yMin) / (yMax - yMin)) * chartHeight;
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = '#ef4444';
+                ctx.fill();
+            });
+        } catch (e) {
+            // Silently fail on canvas errors
+        }
     }, [heartRateHistory, hasData, minBPM, maxBPM]);
 
     return (
@@ -116,7 +121,7 @@ export default function PracticeSummary({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
+            className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-md"
         >
             <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
