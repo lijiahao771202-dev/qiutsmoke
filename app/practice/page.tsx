@@ -1162,7 +1162,7 @@ function PracticeContent({ router }: { router: any }) {
 
         // Save session data for summary
         setSessionHeartRates([...heartRateHistory]);
-        setSessionDuration(selectedDuration * 60 - timeLeft);
+        setSessionDuration(durationMinutes * 60 - timeLeft);
 
         // Stop Heart Rate Monitoring
         stopMonitoring();
@@ -1302,7 +1302,7 @@ function PracticeContent({ router }: { router: any }) {
                             setPhase("IDLE");
                             setBreathPhase("INHALE");
                             setCountdown(3);
-                            setTimeLeft(selectedDuration * 60);
+                            setTimeLeft(durationMinutes * 60);
                         }}
                     />
                 )}
