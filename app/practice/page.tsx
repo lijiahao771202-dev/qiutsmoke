@@ -931,35 +931,37 @@ function PracticeContent({ router }: { router: any }) {
                                     onChange={setDurationMinutes}
                                 />
 
-                                {/* Theme Selector */}
-                                <div className="flex justify-center gap-4 py-4">
-                                    {(Object.keys(THEMES) as Theme[]).map((themeKey) => {
-                                        const theme = THEMES[themeKey];
-                                        const isSelected = selectedTheme === themeKey;
-                                        const Icon = theme.icon;
+                                {/* Theme Selector - Scrollable */}
+                                <div className="w-full overflow-x-auto scrollbar-hide py-4 -mx-4 px-4">
+                                    <div className="flex gap-3 w-max snap-x snap-mandatory">
+                                        {(Object.keys(THEMES) as Theme[]).map((themeKey) => {
+                                            const theme = THEMES[themeKey];
+                                            const isSelected = selectedTheme === themeKey;
+                                            const Icon = theme.icon;
 
-                                        return (
-                                            <button
-                                                key={themeKey}
-                                                onClick={() => {
-                                                    setSelectedTheme(themeKey);
-                                                    triggerLight();
-                                                }}
-                                                className={`
-                                                    relative flex flex-col items-center gap-2 p-3 rounded-2xl transition-all
-                                                    ${isSelected ? "bg-white/10 scale-110 border-white/20" : "bg-transparent text-white/40 hover:text-white hover:bg-white/5"}
-                                                    border ${isSelected ? "border-white/20" : "border-transparent"}
-                                                `}
-                                            >
-                                                <div className={`p-2 rounded-full ${isSelected ? theme.color : "text-current"}`}>
-                                                    <Icon size={24} />
-                                                </div>
-                                                <span className="text-[10px] font-medium tracking-widest uppercase">
-                                                    {theme.name}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
+                                            return (
+                                                <button
+                                                    key={themeKey}
+                                                    onClick={() => {
+                                                        setSelectedTheme(themeKey);
+                                                        triggerLight();
+                                                    }}
+                                                    className={`
+                                                        snap-center flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all min-w-[70px]
+                                                        ${isSelected ? "bg-white/15 scale-105 border-white/30" : "bg-white/5 text-white/50 hover:text-white hover:bg-white/10"}
+                                                        border ${isSelected ? "border-white/30" : "border-transparent"}
+                                                    `}
+                                                >
+                                                    <div className={`p-1.5 rounded-full ${isSelected ? theme.color : "text-current"}`}>
+                                                        <Icon size={22} />
+                                                    </div>
+                                                    <span className="text-[9px] font-medium tracking-wider uppercase whitespace-nowrap">
+                                                        {theme.name}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
 
                                 {/* Start Button */}
