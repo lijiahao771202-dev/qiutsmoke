@@ -189,6 +189,43 @@ function PracticeContent({ router }: { router: any }) {
     });
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess } = useHaptics();
 
+    // --- 完成提示音 ---
+    const playCompletionSound = () => {
+        try {
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const masterGain = audioCtx.createGain();
+            masterGain.connect(audioCtx.destination);
+            masterGain.gain.value = 0.3;
+
+            // 愉悦的大三和弦 C-E-G + 上行琶音
+            const frequencies = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+            const delays = [0, 0.08, 0.16, 0.24];
+
+            frequencies.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                osc.connect(gain);
+                gain.connect(masterGain);
+
+                const startTime = audioCtx.currentTime + delays[i];
+                gain.gain.setValueAtTime(0, startTime);
+                gain.gain.linearRampToValueAtTime(0.4, startTime + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.8);
+
+                osc.start(startTime);
+                osc.stop(startTime + 0.85);
+            });
+
+            // 清理
+            setTimeout(() => audioCtx.close(), 2000);
+        } catch (e) {
+            console.warn('[Sound] Completion sound failed:', e);
+        }
+    };
+
     // --- Refs ---
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const hapticTimers = useRef<NodeJS.Timeout[]>([]);
@@ -870,14 +907,14 @@ function PracticeContent({ router }: { router: any }) {
         clearHapticTimers();
 
         if (phaseType === "INHALE") {
-            // 🌬️ 连续感：48次震动，每83ms一次，从轻到重
-            // Light×16 → Medium×16 → Heavy×16
-            for (let i = 0; i < 48; i++) {
-                const delay = i * 83; // 0, 83, 166, ... 3901
+            // 🌬️ 连续感：70次震动，每57ms一次，从轻到重
+            // Light×23 → Medium×23 → Heavy×24
+            for (let i = 0; i < 70; i++) {
+                const delay = i * 57; // 0, 57, 114, ... 3933
                 let trigger: () => void;
-                if (i < 16) {
+                if (i < 23) {
                     trigger = triggerLight;
-                } else if (i < 32) {
+                } else if (i < 46) {
                     trigger = triggerMedium;
                 } else {
                     trigger = triggerHeavy;
@@ -1012,13 +1049,28 @@ function PracticeContent({ router }: { router: any }) {
     const completePractice = () => {
         setPhase("COMPLETED");
         animState.current.completionStartTime = Date.now(); // Start dispersion
-        cleanup();
 
-        // 🎊 完成震动：3次Heavy连击 + Success通知，确保用户感知到
+        // 先清理呼吸相关的定时器
+        if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
+        if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
+        clearHapticTimers();
+
+        // 🎊 完成反馈：震动 + 提示音（使用 window.setTimeout 独立于组件生命周期）
+        console.log('[Practice] 🎊 Triggering completion feedback...');
         triggerHeavy();
-        setTimeout(() => triggerHeavy(), 150);
-        setTimeout(() => triggerHeavy(), 300);
-        setTimeout(() => triggerSuccess(), 500);
+        window.setTimeout(() => {
+            console.log('[Practice] Heavy 2');
+            triggerHeavy();
+        }, 150);
+        window.setTimeout(() => {
+            console.log('[Practice] Heavy 3');
+            triggerHeavy();
+        }, 300);
+        window.setTimeout(() => {
+            console.log('[Practice] Success + Sound');
+            triggerSuccess();
+            playCompletionSound();
+        }, 500);
     };
 
     const cleanup = () => {
