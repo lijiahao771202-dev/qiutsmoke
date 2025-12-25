@@ -905,68 +905,123 @@ function PracticeContent({ router }: { router: any }) {
         const centerY = height / 2;
         const now = timestamp * 0.001;
 
-        state.particles.forEach((p: any, i: number) => {
-            const noise1 = Math.sin(now * 0.5 + p.angle * 3);
-            const noise2 = Math.cos(now * 0.3 + p.dist * 0.01);
-            const turbulence = (noise1 + noise2) * 0.5;
+        // Use additive blending for "light" effect
+        ctx.globalCompositeOperation = "screen";
 
+        state.particles.forEach((p: any, i: number) => {
+            // --- 1. Position Logic: Suspended Crystal Shards ---
+
+            // Idle State: Slow, majestic rotation of a suspended constellation
             if (transitionProgress < 1) {
-                p.diffuseX += Math.cos(p.angle + now) * 0.5;
-                p.diffuseY += Math.sin(p.angle + now) * 0.5;
-                p.diffuseX += (centerX - p.diffuseX) * 0.01;
-                p.diffuseY += (centerY - p.diffuseY) * 0.01;
+                // Maintain distance but rotate to prevent "clumping"
+                const idleSpeed = 0.05 + p.speed * 0.1;
+                p.angle += idleSpeed * 0.01;
+
+                // Gentle "breathing" in idle to keep it alive
+                const idleBreath = 1 + Math.sin(now * 0.5 + p.angle) * 0.05;
+
+                p.diffuseX = centerX + Math.cos(p.angle) * p.dist * idleBreath * 1.2; // Spread out more
+                p.diffuseY = centerY + Math.sin(p.angle) * p.dist * idleBreath * 1.2;
             } else {
-                p.angle += 0.002;
+                // Active State: Crystalline alignment
+                p.angle += 0.001; // Very slow, rigid rotation
             }
 
-            const tension = breathScale;
-            const displacement = turbulence * 20 * (1 - tension * 0.5);
-            let targetDist = (p.dist + displacement) * breathScale;
-            const aberration = Math.sin(p.angle * 6 + now * 2) * 5;
-            targetDist += aberration;
+            // Breath Animation: Shards align and intensify
+            // Inhale: Expansion + Alignment (Order)
+            // Hold: Maximum tension, crystal clarity
+            // Exhale: Slight dispersion (Chaos)
 
+            // Calculate Crystal Facet Position
+            // Use discrete angles to simulate geometric shape (e.g. Dodecahedron)
+            const facetCount = 8;
+            const discreteAngle = Math.round(p.angle * facetCount / (Math.PI * 2)) * (Math.PI * 2 / facetCount);
+            // Blend between organic and geometric based on breath
+            // Hold phase -> Geometric (Crystal)
+            // Exhale -> Organic (Dispersed)
+
+            let currentAngle = p.angle;
+            let currentDist = p.dist * breathScale;
+
+            // Apply "Refraction Distortion"
+            // Light bends at different indices.
+            // We simulate this by offsetting positions based on viewing angle (p.angle vs time)
+            const refractionOffset = Math.sin(p.angle * 3 + now) * 10 * breathScale;
+            currentDist += refractionOffset;
+
+            // Bloom (Intro/Outro) - Shattering Glass
             let burstX = 0;
             let burstY = 0;
             if (bloomProgress > 0) {
-                const burstSpeed = bloomProgress * 600;
-                burstX = Math.cos(p.angle + bloomProgress * 10) * burstSpeed;
-                burstY = Math.sin(p.angle + bloomProgress * 10) * burstSpeed;
+                const burstSpeed = bloomProgress * 800;
+                // High velocity shattering
+                burstX = Math.cos(p.angle) * burstSpeed * (1 + Math.random() * 0.5);
+                burstY = Math.sin(p.angle) * burstSpeed * (1 + Math.random() * 0.5);
             }
 
-            const orbitX = Math.cos(p.angle) * targetDist + burstX;
-            const orbitY = Math.sin(p.angle) * targetDist + burstY;
-            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
-            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+            // Interpolate final position
+            // Note: We calculate Diffuse position continuously above, so we transition to "Target" which is the crystal form
+            // But since this is a generative theme, "Target" and "Diffuse" conceptually merge.
+            // We'll use the specific crystal logic for the "Target" state of the transition.
 
-            const angleIncidence = Math.abs(Math.sin(p.angle + now));
-            const fresnel = Math.pow(1 - angleIncidence, 3);
+            const crystalX = centerX + Math.cos(currentAngle) * currentDist;
+            const crystalY = centerY + Math.sin(currentAngle) * currentDist;
 
-            let h = 190 + Math.sin(now + p.dist) * 20;
-            let s = 10 + fresnel * 40;
-            let l = 70 + fresnel * 30;
+            const finalX = p.diffuseX + (crystalX - p.diffuseX) * transitionProgress + burstX;
+            const finalY = p.diffuseY + (crystalY - p.diffuseY) * transitionProgress + burstY;
 
-            const causticCheck = Math.sin(p.x * 0.1 + p.y * 0.1 + now * 2);
-            if (causticCheck > 0.9) {
-                l = 100;
-                s = 0;
-            }
+            // --- 2. Advanced Appearance (Glass/Refraction) ---
 
-            if (Math.abs(turbulence) > 0.8 || fresnel > 0.8) {
-                h = (p.angle * 57 + now * 50) % 360;
+            // Fresnel Effect: Edges are brighter and more reflective
+            // View vector is effectively "Z", normal is radial.
+            // Dot product simplified for 2D radial gradient.
+            const distRatio = Math.min(1, Math.sqrt(Math.pow(finalX - centerX, 2) + Math.pow(finalY - centerY, 2)) / (width / 3));
+            const fresnel = Math.pow(distRatio, 2); // 0 at center, 1 at edge
+
+            // Base Color: PURE GLASS (White/Silver/Cyan)
+            // No flowing rainbow slush. Rainbows only appear as dispersion features.
+
+            let h = 195; // Cyan base
+            let s = 10 * fresnel; // Desaturated center (clear glass), slight color at edge
+            let l = 60 + fresnel * 40; // Darker center (transparency), white edge (reflection)
+            let a = 0.4 + fresnel * 0.6; // Transparent center
+
+            // Dispersion (Prism Effect)
+            // Occurs at edges (high fresnel) OR high energy states (bloom/hold)
+            const dispersionThreshold = 0.7;
+            if (fresnel > dispersionThreshold || bloomProgress > 0) {
+                // Spectral dispersion: Hue depends on viewing angle
+                h = (p.angle * 180 / Math.PI + now * 50) % 360;
                 s = 80;
-                l = 80;
+                l = 70 + bloomProgress * 30;
+                a = 0.8;
             }
 
-            const alpha = 0.3 + fresnel * 0.5;
-            ctx.fillStyle = `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
+            // Caustics / Sparkles
+            // Occasional intense sparkles on facets
+            const sparkleNoise = Math.sin(p.angle * 20 + now * 3);
+            if (sparkleNoise > 0.95) {
+                h = 0; s = 0; l = 100; a = 1.0; // Pure white sparkle
+            }
+
+            ctx.fillStyle = `hsla(${h}, ${s}%, ${l}%, ${a})`;
             ctx.beginPath();
-            const size = p.size * (0.8 + fresnel);
+
+            // Shard Shape: Draw small diamonds or lines instead of circles for texture?
+            // For now, varying sized circles with high blur stretch can simulate it, 
+            // but let's stick to circles for performance but modulate size.
+            const size = p.size * (0.5 + fresnel * 1.5 + bloomProgress * 3);
+
             ctx.arc(finalX, finalY, size, 0, Math.PI * 2);
             ctx.fill();
 
+            // Keep particles updated for next frame
             p.x = finalX;
             p.y = finalY;
         });
+
+        // Reset blend mode
+        ctx.globalCompositeOperation = "source-over";
     };
 
     const renderPrism = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
