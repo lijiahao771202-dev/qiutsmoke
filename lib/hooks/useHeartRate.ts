@@ -104,7 +104,7 @@ export function useHeartRate(): UseHeartRateReturn {
 
             console.log('[HeartRate] Querying HealthKit from', fiveMinutesAgo.toISOString(), 'to', now.toISOString());
 
-            const result = await CapacitorHealthkit.querySampleType({
+            const result = await CapacitorHealthkit.queryHKitSampleType({
                 sampleName: 'heartRate',
                 startDate: fiveMinutesAgo.toISOString(),
                 endDate: now.toISOString(),
