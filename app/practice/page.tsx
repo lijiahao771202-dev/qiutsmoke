@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Play, RefreshCw, CheckCircle2, Moon, Waves, Flower2 } from "lucide-react";
+import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { KeepAwake } from "@capacitor-community/keep-awake";
@@ -11,13 +11,14 @@ import { KeepAwake } from "@capacitor-community/keep-awake";
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
-type Theme = "ROSE" | "ECLIPSE" | "TIDES";
+type Theme = "ROSE" | "AURORA" | "TIDES" | "ZEN";
 
 // --- Theme Config ---
 const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
     ROSE: { name: "Rose", icon: Flower2, color: "text-pink-400" },
-    ECLIPSE: { name: "Eclipse", icon: Moon, color: "text-amber-400" },
+    AURORA: { name: "Aurora", icon: Sparkles, color: "text-purple-400" },
     TIDES: { name: "Tides", icon: Waves, color: "text-cyan-400" },
+    ZEN: { name: "Zen", icon: CircleDot, color: "text-stone-300" },
 };
 
 // --- Configuration ---
@@ -294,54 +295,83 @@ function PracticeContent({ router }: { router: any }) {
         });
     };
 
-    const renderEclipse = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+    const renderAurora = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // Solar colors
-        const solarHue = 45; // Gold
+        // Aurora colors: Purple, Cyan, Green
+        const baseHues = [280, 180, 120]; // Purple, Cyan, Green
 
         state.particles.forEach((p: any, i: number) => {
-            p.diffuseX += p.dx;
-            p.diffuseY += p.dy;
-            p.angle += p.speed * 0.5; // Slower, majesty
+            // Curtain-like vertical wave motion
+            p.diffuseX += p.dx * 0.5;
+            p.diffuseY += p.dy * 0.3;
+            p.angle += p.speed * 0.3;
 
-            // Eclipse Core Logic
-            // Start: Ring forms tightly
-            // Inhale: Ring glows and corona expands
-            // Exhale: Ring collapses (Black hole)
+            // Aurora forms vertical bands that wave horizontally
+            // Use angle to determine horizontal position, dist for height variance
+            const waveOffset = Math.sin(timestamp * 0.001 + p.angle * 2) * 50 * breathScale;
+            const curtainY = Math.sin(p.angle * 4 + timestamp * 0.002) * 30;
 
-            let effectiveDist = BASE_RADIUS;
-            let effectiveAlpha = 0.3 + Math.random() * 0.2;
-            let effectiveSize = p.size;
+            let effectiveDist = (p.dist * 0.5 + 80) * breathScale;
+            let effectiveAlpha = 0.4 + Math.sin(timestamp * 0.003 + i * 0.5) * 0.3;
 
-            if (transitionProgress > 0) {
-                // Determine ring state based on breath
-                // We override standard breathScale logic for Eclipse unique physics
-
-                // Breath State Logic recalculation just for this theme? 
-                // We can reuse breathScale as a proxy for "Energy"
-
-                // Radius: 
-                // Inhale: Expand slightly -> 150
-                // Hold: Stable
-                // Exhale: Contract to small -> 50
-
-                effectiveDist = BASE_RADIUS * breathScale;
-
-                // Eclipse needs a "Tight" ring. 
-                // Reduce noise/scatter.
-                const noise = Math.sin(timestamp * 0.01 + p.angle * 10) * (5 * breathScale); // Corona noise
-                effectiveDist += noise;
-
-                // Supernova on complete
-                if (bloomProgress > 0) {
-                    effectiveDist += bloomProgress * width; // Blast out
-                    effectiveAlpha = 1 - bloomProgress; // Fade out
-                    effectiveSize *= (1 + bloomProgress * 5);
-                }
+            // Bloom: Dissolve upward like lights fading to sky
+            let yOffset = 0;
+            if (bloomProgress > 0) {
+                yOffset = -bloomProgress * height * 0.5;
+                effectiveAlpha *= (1 - bloomProgress);
             }
 
+            const orbitX = Math.cos(p.angle) * effectiveDist + waveOffset;
+            const orbitY = Math.sin(p.angle) * effectiveDist * 0.6 + curtainY;
+
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress + yOffset;
+
+            if (transitionProgress < 1) effectiveAlpha *= 0.5;
+
+            // Cycle through aurora colors
+            const hueIndex = i % 3;
+            const hue = baseHues[hueIndex] + Math.sin(timestamp * 0.001 + i * 0.1) * 20;
+
+            ctx.fillStyle = `hsla(${hue}, 70%, 65%, ${effectiveAlpha})`;
+            ctx.beginPath();
+            ctx.arc(finalX, finalY, p.size * 1.2, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    };
+
+    const renderZen = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        // Zen: Minimalist concentric rings, slow rotation
+        // Colors: Soft white, light grey, subtle gold
+
+        state.particles.forEach((p: any, i: number) => {
+            p.diffuseX += p.dx * 0.2; // Very slow drift
+            p.diffuseY += p.dy * 0.2;
+            p.angle += p.speed * 0.15; // Very slow rotation
+
+            // Concentric rings - particles stick to their ring distance more strictly
+            // Quantize dist to create distinct rings
+            const ringIndex = Math.floor(p.dist / 30); // 0, 1, 2, 3...
+            const ringDist = (ringIndex * 40 + 60) * breathScale;
+
+            let effectiveAlpha = 0.3 + (ringIndex % 2) * 0.2; // Alternating opacity
+
+            // Subtle ripple effect on breathing
+            const ripple = Math.sin(timestamp * 0.002 - ringIndex * 0.5) * 5;
+
+            // Bloom: Ripples expand outward and fade
+            let expansionOffset = 0;
+            if (bloomProgress > 0) {
+                expansionOffset = bloomProgress * width * 0.4;
+                effectiveAlpha *= (1 - bloomProgress * 0.8);
+            }
+
+            const effectiveDist = ringDist + ripple + expansionOffset;
             const orbitX = Math.cos(p.angle) * effectiveDist;
             const orbitY = Math.sin(p.angle) * effectiveDist;
 
@@ -350,19 +380,15 @@ function PracticeContent({ router }: { router: any }) {
 
             if (transitionProgress < 1) effectiveAlpha *= 0.4;
 
-            // Eclipse is GOLD/WHITE
-            ctx.fillStyle = `hsla(${solarHue}, 100%, 70%, ${effectiveAlpha})`;
+            // Zen colors: Warm white to subtle gold
+            const hue = 45 + ringIndex * 5; // Slight gold tint
+            const lightness = 85 - ringIndex * 3; // Outer rings slightly darker
+
+            ctx.fillStyle = `hsla(${hue}, 15%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
-            ctx.arc(finalX, finalY, effectiveSize, 0, Math.PI * 2);
+            ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
             ctx.fill();
         });
-
-        // Add Glow manually if structured
-        if (transitionProgress > 0.5) {
-            ctx.globalCompositeOperation = "lighter";
-            // Optional: Render a blurred glow ring?
-            // Canvas render is expensive, stick to particles for now or use large transparent particles
-        }
     };
 
     const renderTides = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
@@ -470,10 +496,12 @@ function PracticeContent({ router }: { router: any }) {
         ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
         ctx.fillRect(0, 0, width, height);
 
-        if (state.theme === "ECLIPSE") {
-            renderEclipse(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        if (state.theme === "AURORA") {
+            renderAurora(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "TIDES") {
             renderTides(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "ZEN") {
+            renderZen(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else {
             renderRose(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale); // Default
         }
