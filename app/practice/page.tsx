@@ -3,12 +3,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Play, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit, Cherry, Star, Flower } from "lucide-react";
+import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit, Cherry, Star, Flower } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { useHeartRate } from "@/lib/hooks/useHeartRate";
 import HeartRateIndicator from "@/components/HeartRateGraph";
-import PracticeSummary from "@/components/PracticeSummary";
+import PracticeCompletionView from "@/components/PracticeCompletionView";
 import { KeepAwake } from "@capacitor-community/keep-awake";
 
 // --- Types ---
@@ -900,7 +900,7 @@ function PracticeContent({ router }: { router: any }) {
             transitionProgress = easeInOutCubic(transitionProgress);
         } else if (state.phase === "PRACTICING" || state.phase === "COUNTDOWN") {
             transitionProgress = 1;
-        } else if (state.phase === "COMPLETED") {
+        } else if (state.phase === "COMPLETED" || state.phase === "SUMMARY") {
             transitionProgress = 1;
             const elapsed = now - (state.completionStartTime || now);
             bloomProgress = Math.min(elapsed / 3000, 1);
@@ -1181,11 +1181,10 @@ function PracticeContent({ router }: { router: any }) {
             playCompletionSound();
         }, 500);
 
-        // Immediate transition to SUMMARY which handles the "Session Complete" animation internally
-        // We use a small timeout to let the state update settle and ensuring clean unmount of practice components
+        // Show summary after animation completes
         window.setTimeout(() => {
             setPhase("SUMMARY");
-        }, 100);
+        }, 2000);
     };
 
     const cleanup = () => {
@@ -1272,7 +1271,27 @@ function PracticeContent({ router }: { router: any }) {
                     />
                 )}
 
-
+                {phase === "COMPLETED" && (
+                    <motion.div
+                        key="done"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="flex flex-col items-center justify-center gap-4 text-center"
+                    >
+                        <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: "spring", damping: 12 }}
+                            className="p-4 rounded-full bg-green-500/20 text-green-400 mb-2"
+                        >
+                            <CheckCircle2 size={48} />
+                        </motion.div>
+                        <h1 className="text-3xl font-light text-white tracking-widest">
+                            Session Complete
+                        </h1>
+                    </motion.div>
+                )}
 
 
                 {/* Footer UI (Independent of Center UI) */}
@@ -1354,16 +1373,27 @@ function PracticeContent({ router }: { router: any }) {
                             </motion.div>
                         )}
 
-
+                        {phase === "COMPLETED" && (
+                            <motion.button
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                onClick={() => setPhase("IDLE")}
+                                className="w-full py-4 glass-panel rounded-full flex items-center justify-center gap-2 hover:bg-white/10 transition-colors pointer-events-auto"
+                            >
+                                <RefreshCw size={18} />
+                                <span>Repeat Session</span>
+                            </motion.button>
+                        )}
                     </AnimatePresence>
                 </footer>
             </div >
 
-            {/* Practice Summary Modal - Outside pointer-events-none container */}
+            {/* Practice Summary - Immersive Overlay */}
             {phase === "SUMMARY" && (
-                <PracticeSummary
+                <PracticeCompletionView
                     duration={sessionDuration}
                     heartRateHistory={sessionHeartRates}
+                    theme={selectedTheme}
                     onClose={() => {
                         setPhase("IDLE");
                         setBreathPhase("INHALE");
