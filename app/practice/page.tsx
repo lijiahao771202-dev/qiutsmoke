@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot } from "lucide-react";
+import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { KeepAwake } from "@capacitor-community/keep-awake";
@@ -11,7 +11,7 @@ import { KeepAwake } from "@capacitor-community/keep-awake";
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
-type Theme = "ROSE" | "AURORA" | "TIDES" | "ZEN";
+type Theme = "ROSE" | "AURORA" | "TIDES" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL";
 
 // --- Theme Config ---
 const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
@@ -19,6 +19,9 @@ const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
     AURORA: { name: "Aurora", icon: Sparkles, color: "text-purple-400" },
     TIDES: { name: "Tides", icon: Waves, color: "text-cyan-400" },
     ZEN: { name: "Zen", icon: CircleDot, color: "text-stone-300" },
+    GALAXY: { name: "Galaxy", icon: Orbit, color: "text-indigo-400" },
+    INFERNO: { name: "Inferno", icon: Flame, color: "text-orange-500" },
+    CRYSTAL: { name: "Crystal", icon: Gem, color: "text-emerald-400" },
 };
 
 // --- Configuration ---
@@ -391,6 +394,144 @@ function PracticeContent({ router }: { router: any }) {
         });
     };
 
+    const renderGalaxy = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        // Galaxy: Deep space colors with spiral arms
+        state.particles.forEach((p: any, i: number) => {
+            p.diffuseX += p.dx * 0.3;
+            p.diffuseY += p.dy * 0.3;
+
+            // Spiral rotation - angle increases with distance for twist effect
+            const spiralFactor = p.dist * 0.01;
+            p.angle += p.speed * 0.4 + spiralFactor * 0.001;
+
+            // Spiral arm effect: particles cluster in spiral bands
+            const armPhase = (p.angle * 2 + p.dist * 0.02 + timestamp * 0.0005) % (Math.PI * 2);
+            const armIntensity = (Math.sin(armPhase) + 1) * 0.5; // 0-1
+
+            let effectiveDist = p.dist * breathScale * (0.8 + armIntensity * 0.4);
+            let effectiveAlpha = 0.2 + armIntensity * 0.6; // Brighter in spiral arms
+
+            // Bloom: Galaxy explosion - particles fly outward rapidly
+            if (bloomProgress > 0) {
+                effectiveDist += bloomProgress * width * 0.8;
+                effectiveAlpha *= (1 - bloomProgress);
+            }
+
+            const orbitX = Math.cos(p.angle) * effectiveDist;
+            const orbitY = Math.sin(p.angle) * effectiveDist * 0.6; // Flatten for tilted galaxy
+
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+
+            if (transitionProgress < 1) effectiveAlpha *= 0.5;
+
+            // Galaxy colors: Deep purple, blue, with star-white highlights
+            const baseHue = 260 + Math.sin(p.angle) * 30; // Purple to blue
+            const isStarCore = i % 20 === 0; // Some particles are bright stars
+            const lightness = isStarCore ? 90 : 50 + armIntensity * 20;
+            const saturation = isStarCore ? 20 : 70;
+
+            ctx.fillStyle = `hsla(${baseHue}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
+            ctx.beginPath();
+            ctx.arc(finalX, finalY, isStarCore ? p.size * 2 : p.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    };
+
+    const renderInferno = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        // Inferno: Flames rising upward, fiery colors
+        state.particles.forEach((p: any, i: number) => {
+            // Flames flicker and rise
+            p.diffuseX += p.dx + Math.sin(timestamp * 0.01 + i) * 0.5;
+            p.diffuseY += p.dy - 0.5; // Rise upward
+            p.angle += p.speed * 0.5;
+
+            // Flame shape: particles form a teardrop/flame shape
+            const flickerSpeed = 0.008;
+            const flicker = Math.sin(timestamp * flickerSpeed + p.angle * 3 + i * 0.1) * 15;
+
+            let effectiveDist = p.dist * breathScale + flicker;
+            let effectiveAlpha = 0.4 + Math.sin(timestamp * 0.005 + i) * 0.3;
+
+            // Fire rises toward top - offset Y
+            const riseOffset = Math.sin(p.angle) * 30 * breathScale;
+
+            // Bloom: Explosion - flames burst in all directions
+            if (bloomProgress > 0) {
+                effectiveDist += bloomProgress * width * 0.5;
+                effectiveAlpha *= (1 - bloomProgress * 0.7);
+            }
+
+            const orbitX = Math.cos(p.angle) * effectiveDist;
+            const orbitY = Math.sin(p.angle) * effectiveDist - riseOffset;
+
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+
+            if (transitionProgress < 1) effectiveAlpha *= 0.5;
+
+            // Fire colors: Red core -> Orange -> Yellow tips
+            const distRatio = p.dist / 150; // Normalize distance
+            const hue = 0 + distRatio * 45; // Red (0) to Orange (30) to Yellow (45)
+            const lightness = 50 + distRatio * 20;
+
+            ctx.fillStyle = `hsla(${hue}, 100%, ${lightness}%, ${effectiveAlpha})`;
+            ctx.beginPath();
+            ctx.arc(finalX, finalY, p.size * (1 + distRatio * 0.5), 0, Math.PI * 2); // Larger at edges
+            ctx.fill();
+        });
+    };
+
+    const renderCrystal = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        // Crystal: Rainbow prism effect, structured facets
+        state.particles.forEach((p: any, i: number) => {
+            p.diffuseX += p.dx * 0.2;
+            p.diffuseY += p.dy * 0.2;
+            p.angle += p.speed * 0.2;
+
+            // Crystal facets: Particles form hexagonal-ish patterns
+            const facetAngle = Math.floor(p.angle / (Math.PI / 3)) * (Math.PI / 3); // Snap to 60-degree segments
+            const shimmer = Math.sin(timestamp * 0.003 + i * 0.5) * 10;
+
+            let effectiveDist = p.dist * breathScale + shimmer;
+            let effectiveAlpha = 0.3 + Math.abs(Math.sin(timestamp * 0.002 + p.angle * 2)) * 0.5; // Sparkle
+
+            // Bloom: Shatter - particles scatter like breaking crystal
+            let shatterOffset = 0;
+            if (bloomProgress > 0) {
+                shatterOffset = bloomProgress * (Math.random() - 0.5) * 200;
+                effectiveDist += bloomProgress * width * 0.3;
+                effectiveAlpha *= (1 - bloomProgress * 0.6);
+            }
+
+            const orbitX = Math.cos(p.angle) * effectiveDist + shatterOffset;
+            const orbitY = Math.sin(p.angle) * effectiveDist + shatterOffset * 0.5;
+
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+
+            if (transitionProgress < 1) effectiveAlpha *= 0.4;
+
+            // Rainbow prism: Hue cycles based on angle position
+            const hue = (p.angle * 180 / Math.PI + timestamp * 0.05) % 360; // Full rainbow cycle
+            const saturation = 80 + Math.sin(timestamp * 0.002 + i) * 15;
+
+            ctx.fillStyle = `hsla(${hue}, ${saturation}%, 70%, ${effectiveAlpha})`;
+            ctx.beginPath();
+            ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    };
+
     const renderTides = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
         const centerY = height / 2;
@@ -502,6 +643,12 @@ function PracticeContent({ router }: { router: any }) {
             renderTides(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "ZEN") {
             renderZen(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "GALAXY") {
+            renderGalaxy(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "INFERNO") {
+            renderInferno(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "CRYSTAL") {
+            renderCrystal(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else {
             renderRose(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale); // Default
         }
