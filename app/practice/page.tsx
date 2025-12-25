@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Play, RefreshCw } from "lucide-react";
+import { X, Play, RefreshCw, CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 
@@ -165,6 +165,7 @@ function PracticeContent({ router }: { router: any }) {
     const [timeLeft, setTimeLeft] = useState(0);
     const [breathPhase, setBreathPhase] = useState<BreathPhase>("INHALE");
     const [countdown, setCountdown] = useState(3);
+    const { triggerHeavy, triggerMedium, triggerSuccess } = useHaptics();
 
     // --- Refs ---
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -185,6 +186,7 @@ function PracticeContent({ router }: { router: any }) {
         // Transition
         transitionStartTime: 0,
         transitionDuration: 2000,
+        completionStartTime: 0, // NEW
 
         // Breath Cycle
         currentRadius: BASE_RADIUS,
@@ -248,6 +250,11 @@ function PracticeContent({ router }: { router: any }) {
             transitionProgress = easeInOutCubic(transitionProgress); // Smooth implosion
         } else if (state.phase === "PRACTICING" || state.phase === "COUNTDOWN") {
             transitionProgress = 1;
+        } else if (state.phase === "COMPLETED") {
+            // disperse back to 0
+            const elapsed = now - (state.completionStartTime || now);
+            transitionProgress = 1 - Math.min(elapsed / 2000, 1);
+            transitionProgress = easeInOutCubic(transitionProgress);
         } else {
             transitionProgress = 0; // IDLE
         }
@@ -430,8 +437,9 @@ function PracticeContent({ router }: { router: any }) {
 
     const completePractice = () => {
         setPhase("COMPLETED");
+        animState.current.completionStartTime = Date.now(); // Start dispersion
         cleanup();
-        triggerMedium();
+        triggerSuccess();
     };
 
     const cleanup = () => {
@@ -492,6 +500,28 @@ function PracticeContent({ router }: { router: any }) {
                                     {breathPhase === "INHALE" && "吸 气"}
                                     {breathPhase === "HOLD" && "屏 气"}
                                     {breathPhase === "EXHALE" && "呼 气"}
+                                </h1>
+                            </motion.div>
+                        )}
+
+                        {phase === "COMPLETED" && (
+                            <motion.div
+                                key="done"
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="flex flex-col items-center justify-center gap-4 text-center"
+                            >
+                                <motion.div
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    transition={{ type: "spring", damping: 12 }}
+                                    className="p-4 rounded-full bg-green-500/20 text-green-400 mb-2"
+                                >
+                                    <CheckCircle2 size={48} />
+                                </motion.div>
+                                <h1 className="text-3xl font-light text-white tracking-widest">
+                                    Session Complete
                                 </h1>
                             </motion.div>
                         )}
