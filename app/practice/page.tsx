@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit } from "lucide-react";
+import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit, Cherry, Star, Flower } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { KeepAwake } from "@capacitor-community/keep-awake";
@@ -11,7 +11,7 @@ import { KeepAwake } from "@capacitor-community/keep-awake";
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
-type Theme = "ROSE" | "AURORA" | "TIDES" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL";
+type Theme = "ROSE" | "AURORA" | "TIDES" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS";
 
 // --- Theme Config ---
 const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
@@ -22,6 +22,9 @@ const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
     GALAXY: { name: "Galaxy", icon: Orbit, color: "text-indigo-400" },
     INFERNO: { name: "Inferno", icon: Flame, color: "text-orange-500" },
     CRYSTAL: { name: "Crystal", icon: Gem, color: "text-emerald-400" },
+    SAKURA: { name: "Sakura", icon: Cherry, color: "text-pink-300" },
+    STARFALL: { name: "Starfall", icon: Star, color: "text-yellow-300" },
+    LOTUS: { name: "Lotus", icon: Flower, color: "text-amber-200" },
 };
 
 // --- Configuration ---
@@ -532,6 +535,158 @@ function PracticeContent({ router }: { router: any }) {
         });
     };
 
+    const renderSakura = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        // Sakura: Cherry blossoms drifting down gently
+        state.particles.forEach((p: any, i: number) => {
+            // Gentle falling motion with side-to-side sway
+            p.diffuseX += p.dx + Math.sin(timestamp * 0.002 + i * 0.5) * 0.3;
+            p.diffuseY += p.dy + 0.3; // Fall downward
+            p.angle += p.speed * 0.1;
+
+            // Sway pattern for petal-like motion
+            const sway = Math.sin(timestamp * 0.003 + p.angle * 2) * 30 * breathScale;
+            const flutter = Math.cos(timestamp * 0.005 + i) * 10;
+
+            let effectiveDist = p.dist * breathScale * 0.8 + sway;
+            let effectiveAlpha = 0.4 + Math.sin(timestamp * 0.002 + i * 0.3) * 0.3;
+
+            // Bloom: Petals scatter in a gentle wind burst
+            if (bloomProgress > 0) {
+                const scatter = bloomProgress * (Math.random() - 0.3) * 300;
+                effectiveDist += scatter;
+                effectiveAlpha *= (1 - bloomProgress * 0.7);
+            }
+
+            const orbitX = Math.cos(p.angle) * effectiveDist + flutter;
+            const orbitY = Math.sin(p.angle) * effectiveDist * 0.7;
+
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+
+            if (transitionProgress < 1) effectiveAlpha *= 0.5;
+
+            // Sakura colors: Soft pink to white
+            const hue = 340 + Math.sin(i * 0.1) * 15; // Pink range
+            const lightness = 80 + Math.sin(timestamp * 0.002 + i) * 10;
+
+            ctx.fillStyle = `hsla(${hue}, 60%, ${lightness}%, ${effectiveAlpha})`;
+            ctx.beginPath();
+            ctx.arc(finalX, finalY, p.size * 1.3, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    };
+
+    const renderStarfall = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        // Starfall: Shooting stars with trails
+        state.particles.forEach((p: any, i: number) => {
+            // Fast diagonal motion for shooting star effect
+            const speed = 0.5 + (i % 10) * 0.1;
+            p.diffuseX += p.dx * speed;
+            p.diffuseY += p.dy * speed + 0.2;
+            p.angle += p.speed * 0.6;
+
+            // Streak effect - elongated motion
+            const streakLength = 15 + Math.sin(timestamp * 0.01 + i) * 5;
+
+            let effectiveDist = p.dist * breathScale;
+            let effectiveAlpha = 0.3 + Math.random() * 0.4; // Twinkle
+
+            // Bloom: Stars explode outward in all directions
+            if (bloomProgress > 0) {
+                effectiveDist += bloomProgress * width * 0.6;
+                effectiveAlpha *= (1 - bloomProgress);
+            }
+
+            const orbitX = Math.cos(p.angle) * effectiveDist;
+            const orbitY = Math.sin(p.angle) * effectiveDist;
+
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+
+            if (transitionProgress < 1) effectiveAlpha *= 0.4;
+
+            // Star colors: Golden yellow to white
+            const hue = 45 + Math.sin(i * 0.2) * 15;
+            const lightness = 70 + Math.sin(timestamp * 0.003 + i) * 20;
+            const isMainStar = i % 15 === 0;
+
+            ctx.fillStyle = `hsla(${hue}, 80%, ${lightness}%, ${effectiveAlpha})`;
+            ctx.beginPath();
+
+            if (isMainStar && transitionProgress > 0.5) {
+                // Draw streak for main stars
+                const trailX = finalX - Math.cos(p.angle) * streakLength;
+                const trailY = finalY - Math.sin(p.angle) * streakLength;
+                ctx.moveTo(trailX, trailY);
+                ctx.lineTo(finalX, finalY);
+                ctx.strokeStyle = `hsla(${hue}, 80%, ${lightness}%, ${effectiveAlpha * 0.5})`;
+                ctx.lineWidth = p.size;
+                ctx.stroke();
+            }
+
+            ctx.arc(finalX, finalY, isMainStar ? p.size * 2 : p.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    };
+
+    const renderLotus = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        // Lotus: Peaceful multi-layered petals opening
+        state.particles.forEach((p: any, i: number) => {
+            p.diffuseX += p.dx * 0.1; // Very slow
+            p.diffuseY += p.dy * 0.1;
+            p.angle += p.speed * 0.08; // Slow rotation
+
+            // Layer-based petal arrangement (inner to outer)
+            const layer = Math.floor(p.dist / 40); // 0, 1, 2, 3...
+            const petalCount = 8 + layer * 4; // More petals in outer layers
+            const petalWidth = (Math.PI * 2) / petalCount;
+            const petalPhase = Math.floor(p.angle / petalWidth) * petalWidth;
+
+            // Petal opening animation tied to breath
+            const openAmount = breathScale * (1 + layer * 0.3);
+            let effectiveDist = (layer * 45 + 50) * openAmount;
+
+            // Gentle floating motion
+            const float = Math.sin(timestamp * 0.001 + layer) * 3;
+            effectiveDist += float;
+
+            let effectiveAlpha = 0.4 + (1 - layer * 0.1);
+
+            // Bloom: Petals gently open and ascend
+            if (bloomProgress > 0) {
+                effectiveDist += bloomProgress * 100;
+                effectiveAlpha *= (1 - bloomProgress * 0.5);
+            }
+
+            const orbitX = Math.cos(p.angle) * effectiveDist;
+            const orbitY = Math.sin(p.angle) * effectiveDist * 0.9;
+
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+
+            if (transitionProgress < 1) effectiveAlpha *= 0.4;
+
+            // Lotus colors: White center to soft gold/cream outer
+            const hue = 40 + layer * 5; // Gold tint increases outward
+            const saturation = 20 + layer * 10;
+            const lightness = 90 - layer * 5;
+
+            ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
+            ctx.beginPath();
+            ctx.arc(finalX, finalY, p.size * (1 + layer * 0.2), 0, Math.PI * 2);
+            ctx.fill();
+        });
+    };
+
     const renderTides = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
         const centerY = height / 2;
@@ -649,6 +804,12 @@ function PracticeContent({ router }: { router: any }) {
             renderInferno(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "CRYSTAL") {
             renderCrystal(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "SAKURA") {
+            renderSakura(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "STARFALL") {
+            renderStarfall(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "LOTUS") {
+            renderLotus(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else {
             renderRose(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale); // Default
         }
@@ -697,25 +858,48 @@ function PracticeContent({ router }: { router: any }) {
         clearHapticTimers();
 
         if (phaseType === "INHALE") {
-            // Ramp up: Light -> Light -> Medium -> Heavy
-            const t1 = setTimeout(triggerLight, 0);
-            const t2 = setTimeout(triggerLight, 1000);
-            const t3 = setTimeout(triggerMedium, 2000);
-            const t4 = setTimeout(triggerHeavy, 3000);
-            hapticTimers.current.push(t1, t2, t3, t4);
+            // 🌬️ 连续感：16次震动，每250ms一次，从轻到重
+            // Light×5 → Medium×5 → Heavy×6
+            for (let i = 0; i < 16; i++) {
+                const delay = i * 250; // 0, 250, 500, ... 3750
+                let trigger: () => void;
+                if (i < 5) {
+                    trigger = triggerLight;
+                } else if (i < 10) {
+                    trigger = triggerMedium;
+                } else {
+                    trigger = triggerHeavy;
+                }
+                hapticTimers.current.push(setTimeout(trigger, delay));
+            }
         } else if (phaseType === "HOLD") {
-            // Heartbeat: Light..... Light.....
-            const beat = () => { triggerLight(); setTimeout(triggerLight, 150); }; // double tap? or just single? Plan says single/heartbeat. Let's do single gentle pulses.
-            // Actually plan said: T+0, 2, 4, 6.
-            const p1 = setTimeout(triggerLight, 0);
-            const p2 = setTimeout(triggerLight, 2000);
-            const p3 = setTimeout(triggerLight, 4000);
-            const p4 = setTimeout(triggerLight, 6000);
-            hapticTimers.current.push(p1, p2, p3, p4);
+            // 💓 心跳感：双击节奏 (thump-thump... thump-thump...)
+            // 每对心跳间隔约2秒
+            const heartbeat = (delay: number) => {
+                hapticTimers.current.push(
+                    setTimeout(triggerMedium, delay),
+                    setTimeout(triggerLight, delay + 150),
+                );
+            };
+            heartbeat(0);
+            heartbeat(2000);
+            heartbeat(4000);
+            heartbeat(6000);
         } else if (phaseType === "EXHALE") {
-            // Release: Heavy -> Silence
-            const t1 = setTimeout(triggerHeavy, 0);
-            hapticTimers.current.push(t1);
+            // 🍃 连续释放感：16次震动，每500ms一次，从重到轻
+            // Heavy×5 → Medium×5 → Light×6
+            for (let i = 0; i < 16; i++) {
+                const delay = i * 500; // 0, 500, 1000, ... 7500
+                let trigger: () => void;
+                if (i < 5) {
+                    trigger = triggerHeavy;
+                } else if (i < 10) {
+                    trigger = triggerMedium;
+                } else {
+                    trigger = triggerLight;
+                }
+                hapticTimers.current.push(setTimeout(trigger, delay));
+            }
         }
     };
 
