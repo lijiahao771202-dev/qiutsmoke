@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit, Cherry, Star, Flower } from "lucide-react";
@@ -16,6 +16,24 @@ import { getApiUrl } from "@/lib/config";
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
 type Theme = "LIQUID" | "ROSE" | "AURORA" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
+type BreathingPatternId = "478" | "box" | "focus" | "sigh" | "energy";
+
+interface BreathingPattern {
+    id: BreathingPatternId;
+    name: string;
+    description: string;
+    inhale: number; // seconds
+    hold: number;   // seconds (0 = skip hold phase)
+    exhale: number; // seconds
+}
+
+const BREATHING_PATTERNS: BreathingPattern[] = [
+    { id: "478", name: "4-7-8 放松", description: "经典深度放松", inhale: 4, hold: 7, exhale: 8 },
+    { id: "box", name: "方形呼吸", description: "平衡与专注", inhale: 4, hold: 4, exhale: 4 },
+    { id: "focus", name: "专注呼吸", description: "无屏息，简单有效", inhale: 5, hold: 0, exhale: 5 },
+    { id: "sigh", name: "生理叹息", description: "模拟自然叹息", inhale: 4, hold: 0, exhale: 8 },
+    { id: "energy", name: "能量呼吸", description: "快节奏提神", inhale: 2, hold: 2, exhale: 2 },
+];
 
 // --- Theme Config ---
 const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
@@ -192,7 +210,25 @@ function PracticeContent({ router }: { router: any }) {
         }
         return "ROSE";
     });
+    const [selectedPattern, setSelectedPattern] = useState<BreathingPatternId>(() => {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("breathingPattern") as BreathingPatternId | null;
+            if (saved && BREATHING_PATTERNS.find(p => p.id === saved)) return saved;
+        }
+        return "478";
+    });
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess } = useHaptics();
+
+    // 计算当前呼吸模式的毫秒值
+    const currentPattern = useMemo(() => {
+        const pattern = BREATHING_PATTERNS.find(p => p.id === selectedPattern) || BREATHING_PATTERNS[0];
+        return {
+            ...pattern,
+            INHALE: pattern.inhale * 1000,
+            HOLD: pattern.hold * 1000,
+            EXHALE: pattern.exhale * 1000,
+        };
+    }, [selectedPattern]);
 
     // --- Heart Rate ---
     const {
@@ -1164,9 +1200,9 @@ function PracticeContent({ router }: { router: any }) {
         animState.current.theme = selectedTheme; // Update theme in ref
 
         animState.current.phaseStartTime = Date.now();
-        if (breathPhase === "INHALE") animState.current.phaseDuration = BREATH_CYCLE.INHALE;
-        if (breathPhase === "HOLD") animState.current.phaseDuration = BREATH_CYCLE.HOLD;
-        if (breathPhase === "EXHALE") animState.current.phaseDuration = BREATH_CYCLE.EXHALE;
+        if (breathPhase === "INHALE") animState.current.phaseDuration = currentPattern.INHALE;
+        if (breathPhase === "HOLD") animState.current.phaseDuration = currentPattern.HOLD;
+        if (breathPhase === "EXHALE") animState.current.phaseDuration = currentPattern.EXHALE;
 
         // Haptics Trigger
         if (phase === "PRACTICING") {
@@ -1254,9 +1290,19 @@ function PracticeContent({ router }: { router: any }) {
         let duration: number;
 
         switch (currentPhase) {
-            case "INHALE": nextPhase = "HOLD"; duration = BREATH_CYCLE.INHALE; break;
-            case "HOLD": nextPhase = "EXHALE"; duration = BREATH_CYCLE.HOLD; break;
-            case "EXHALE": nextPhase = "INHALE"; duration = BREATH_CYCLE.EXHALE; break;
+            case "INHALE":
+                // Skip HOLD if duration is 0
+                nextPhase = currentPattern.HOLD > 0 ? "HOLD" : "EXHALE";
+                duration = currentPattern.INHALE;
+                break;
+            case "HOLD":
+                nextPhase = "EXHALE";
+                duration = currentPattern.HOLD;
+                break;
+            case "EXHALE":
+                nextPhase = "INHALE";
+                duration = currentPattern.EXHALE;
+                break;
         }
 
         setBreathPhase(currentPhase);
@@ -1495,6 +1541,38 @@ function PracticeContent({ router }: { router: any }) {
                                                     <span className="text-[9px] font-medium tracking-wider uppercase whitespace-nowrap">
                                                         {theme.name}
                                                     </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Breathing Pattern Selector */}
+                                <div className="w-full">
+                                    <div className="text-xs text-white/40 mb-3 uppercase tracking-wider text-center">呼吸模式</div>
+                                    <div className="flex gap-2 flex-wrap justify-center">
+                                        {BREATHING_PATTERNS.map((pattern) => {
+                                            const isSelected = selectedPattern === pattern.id;
+                                            return (
+                                                <button
+                                                    key={pattern.id}
+                                                    onClick={() => {
+                                                        setSelectedPattern(pattern.id);
+                                                        localStorage.setItem("breathingPattern", pattern.id);
+                                                        triggerLight();
+                                                    }}
+                                                    className={`
+                                                        px-3 py-2 rounded-xl text-xs transition-all
+                                                        ${isSelected
+                                                            ? "bg-white/15 border-white/30 text-white"
+                                                            : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white"}
+                                                        border ${isSelected ? "border-white/30" : "border-transparent"}
+                                                    `}
+                                                >
+                                                    <div className="font-medium">{pattern.name}</div>
+                                                    <div className="text-[10px] text-white/30 mt-0.5">
+                                                        {pattern.inhale}-{pattern.hold > 0 ? `${pattern.hold}-` : ""}{pattern.exhale}
+                                                    </div>
                                                 </button>
                                             );
                                         })}
