@@ -1112,7 +1112,7 @@ function PracticeContent({ router }: { router: any }) {
         // Start Heart Rate Monitoring (if authorized)
         if (!isAuthorized) {
             const granted = await requestPermission();
-            if (granted) startMonitoring();
+            if (granted) startMonitoring(true); // Pass true to bypass state timing issue
         } else {
             startMonitoring();
         }
