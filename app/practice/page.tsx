@@ -863,7 +863,8 @@ function PracticeContent({ router }: { router: any }) {
                 p.diffuseX += Math.sin(now + i) * 0.2;
                 p.diffuseY += Math.cos(now + i) * 0.2;
             } else {
-                p.angle += 0.002;
+                // Active State: Organic rotation
+                p.angle += 0.002 + Math.sin(now * 0.5 + i * 0.1) * 0.001;
             }
 
             const tension = 1 - (breathScale - 1);
@@ -893,25 +894,23 @@ function PracticeContent({ router }: { router: any }) {
             const l = 75 + fresnel * 25;
             const alpha = 0.25 + fresnel * 0.65;
 
-            // DRAW BODY
+            // DRAW BODY - OPTIMIZED
             ctx.fillStyle = `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
-            ctx.shadowBlur = fresnel * 12;
-            ctx.shadowColor = `hsla(${baseHue}, 50%, 80%, 0.4)`;
+
             ctx.beginPath();
-            const bodySize = p.size * (0.85 + fresnel * 0.3);
+            const bodySize = p.size * (0.9 + fresnel * 0.5);
             ctx.arc(finalX, finalY, bodySize, 0, Math.PI * 2);
             ctx.fill();
 
             // DRAW SPECULAR
-            if (fresnel > 0.55 || Math.sin(now * 3 + i) > 0.85) {
-                ctx.fillStyle = `rgba(255, 255, 255, ${0.4 + fresnel * 0.5})`;
-                ctx.shadowBlur = 0;
+            if (fresnel > 0.6 || Math.sin(now * 3 + i) > 0.9) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${0.5 + fresnel * 0.5})`;
                 ctx.beginPath();
-                ctx.arc(finalX - bodySize * 0.3, finalY - bodySize * 0.3, bodySize * 0.35, 0, Math.PI * 2);
+                ctx.arc(finalX - bodySize * 0.25, finalY - bodySize * 0.25, bodySize * 0.35, 0, Math.PI * 2);
                 ctx.fill();
             }
 
-            ctx.shadowBlur = 0;
+            // ctx.shadowBlur = 0; // Not needed as we didn't set it
             p.x = finalX; p.y = finalY;
         });
     };
