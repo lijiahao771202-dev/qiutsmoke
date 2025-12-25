@@ -197,6 +197,7 @@ function PracticeContent({ router }: { router: any }) {
         heartRateHistory,
         isMonitoring,
         isAuthorized,
+        error: heartRateError,
         requestPermission,
         startMonitoring,
         stopMonitoring,
@@ -1260,7 +1261,7 @@ function PracticeContent({ router }: { router: any }) {
                     <HeartRateIndicator
                         currentBPM={currentBPM}
                         isMonitoring={isMonitoring}
-                        error={error}
+                        error={heartRateError}
                     />
                 )}
 
