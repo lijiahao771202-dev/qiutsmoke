@@ -189,7 +189,7 @@ function PracticeContent({ router }: { router: any }) {
             const saved = localStorage.getItem("practiceTheme") as Theme | null;
             if (saved && THEMES[saved]) return saved;
         }
-        return "LIQUID";
+        return "ROSE";
     });
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess } = useHaptics();
 
@@ -258,7 +258,6 @@ function PracticeContent({ router }: { router: any }) {
     // We add 'diffuse' properties for the idle cloud state
     const animState = useRef({
         particles: [] as any[],
-        introStartTime: Date.now(),
         hue: 200,
         textTargets: [] as { x: number, y: number }[], // NEW: Text Particle Targets
         bpmParticleStartIndex: 0, // NEW: Index where BPM particles start
@@ -845,130 +844,77 @@ function PracticeContent({ router }: { router: any }) {
         });
     };
 
-        const renderLiquid = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+    const renderLiquid = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
         const centerY = height / 2;
         const now = timestamp * 0.001;
 
-        // --- INTRO ANIMATION ---
-        const introDuration = 1200; // 1.2s for impact
-        // state.introStartTime is populated in init
-        const timeSinceMount = Date.now() - (state.introStartTime || 0);
-        let introProgress = 0;
-        let isIntro = false;
-        
-        if (timeSinceMount < introDuration) {
-            isIntro = true;
-            // Ease Out Quart for rapid convergence
-            const t = timeSinceMount / introDuration;
-            introProgress = 1 - Math.pow(1 - t, 4); 
-        } else if (timeSinceMount < introDuration + 500) {
-             introProgress = 1;
-        }
-
-        // Use proper glass blending
-        const originalComp = ctx.globalCompositeOperation;
-        ctx.globalCompositeOperation = "screen";
-
         state.particles.forEach((p: any, i: number) => {
-            // --- 1. Physics & Motion ---
-            // Idle State: Stable floating cloud
+            const fluidNoise = Math.sin(now * 0.4 + p.angle * 2) * Math.cos(now * 0.3 + p.dist * 0.01);
+
             if (transitionProgress < 1) {
-                const speed = 0.2;
-                const offsetX = Math.cos(now * speed + p.angle) * 30;
-                const offsetY = Math.sin(now * speed * 1.5 + i) * 20;
-
-                const homeX = Math.cos(p.angle) * p.dist;
-                const homeY = Math.sin(p.angle) * p.dist;
-
-                p.diffuseX += (homeX + offsetX - p.diffuseX) * 0.05;
-                p.diffuseY += (homeY + offsetY - p.diffuseY) * 0.05;
+                // FIXED IDLE: Soft orbit, no clumping
+                const idleOrbitRadius = 160 + Math.sin(i * 0.1) * 40;
+                p.angle += 0.0005 + (i % 3) * 0.0001;
+                const targetIdleX = centerX + Math.cos(p.angle) * idleOrbitRadius;
+                const targetIdleY = centerY + Math.sin(p.angle) * idleOrbitRadius;
+                p.diffuseX += (targetIdleX - p.diffuseX) * 0.005;
+                p.diffuseY += (targetIdleY - p.diffuseY) * 0.005;
+                p.diffuseX += Math.sin(now + i) * 0.2;
+                p.diffuseY += Math.cos(now + i) * 0.2;
             } else {
-                p.angle += 0.0002; 
+                p.angle += 0.002;
             }
 
-            // --- 2. Breathing Logic ---
-            let targetDist = p.dist * breathScale;
-            
-            // Crystallization Tension (Hold)
-            const tension = Math.max(0, breathScale - 1.0);
-            const distortion = Math.cos(p.angle * 6) * 10 * tension;
-            targetDist += distortion;
+            const tension = 1 - (breathScale - 1);
+            const displacement = fluidNoise * 20 * tension;
+            const lensEffect = Math.sin(p.angle * 6 + now) * 12;
+            let targetDist = (p.dist + displacement + lensEffect) * breathScale;
 
-            // Bloom
-            let burstX = 0;
-            let burstY = 0;
+            let burstX = 0; let burstY = 0;
             if (bloomProgress > 0) {
-                 const burstSpeed = bloomProgress * 800;
-                 burstX = Math.cos(p.angle) * burstSpeed;
-                 burstY = Math.sin(p.angle) * burstSpeed;
+                const burstSpeed = bloomProgress * 800;
+                burstX = Math.cos(p.angle + bloomProgress * 10) * burstSpeed;
+                burstY = Math.sin(p.angle + bloomProgress * 10) * burstSpeed;
             }
 
             const orbitX = Math.cos(p.angle) * targetDist + burstX;
             const orbitY = Math.sin(p.angle) * targetDist + burstY;
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
-            let finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
-            let finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+            const dot = Math.abs(Math.sin(p.angle + now * 0.5));
+            const fresnel = Math.pow(dot, 4);
 
-            // --- INTRO OVERRIDE ---
-            if (isIntro && introProgress < 1) {
-                // "Big Bang" Scatter Origin
-                // Use deterministic random positions based on index
-                const angle = p.angle + (i * 137.5) * 0.1; 
-                const dist = Math.max(width, height) * (0.8 + Math.sin(i) * 0.4); // Full screen scatter
-                
-                const scatterX = centerX + Math.cos(angle) * dist;
-                const scatterY = centerY + Math.sin(angle) * dist;
-                
-                finalX = scatterX + (finalX - scatterX) * introProgress;
-                finalY = scatterY + (finalY - scatterY) * introProgress;
-            }
+            // Glass Color Strategy (Strict)
+            const baseHue = 194;
+            const h = baseHue + Math.sin(now * 0.1 + p.angle) * 8;
+            const s = 10 + fresnel * 35;
+            const l = 75 + fresnel * 25;
+            const alpha = 0.25 + fresnel * 0.65;
 
-            // --- 3. Visuals ---
-            const angleIncidence = Math.abs(Math.sin(p.angle + now * 0.2));
-            const fresnel = Math.pow(1 - angleIncidence, 3);
-
-            // Monochromatic / Glassy Cyan-Silver
-            let h = 195; 
-            let s = 10;
-            let l = 80 + fresnel * 20;
-            let a = 0.3 + fresnel * 0.6;
-
-            // Prism Dispersion (Edges only)
-            if (fresnel > 0.95 && (!isIntro || introProgress > 0.5)) {
-                h = (p.angle * 100 + now * 50) % 360; 
-                s = 80;
-                l = 90;
-            }
-
-            // High tension highlight & INTRO FLASH
-            if (isIntro && introProgress < 1) {
-                if (introProgress < 0.3) {
-                     l = 100; a = 1.0; 
-                     ctx.shadowBlur = 15; ctx.shadowColor = "white";
-                }
-            } else if (tension > 0.3 && Math.random() > 0.99) {
-                l = 100; a = 0.9;
-                ctx.shadowBlur = 5; 
-                ctx.shadowColor = "white";
-            } else {
-                ctx.shadowBlur = 0;
-            }
-
-            ctx.fillStyle = `hsla(${h}, ${s}%, ${l}%, ${a})`;
+            // DRAW BODY
+            ctx.fillStyle = `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
+            ctx.shadowBlur = fresnel * 12;
+            ctx.shadowColor = `hsla(${baseHue}, 50%, 80%, 0.4)`;
             ctx.beginPath();
-            let size = p.size * (0.6 + fresnel * 0.6);
-            if (isIntro && introProgress < 1) size *= (1.5 - introProgress * 0.5);
-            ctx.arc(finalX, finalY, size, 0, Math.PI * 2);
+            const bodySize = p.size * (0.85 + fresnel * 0.3);
+            ctx.arc(finalX, finalY, bodySize, 0, Math.PI * 2);
             ctx.fill();
-            
-            p.x = finalX;
-            p.y = finalY;
-        });
-        
-        ctx.globalCompositeOperation = originalComp;
-    };
 
+            // DRAW SPECULAR
+            if (fresnel > 0.55 || Math.sin(now * 3 + i) > 0.85) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${0.4 + fresnel * 0.5})`;
+                ctx.shadowBlur = 0;
+                ctx.beginPath();
+                ctx.arc(finalX - bodySize * 0.3, finalY - bodySize * 0.3, bodySize * 0.35, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.shadowBlur = 0;
+            p.x = finalX; p.y = finalY;
+        });
+    };
 
     const renderPrism = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
@@ -1771,7 +1717,6 @@ const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: numbe
     else if (state.theme === "AURORA") { baseHue = 160; baseSat = 70; dynamicColor = true; }
     else if (state.theme === "GALAXY") { baseHue = 260; baseSat = 80; dynamicColor = true; }
     else if (state.theme === "INFERNO") { baseHue = 20; baseSat = 90; dynamicColor = true; }
-    else if (state.theme === "TIDES") { baseHue = 200; baseSat = 80; dynamicColor = true; }
     else if (state.theme === "ZEN") { baseHue = 45; baseSat = 60; dynamicColor = true; }
     else if (state.theme === "PRISM") { baseHue = 180; baseSat = 20; dynamicColor = true; }
     else { baseHue = 0; baseSat = 0; }
