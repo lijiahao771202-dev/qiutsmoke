@@ -7,7 +7,7 @@ import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, 
 import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { useHeartRate } from "@/lib/hooks/useHeartRate";
-import HeartRateGraph from "@/components/HeartRateGraph";
+import HeartRateIndicator from "@/components/HeartRateGraph";
 import { KeepAwake } from "@capacitor-community/keep-awake";
 
 // --- Types ---
@@ -1252,39 +1252,39 @@ function PracticeContent({ router }: { router: any }) {
                                 </span>
                             </motion.div>
                         )}
-
-                        {/* Heart Rate Graph */}
-                        {phase === "PRACTICING" && (
-                            <HeartRateGraph
-                                data={heartRateHistory}
-                                currentBPM={currentBPM}
-                                isMonitoring={isMonitoring}
-                            />
-                        )}
-
-                        {phase === "COMPLETED" && (
-                            <motion.div
-                                key="done"
-                                initial={{ opacity: 0, scale: 0.8 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="flex flex-col items-center justify-center gap-4 text-center"
-                            >
-                                <motion.div
-                                    initial={{ scale: 0 }}
-                                    animate={{ scale: 1 }}
-                                    transition={{ type: "spring", damping: 12 }}
-                                    className="p-4 rounded-full bg-green-500/20 text-green-400 mb-2"
-                                >
-                                    <CheckCircle2 size={48} />
-                                </motion.div>
-                                <h1 className="text-3xl font-light text-white tracking-widest">
-                                    Session Complete
-                                </h1>
-                            </motion.div>
-                        )}
                     </AnimatePresence>
                 </div>
+
+                {/* Heart Rate Indicator - Top Right */}
+                {phase === "PRACTICING" && (
+                    <HeartRateIndicator
+                        currentBPM={currentBPM}
+                        isMonitoring={isMonitoring}
+                        error={error}
+                    />
+                )}
+
+                {phase === "COMPLETED" && (
+                    <motion.div
+                        key="done"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="flex flex-col items-center justify-center gap-4 text-center"
+                    >
+                        <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: "spring", damping: 12 }}
+                            className="p-4 rounded-full bg-green-500/20 text-green-400 mb-2"
+                        >
+                            <CheckCircle2 size={48} />
+                        </motion.div>
+                        <h1 className="text-3xl font-light text-white tracking-widest">
+                            Session Complete
+                        </h1>
+                    </motion.div>
+                )}
 
                 {/* Footer UI (Independent of Center UI) */}
                 <div className="w-full flex flex-col items-center justify-end pointer-events-none z-40 flex-1">
@@ -1378,7 +1378,7 @@ function PracticeContent({ router }: { router: any }) {
                         )}
                     </AnimatePresence>
                 </footer>
-            </div>
+            </div >
 
             <style jsx global>{`
         .hide-scrollbar::-webkit-scrollbar {

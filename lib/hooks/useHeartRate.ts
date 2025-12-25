@@ -92,18 +92,26 @@ export function useHeartRate(): UseHeartRateReturn {
 
     // Fetch the latest heart rate samples
     const fetchHeartRate = useCallback(async () => {
-        if (!CapacitorHealthkit || !isAuthorized) return;
+        console.log('[HeartRate] fetchHeartRate called, isAuthorized:', isAuthorized, 'plugin:', !!CapacitorHealthkit);
+        if (!CapacitorHealthkit || !isAuthorized) {
+            console.log('[HeartRate] Skipping fetch - not ready');
+            return;
+        }
 
         try {
             const now = new Date();
-            const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+            const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000); // Look back 5 minutes
+
+            console.log('[HeartRate] Querying HealthKit from', fiveMinutesAgo.toISOString(), 'to', now.toISOString());
 
             const result = await CapacitorHealthkit.querySampleType({
                 sampleName: 'heartRate',
-                startDate: oneMinuteAgo.toISOString(),
+                startDate: fiveMinutesAgo.toISOString(),
                 endDate: now.toISOString(),
-                limit: 10,
+                limit: 20,
             });
+
+            console.log('[HeartRate] Query result:', JSON.stringify(result, null, 2));
 
             if (result && result.resultData && result.resultData.length > 0) {
                 // Get the most recent heart rate value
@@ -111,6 +119,7 @@ export function useHeartRate(): UseHeartRateReturn {
                 const latestSample = samples[samples.length - 1];
                 const latestBPM = Math.round(latestSample.value);
 
+                console.log('[HeartRate] Got BPM:', latestBPM);
                 setCurrentBPM(latestBPM);
 
                 // Add to history (maintaining max length)
@@ -124,10 +133,12 @@ export function useHeartRate(): UseHeartRateReturn {
 
                 lastQueryTimeRef.current = now;
                 setError(null);
+            } else {
+                console.log('[HeartRate] No data returned from HealthKit');
             }
         } catch (err: any) {
-            console.error('Failed to fetch heart rate:', err);
-            // Don't set error for transient failures during monitoring
+            console.error('[HeartRate] Failed to fetch heart rate:', err);
+            setError(err.message || '读取心率失败');
         }
     }, [isAuthorized]);
 
