@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
+import BiometricChart from './BiometricChart';
+import LiquidBackground from './LiquidBackground';
 
 interface PracticeSummaryProps {
     duration: number; // in seconds
@@ -14,9 +16,7 @@ export default function PracticeSummary({
     heartRateHistory,
     onClose
 }: PracticeSummaryProps) {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-
-    // Calculate statistics - need at least 2 data points for a curve
+    // Statistics
     const hasData = heartRateHistory && heartRateHistory.length >= 2;
     const avgBPM = hasData
         ? Math.round(heartRateHistory.reduce((a, b) => a + b, 0) / heartRateHistory.length)
@@ -24,7 +24,7 @@ export default function PracticeSummary({
     const minBPM = hasData ? Math.min(...heartRateHistory) : null;
     const maxBPM = hasData ? Math.max(...heartRateHistory) : null;
 
-    // Format duration
+    // Formatting
     const formatDuration = (seconds: number) => {
         if (!seconds || seconds < 0) return '0:00';
         const mins = Math.floor(seconds / 60);
@@ -32,181 +32,160 @@ export default function PracticeSummary({
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
-    // Draw heart rate curve
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-
-        const canvas = canvasRef.current;
-        if (!canvas || !hasData) return;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        try {
-            const dpr = window.devicePixelRatio || 1;
-            const rect = canvas.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) return;
-
-            canvas.width = rect.width * dpr;
-            canvas.height = rect.height * dpr;
-            ctx.scale(dpr, dpr);
-
-            const width = rect.width;
-            const height = rect.height;
-            const padding = 20;
-            const chartWidth = width - padding * 2;
-            const chartHeight = height - padding * 2;
-
-            // Clear
-            ctx.clearRect(0, 0, width, height);
-
-            // Calculate range with some padding
-            const range = Math.max((maxBPM! - minBPM!), 10);
-            const yMin = minBPM! - range * 0.1;
-            const yMax = maxBPM! + range * 0.1;
-            const dataLen = heartRateHistory.length;
-
-            // Draw gradient fill
-            const gradient = ctx.createLinearGradient(0, padding, 0, height - padding);
-            gradient.addColorStop(0, 'rgba(239, 68, 68, 0.3)');
-            gradient.addColorStop(1, 'rgba(239, 68, 68, 0.05)');
-
-            ctx.beginPath();
-            ctx.moveTo(padding, height - padding);
-
-            heartRateHistory.forEach((bpm, index) => {
-                const x = padding + (dataLen > 1 ? (index / (dataLen - 1)) * chartWidth : chartWidth / 2);
-                const y = height - padding - ((bpm - yMin) / (yMax - yMin)) * chartHeight;
-                ctx.lineTo(x, y);
-            });
-
-            ctx.lineTo(padding + chartWidth, height - padding);
-            ctx.closePath();
-            ctx.fillStyle = gradient;
-            ctx.fill();
-
-            // Draw line
-            ctx.beginPath();
-            heartRateHistory.forEach((bpm, index) => {
-                const x = padding + (dataLen > 1 ? (index / (dataLen - 1)) * chartWidth : chartWidth / 2);
-                const y = height - padding - ((bpm - yMin) / (yMax - yMin)) * chartHeight;
-                if (index === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            });
-            ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
-            ctx.lineWidth = 2;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.stroke();
-
-            // Draw dots at data points
-            heartRateHistory.forEach((bpm, index) => {
-                const x = padding + (dataLen > 1 ? (index / (dataLen - 1)) * chartWidth : chartWidth / 2);
-                const y = height - padding - ((bpm - yMin) / (yMax - yMin)) * chartHeight;
-                ctx.beginPath();
-                ctx.arc(x, y, 3, 0, Math.PI * 2);
-                ctx.fillStyle = '#ef4444';
-                ctx.fill();
-            });
-        } catch (e) {
-            // Silently fail on canvas errors
-        }
-    }, [heartRateHistory, hasData, minBPM, maxBPM]);
-
     return (
-        <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-md"
-        >
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center font-sans overflow-hidden">
+            {/* 1. Ambient Background */}
+            <LiquidBackground />
+
+            {/* 2. Backdrop Blur & Overlay */}
             <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                className="w-[90%] max-w-md rounded-3xl overflow-hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-black/40 backdrop-blur-xl z-0"
+            />
+
+            {/* 3. Main Glass Modal */}
+            <motion.div
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300, delay: 0.1 }}
+                className="relative z-10 w-[90%] max-w-sm rounded-[32px] overflow-hidden shadow-2xl"
                 style={{
-                    background: 'linear-gradient(145deg, rgba(30,30,40,0.95), rgba(20,20,30,0.98))',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+                    background: 'rgba(30, 30, 40, 0.65)',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    backdropFilter: 'blur(40px)',
+                    WebkitBackdropFilter: 'blur(40px)', // Safari support
                 }}
             >
-                {/* Header */}
-                <div className="text-center pt-8 pb-4">
+                {/* Header Section */}
+                <div className="flex flex-col items-center pt-8 pb-4 relative overflow-hidden">
+                    {/* Glow effect behidn checkmark */}
+                    <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-emerald-500/20 to-transparent pointer-events-none" />
+
+                    {/* Animated Checkmark Ring */}
                     <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: 0.2, type: 'spring' }}
-                        className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4"
-                        style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+                        className="relative w-20 h-20 mb-4 flex items-center justify-center rounded-full"
+                        style={{
+                            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.1))',
+                            boxShadow: '0 0 30px rgba(16, 185, 129, 0.3)',
+                            border: '1px solid rgba(16, 185, 129, 0.3)'
+                        }}
+                        initial={{ scale: 0, rotate: -180 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.2 }}
                     >
-                        <span className="text-3xl">✓</span>
+                        <svg className="w-10 h-10 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <motion.path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={3}
+                                d="M5 13l4 4L19 7"
+                                initial={{ pathLength: 0, opacity: 0 }}
+                                animate={{ pathLength: 1, opacity: 1 }}
+                                transition={{ duration: 0.8, delay: 0.5, ease: "easeOut" }}
+                            />
+                        </svg>
                     </motion.div>
-                    <h2 className="text-2xl font-semibold text-white">练习完成</h2>
+
+                    <motion.h2
+                        className="text-2xl font-medium text-white tracking-wide"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.4 }}
+                    >
+                        练习完成
+                    </motion.h2>
+                    <motion.p
+                        className="text-sm text-gray-400 mt-1"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.5 }}
+                    >
+                        Great session
+                    </motion.p>
                 </div>
 
-                {/* Heart Rate Chart */}
-                <div className="px-6 py-4">
-                    <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                        <div className="flex items-center gap-2 mb-3">
-                            <span className="text-lg">❤️</span>
-                            <span className="text-sm text-gray-400">心率变化</span>
-                        </div>
-                        {hasData ? (
-                            <canvas
-                                ref={canvasRef}
-                                className="w-full"
-                                style={{ height: '120px' }}
-                            />
-                        ) : (
-                            <div className="h-[120px] flex items-center justify-center text-gray-500 text-sm">
-                                暂无心率数据
-                            </div>
-                        )}
+                {/* Data Visual Section */}
+                <motion.div
+                    className="mx-5 mb-6 rounded-2xl overflow-hidden relative"
+                    style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)' }}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.6 }}
+                >
+                    <div className="absolute top-3 left-4 flex items-center gap-2 z-10">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                        <span className="text-xs font-medium text-gray-300 tracking-wider uppercase">Heart Rate</span>
                     </div>
-                </div>
+
+                    {hasData ? (
+                        <div className="pt-8 pb-2">
+                            <BiometricChart
+                                data={heartRateHistory}
+                                color="#10b981"
+                                height={120}
+                            />
+                        </div>
+                    ) : (
+                        <div className="h-[140px] flex items-center justify-center text-gray-600 text-sm italic">
+                            No heart rate data
+                        </div>
+                    )}
+                </motion.div>
 
                 {/* Stats Grid */}
-                <div className="px-6 pb-4">
+                <div className="px-5 pb-6">
                     <div className="grid grid-cols-2 gap-3">
-                        <StatCard icon="⏱️" label="时长" value={formatDuration(duration)} />
-                        <StatCard icon="❤️" label="平均心率" value={avgBPM ? `${avgBPM} BPM` : '--'} />
-                        <StatCard icon="📉" label="最低" value={minBPM ? `${minBPM} BPM` : '--'} />
-                        <StatCard icon="📈" label="最高" value={maxBPM ? `${maxBPM} BPM` : '--'} />
+                        <StatItem label="DURATION" value={formatDuration(duration)} delay={0.7} />
+                        <StatItem label="AVG BPM" value={avgBPM || '--'} unit="BPM" delay={0.8} />
+                        <StatItem label="MIN BPM" value={minBPM || '--'} delay={0.9} compact />
+                        <StatItem label="MAX BPM" value={maxBPM || '--'} delay={1.0} compact />
                     </div>
                 </div>
 
-                {/* Close Button */}
-                <div className="px-6 pb-8 pt-2">
+                {/* Action Button */}
+                <motion.div
+                    className="p-5 pt-0"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 1.1 }}
+                >
                     <button
                         onClick={onClose}
-                        className="w-full py-4 rounded-2xl text-white font-medium text-lg transition-all active:scale-[0.98]"
+                        className="w-full py-4 rounded-2xl font-medium text-lg text-white relative overflow-hidden group transition-all active:scale-[0.98]"
                         style={{
                             background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-                            boxShadow: '0 4px 15px rgba(59,130,246,0.3)',
+                            boxShadow: '0 8px 20px -4px rgba(59, 130, 246, 0.5)',
                         }}
                     >
-                        完成
+                        <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                        <span className="relative z-10">Complete</span>
                     </button>
-                </div>
+                </motion.div>
+
             </motion.div>
-        </motion.div>
+        </div>
     );
 }
 
-function StatCard({ icon, label, value }: { icon: string; label: string; value: string }) {
+function StatItem({ label, value, unit, delay, compact }: any) {
     return (
-        <div
-            className="rounded-xl p-3 text-center"
-            style={{ background: 'rgba(255,255,255,0.05)' }}
+        <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay, type: "spring", stiffness: 300, damping: 20 }}
+            className={`flex flex-col items-center justify-center rounded-2xl border border-white/5 bg-white/[0.03] ${compact ? 'py-3' : 'py-4'}`}
         >
-            <div className="text-lg mb-1">{icon}</div>
-            <div className="text-xs text-gray-400 mb-1">{label}</div>
-            <div className="text-white font-semibold">{value}</div>
-        </div>
+            <span className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">{label}</span>
+            <div className="flex items-baseline gap-1">
+                <span className={`font-semibold text-white ${compact ? 'text-lg' : 'text-2xl'}`}>
+                    {value}
+                </span>
+                {unit && <span className="text-xs text-gray-400 font-medium">{unit}</span>}
+            </div>
+        </motion.div>
     );
 }
