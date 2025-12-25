@@ -39,7 +39,7 @@ function formatTime(seconds: number): string {
 const RulerTimeSelector = ({
     value,
     onChange,
-    min = 5,
+    min = 1,
     max = 60
 }: {
     value: number,
@@ -239,82 +239,118 @@ function PracticeContent({ router }: { router: any }) {
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // --- 1. Transition Logic (Condense) ---
+        // --- 1. Transition Logic (Condense & Bloom) ---
         const now = Date.now();
         let transitionProgress = 0; // 0 = Diffuse, 1 = Structured
+        let bloomProgress = 0;      // 0 = Normal, 1 = Full Bloom
 
         if (state.phase === "TRANSITION_TO_PRACTICE") {
             const elapsed = now - state.transitionStartTime;
             transitionProgress = Math.min(elapsed / state.transitionDuration, 1);
-            transitionProgress = easeInOutCubic(transitionProgress); // Smooth implosion
+            transitionProgress = easeInOutCubic(transitionProgress);
         } else if (state.phase === "PRACTICING" || state.phase === "COUNTDOWN") {
             transitionProgress = 1;
         } else if (state.phase === "COMPLETED") {
-            // disperse back to 0
+            transitionProgress = 1; // Stay structured initially
             const elapsed = now - (state.completionStartTime || now);
-            transitionProgress = 1 - Math.min(elapsed / 2000, 1);
-            transitionProgress = easeInOutCubic(transitionProgress);
+            bloomProgress = Math.min(elapsed / 3000, 1); // 3s bloom
+            // Ease out elastic or cubic for a grand opening
+            bloomProgress = 1 - Math.pow(1 - bloomProgress, 3);
         } else {
             transitionProgress = 0; // IDLE
         }
 
-        // --- 2. Breath Logic (Only matters if transitionProgress > 0) ---
+        // --- 2. Breath Logic ---
         let breathScale = 1;
-        if (state.phase === "PRACTICING") {
+        // ... (Keep breath logic running to maintain rhythm until bloom takes over)
+        if (state.phase === "PRACTICING" || state.phase === "COMPLETED") {
             const elapsed = now - state.phaseStartTime;
-            const breathProg = Math.min(elapsed / state.phaseDuration, 1);
-            const smoothedBreath = easeInOutCubic(breathProg);
+            // ... existing breath calculation ...
+            if (state.phase === "PRACTICING") {
+                // Normal breath update...
+                const breathProg = Math.min(elapsed / state.phaseDuration, 1);
+                const smoothedBreath = easeInOutCubic(breathProg);
 
-            if (state.breathPhase === "INHALE") {
-                // Expand
-                state.currentRadius = BASE_RADIUS + (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
-                state.hue = 200 + (20 * smoothedBreath);
-            } else if (state.breathPhase === "HOLD") {
-                // Maintain
-                state.currentRadius = EXPAND_RADIUS + Math.sin(timestamp * 0.003) * 5;
-                state.hue = 220;
-            } else if (state.breathPhase === "EXHALE") {
-                // Contract
-                state.currentRadius = EXPAND_RADIUS - (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
-                state.hue = 220 - (20 * smoothedBreath);
+                if (state.breathPhase === "INHALE") {
+                    state.currentRadius = BASE_RADIUS + (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
+                    state.hue = 200 + (20 * smoothedBreath);
+                } else if (state.breathPhase === "HOLD") {
+                    state.currentRadius = EXPAND_RADIUS + Math.sin(timestamp * 0.003) * 5;
+                    state.hue = 220;
+                } else if (state.breathPhase === "EXHALE") {
+                    state.currentRadius = EXPAND_RADIUS - (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
+                    state.hue = 220 - (20 * smoothedBreath);
+                }
             }
             breathScale = state.currentRadius / BASE_RADIUS;
         } else {
-            // Idle breathing for the circle itself
             state.currentRadius = BASE_RADIUS + Math.sin(timestamp * 0.001) * 10;
             breathScale = state.currentRadius / BASE_RADIUS;
         }
 
-
         // --- 3. Draw ---
         // Clear Canvas
-        ctx.fillStyle = "rgba(0, 0, 0, 0.15)"; // Slightly more trail for the "implosion" effect
+        ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
         ctx.fillRect(0, 0, width, height);
 
         state.particles.forEach((p, i) => {
-            // Update Diffuse State (Drift)
+            // Update Diffuse
             p.diffuseX += p.dx;
             p.diffuseY += p.dy;
-            // Wrap around screen? simpler to just let them drift, they are placeholders
 
-            // Update Structured State (Orbit)
+            // Update Structured (Orbit)
             p.angle += p.speed;
-            const currentOrbitDist = p.dist * breathScale + Math.sin(timestamp * 0.005 + p.wobble) * 5;
-            const orbitX = Math.cos(p.angle) * currentOrbitDist;
-            const orbitY = Math.sin(p.angle) * currentOrbitDist;
+
+            // Bloom Logic Overrides
+            let effectiveDist = p.dist * breathScale;
+            let effectiveAngle = p.angle;
+            let effectiveHue = state.hue;
+            let effectiveAlpha = 0.5 + Math.sin(timestamp * 0.002 + i) * 0.3;
+
+            if (bloomProgress > 0) {
+                // Spiral Bloom
+                const expansion = (width * 0.6) * bloomProgress;
+
+                // Twist angle based on progress and minor offset
+                effectiveAngle += bloomProgress * Math.PI * 0.5;
+
+                // Petal Modulation: sin wave based on angle
+                // 5 petals is standard for a rose-like shape
+                const petalFactor = Math.sin(effectiveAngle * 5 + i * 0.1) * (50 * bloomProgress);
+
+                effectiveDist += expansion + petalFactor;
+
+                // Color Shift: Cyan (200) -> Rose Pink (330) / Gold (45)
+                // Split particles to create depth
+                const isPink = i % 3 !== 0; // 2/3 Pink, 1/3 Gold
+                const targetHue = isPink ? 335 : 45;
+
+                // Simple lerp for hue provided it doesn't cross the messy green zone too much.
+                // 200 -> 335 goes up (200..360..). 200 -> 45 goes down? No, simple number lerp.
+                // To avoid green (120), we can wrap. 
+                // Let's just hard blend.
+                effectiveHue = state.hue + (targetHue - state.hue) * bloomProgress;
+
+                // Increase brightness/alpha for the "shining" effect
+                effectiveAlpha = 0.6 + bloomProgress * 0.4;
+            } else {
+                // Normal breathing wobble
+                effectiveDist += Math.sin(timestamp * 0.005 + p.wobble) * 5;
+            }
+
+            const orbitX = Math.cos(effectiveAngle) * effectiveDist;
+            const orbitY = Math.sin(effectiveAngle) * effectiveDist;
 
             // Interpolate Position
             // X = lerp(diffuseX, centerX + orbitX, t)
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
-            // Color Logic
-            // Diffuse = Dimmer, White/Blue
-            // Structured = Brighter, Cyan
-            let alpha = 0.5 + Math.sin(timestamp * 0.002 + i) * 0.3;
-            if (transitionProgress < 1) alpha *= 0.6; // dimmer when diffuse
+            // Render
+            // Dimmer when diffuse
+            if (transitionProgress < 1) effectiveAlpha *= 0.6;
 
-            ctx.fillStyle = `hsla(${state.hue}, 80%, 70%, ${alpha})`;
+            ctx.fillStyle = `hsla(${effectiveHue}, 80%, 70%, ${effectiveAlpha})`;
 
             ctx.beginPath();
             ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
