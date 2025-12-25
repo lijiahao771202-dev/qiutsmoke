@@ -172,6 +172,10 @@ function PracticeContent({ router }: { router: any }) {
         particles: [] as any[],
         hue: 200,
 
+        // Sync State (for stale closure fix)
+        phase: "IDLE" as Phase,
+        breathPhase: "INHALE" as BreathPhase,
+
         // Transition
         transitionStartTime: 0,
         transitionDuration: 2000,
@@ -232,11 +236,11 @@ function PracticeContent({ router }: { router: any }) {
         const now = Date.now();
         let transitionProgress = 0; // 0 = Diffuse, 1 = Structured
 
-        if (phase === "TRANSITION_TO_PRACTICE") {
+        if (state.phase === "TRANSITION_TO_PRACTICE") {
             const elapsed = now - state.transitionStartTime;
             transitionProgress = Math.min(elapsed / state.transitionDuration, 1);
             transitionProgress = easeInOutCubic(transitionProgress); // Smooth implosion
-        } else if (phase === "PRACTICING" || phase === "COUNTDOWN") {
+        } else if (state.phase === "PRACTICING" || state.phase === "COUNTDOWN") {
             transitionProgress = 1;
         } else {
             transitionProgress = 0; // IDLE
@@ -244,20 +248,20 @@ function PracticeContent({ router }: { router: any }) {
 
         // --- 2. Breath Logic (Only matters if transitionProgress > 0) ---
         let breathScale = 1;
-        if (phase === "PRACTICING") {
+        if (state.phase === "PRACTICING") {
             const elapsed = now - state.phaseStartTime;
             const breathProg = Math.min(elapsed / state.phaseDuration, 1);
             const smoothedBreath = easeInOutCubic(breathProg);
 
-            if (breathPhase === "INHALE") {
+            if (state.breathPhase === "INHALE") {
                 // Expand
                 state.currentRadius = BASE_RADIUS + (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
                 state.hue = 200 + (20 * smoothedBreath);
-            } else if (breathPhase === "HOLD") {
+            } else if (state.breathPhase === "HOLD") {
                 // Maintain
                 state.currentRadius = EXPAND_RADIUS + Math.sin(timestamp * 0.003) * 5;
                 state.hue = 220;
-            } else if (breathPhase === "EXHALE") {
+            } else if (state.breathPhase === "EXHALE") {
                 // Contract
                 state.currentRadius = EXPAND_RADIUS - (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
                 state.hue = 220 - (20 * smoothedBreath);
@@ -341,6 +345,10 @@ function PracticeContent({ router }: { router: any }) {
 
     // --- Logic ---
     useEffect(() => {
+        // Sync Ref for Animation Loop
+        animState.current.phase = phase;
+        animState.current.breathPhase = breathPhase;
+
         animState.current.phaseStartTime = Date.now();
         if (breathPhase === "INHALE") animState.current.phaseDuration = BREATH_CYCLE.INHALE;
         if (breathPhase === "HOLD") animState.current.phaseDuration = BREATH_CYCLE.HOLD;
