@@ -14,14 +14,13 @@ import { KeepAwake } from "@capacitor-community/keep-awake";
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
-type Theme = "LIQUID" | "ROSE" | "AURORA" | "TIDES" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
+type Theme = "LIQUID" | "ROSE" | "AURORA" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
 
 // --- Theme Config ---
 const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
     LIQUID: { name: "Liquid", icon: Gem, color: "text-slate-200" },
     ROSE: { name: "Rose", icon: Flower2, color: "text-pink-400" },
     AURORA: { name: "Aurora", icon: Sparkles, color: "text-purple-400" },
-    TIDES: { name: "Tides", icon: Waves, color: "text-cyan-400" },
     ZEN: { name: "Zen", icon: CircleDot, color: "text-stone-300" },
     GALAXY: { name: "Galaxy", icon: Orbit, color: "text-indigo-400" },
     INFERNO: { name: "Inferno", icon: Flame, color: "text-orange-500" },
@@ -190,7 +189,7 @@ function PracticeContent({ router }: { router: any }) {
             const saved = localStorage.getItem("practiceTheme") as Theme | null;
             if (saved && THEMES[saved]) return saved;
         }
-        return "ROSE";
+        return "LIQUID";
     });
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess } = useHaptics();
 
@@ -845,180 +844,95 @@ function PracticeContent({ router }: { router: any }) {
         });
     };
 
-    const renderTides = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const oceanHue = 190; // Cyan/Teal
-
-        state.particles.forEach((p: any, i: number) => {
-            // Initial: Rocking boat motion
-            if (transitionProgress < 1) {
-                p.diffuseX += Math.sin(timestamp * 0.001) * 0.5;
-                p.diffuseY += Math.cos(timestamp * 0.001) * 0.5;
-            } else {
-                p.diffuseX += p.dx * 2;
-                p.diffuseY += p.dy;
-            }
-
-            // Tides Logic: Wavy dual rings
-            const wave1 = Math.sin(p.angle * 3 + timestamp * 0.002) * 20;
-            const wave2 = Math.cos(p.angle * 5 - timestamp * 0.003) * 15;
-
-            let effectiveDist = p.dist * breathScale + wave1 + wave2;
-            let effectiveAlpha = 0.5 + Math.sin(timestamp * 0.003 + i) * 0.3;
-
-            // Bloom: Tsunami Crash - Surge forward (down-right) then foam dissipates
-            let surgeX = 0;
-            let surgeY = 0;
-            if (bloomProgress > 0) {
-                const surgeAmount = bloomProgress * 200;
-                surgeX = surgeAmount;
-                surgeY = surgeAmount * 0.5;
-                effectiveDist += bloomProgress * 100;
-                effectiveAlpha *= (1 - bloomProgress); // Foam fades
-            }
-
-            const orbitX = Math.cos(p.angle) * effectiveDist + surgeX;
-            const orbitY = Math.sin(p.angle) * effectiveDist + surgeY;
-
-            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
-            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
-
-            if (transitionProgress < 1) effectiveAlpha *= 0.5;
-
-            // Color shift to white foam on bloom
-            let saturation = 70;
-            let lightness = 60;
-            if (bloomProgress > 0) {
-                saturation *= (1 - bloomProgress);
-                lightness = 60 + bloomProgress * 40; // Turn white
-            }
-
-            ctx.fillStyle = `hsla(${oceanHue + Math.sin(i) * 20}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
-            ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
-            ctx.fill();
-        });
-    };
-
     const renderLiquid = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
         const centerY = height / 2;
         const now = timestamp * 0.001;
 
-        // Global rotation for the entire structure
-        const globalRot = now * 0.1;
+        // Use proper glass blending
+        const originalComp = ctx.globalCompositeOperation;
+        ctx.globalCompositeOperation = "screen";
 
         state.particles.forEach((p: any, i: number) => {
-            // --- 1. IDLE STATE (Floating Glass Shards) ---
-            // User liked the intro/idle start. We keep it expansive, not collapsing.
+            // --- 1. Physics & Motion ---
+            // Idle State: Stable floating cloud
             if (transitionProgress < 1) {
-                // Drift logic: Slow, suspended animation
-                // Add slight noise to keep them alive but "frozen" in time
-                p.diffuseX += Math.cos(p.angle + now * 0.5) * 0.2;
-                p.diffuseY += Math.sin(p.angle + now * 0.5) * 0.2;
+                const speed = 0.2;
+                const offsetX = Math.cos(now * speed + p.angle) * 30;
+                const offsetY = Math.sin(now * speed * 1.5 + i) * 20;
 
-                // Dynamic "breathing" of the idle cloud itself without shrinking
-                const floatScale = 1 + Math.sin(now * 0.5) * 0.05;
-                p.x = p.diffuseX * floatScale; // Apply strictly to visualize (not updating diffuseX/Y permanently to center)
-                p.y = p.diffuseY * floatScale;
+                const homeX = Math.cos(p.angle) * p.dist;
+                const homeY = Math.sin(p.angle) * p.dist;
+
+                p.diffuseX += (homeX + offsetX - p.diffuseX) * 0.05;
+                p.diffuseY += (homeY + offsetY - p.diffuseY) * 0.05;
             } else {
-                // Active State: Lock into formation but keep drifting
-                p.angle += 0.001; // Very slow rotation
+                p.angle += 0.0002;
             }
 
-            // --- 2. BREATHING / TENSION LOGIC ---
-            // Distinct from liquid flow. This is RIGID GLASS under PRESSURE.
-
-            // Tension Factor: How much "stress" is on the glass
-            // Inhale (breathScale > 1): High tension, vibrating
-            // Hold: Max tension, crystalline alignment
-            // Exhale: Release, expansion
-            const tension = Math.max(0, (breathScale - 1) * 2); // 0 to ~1.0
-
-            // Crystalline displacement (Sharp, geometric)
-            // Instead of smooth noise, use jagged sine waves
-            const crystallineForm = Math.sin(p.angle * 6 + globalRot) * Math.cos(p.dist * 0.05);
-
+            // --- 2. Breathing Logic ---
             let targetDist = p.dist * breathScale;
 
-            // Add "Stress" vibration/jitter when inhaling
-            if (tension > 0.1) {
-                const jitter = Math.sin(now * 50 + i) * (tension * 2);
-                targetDist += jitter;
-            }
+            // Crystallization Tension (Hold)
+            const tension = Math.max(0, breathScale - 1.0);
+            const distortion = Math.cos(p.angle * 6) * 10 * tension;
+            targetDist += distortion;
 
-            // Add prismatic distortion (chromatic aberration offset)
-            const aberration = crystallineForm * 10 * tension;
-            targetDist += aberration;
-
-            // Bloom (Intro/Outro)
+            // Bloom
             let burstX = 0;
             let burstY = 0;
             if (bloomProgress > 0) {
-                const burstSpeed = bloomProgress * 800; // High velocity shatter
-                burstX = Math.cos(p.angle + bloomProgress * 20) * burstSpeed;
-                burstY = Math.sin(p.angle + bloomProgress * 20) * burstSpeed;
+                const burstSpeed = bloomProgress * 800;
+                burstX = Math.cos(p.angle) * burstSpeed;
+                burstY = Math.sin(p.angle) * burstSpeed;
             }
 
-            // Interpolate position
             const orbitX = Math.cos(p.angle) * targetDist + burstX;
             const orbitY = Math.sin(p.angle) * targetDist + burstY;
 
-            // Calculate final position
-            // Mix between Diffuse (Idle) and Orbit (Breathing) based on transition
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
-            // --- 3. GLASS SHADING & OPTICS ---
+            // --- 3. Visuals ---
+            const angleIncidence = Math.abs(Math.sin(p.angle + now * 0.2));
+            const fresnel = Math.pow(1 - angleIncidence, 3);
 
-            // Fresnel Effect: Edges are brighter and more reflective
-            // Based on view angle relative to center
-            const distFromCenter = Math.sqrt(Math.pow(finalX - centerX, 2) + Math.pow(finalY - centerY, 2));
-            const maxDist = Math.max(width, height) / 3;
-            const normalizedDist = Math.min(1, distFromCenter / maxDist);
-            const fresnel = Math.pow(normalizedDist, 2); // Stronger at edges
+            // Monochromatic / Glassy Cyan-Silver
+            let h = 195;
+            let s = 10;
+            let l = 80 + fresnel * 20;
+            let a = 0.3 + fresnel * 0.6;
 
-            // Base Color: Cold, Clear Glass
-            // No flowing rainbows. Static, high-end optical glass.
-            let h = 210; // Cyan/Blue
-            let s = 10;  // Low saturation (Clear)
-            let l = 90;  // High brightness (Glass)
-            let a = 0.4 + fresnel * 0.4; // Edges are more opaque
-
-            // Dispersion / Caustics (The "Prism" Effect)
-            // Only happens at high stress (inhale) or extreme edges
-            if (fresnel > 0.8 || (tension > 0.5 && Math.random() > 0.8)) {
-                // Split into spectrum RGB/CMY
-                // Use a sharp gradient based on angle to simulate refraction
-                const spectrum = (p.angle * 57.29 + now * 20) % 360;
-                h = spectrum;
+            // Prism Dispersion (Edges only)
+            if (fresnel > 0.95) {
+                h = (p.angle * 100 + now * 50) % 360;
                 s = 80;
-                l = 70;
-                a = 0.8;
+                l = 90;
             }
 
-            // Highlight (Specular reflection)
-            const reflection = Math.sin(now * 2 + p.angle * 10 + i);
-            if (reflection > 0.95) {
+            // High tension highlight
+            if (tension > 0.3 && Math.random() > 0.99) {
                 l = 100;
-                a = 1.0;
-                s = 0;
+                a = 0.9;
+                ctx.shadowBlur = 5;
+                ctx.shadowColor = "white";
+            } else {
+                ctx.shadowBlur = 0;
             }
 
             ctx.fillStyle = `hsla(${h}, ${s}%, ${l}%, ${a})`;
             ctx.beginPath();
-
-            // Draw: Glass shards are sharp, but particles are circles.
-            // We simulate sharpness by varying size drastically based on fresnel.
-            // Edge particles are larger (magnified by glass), center are small.
-            const size = p.size * (0.6 + fresnel * 1.5 + tension * 0.5);
+            const size = p.size * (0.6 + fresnel * 0.6);
             ctx.arc(finalX, finalY, size, 0, Math.PI * 2);
             ctx.fill();
 
             p.x = finalX;
             p.y = finalY;
         });
+
+        ctx.globalCompositeOperation = originalComp;
     };
+
 
     const renderPrism = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
@@ -1131,8 +1045,6 @@ function PracticeContent({ router }: { router: any }) {
             renderLiquid(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "AURORA") {
             renderAurora(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-        } else if (state.theme === "TIDES") {
-            renderTides(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "ZEN") {
             renderZen(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "GALAXY") {
