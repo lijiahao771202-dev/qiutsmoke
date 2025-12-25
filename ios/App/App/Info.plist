@@ -51,5 +51,9 @@
 	<string>用于控制莲花花园中的物理效果，让莲花随设备倾斜移动</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>我们需要访问您的心率数据，以便在冥想练习时实时显示心率曲线，帮助您观察呼吸对身心的平复效果。</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>我们需要记录您的正念分钟数到健康应用。</string>
 </dict>
 </plist>

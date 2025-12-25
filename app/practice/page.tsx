@@ -6,6 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit, Cherry, Star, Flower } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
+import { useHeartRate } from "@/lib/hooks/useHeartRate";
+import HeartRateGraph from "@/components/HeartRateGraph";
 import { KeepAwake } from "@capacitor-community/keep-awake";
 
 // --- Types ---
@@ -188,6 +190,17 @@ function PracticeContent({ router }: { router: any }) {
         return "ROSE";
     });
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess } = useHaptics();
+
+    // --- Heart Rate ---
+    const {
+        currentBPM,
+        heartRateHistory,
+        isMonitoring,
+        isAuthorized,
+        requestPermission,
+        startMonitoring,
+        stopMonitoring,
+    } = useHeartRate();
 
     // --- 完成提示音 ---
     const playCompletionSound = () => {
@@ -1091,9 +1104,17 @@ function PracticeContent({ router }: { router: any }) {
         }, 2000); // 2s transition matches animState.transitionDuration
     };
 
-    const startPractice = () => {
+    const startPractice = async () => {
         setPhase("PRACTICING");
         setBreathPhase("INHALE");
+
+        // Start Heart Rate Monitoring (if authorized)
+        if (!isAuthorized) {
+            const granted = await requestPermission();
+            if (granted) startMonitoring();
+        } else {
+            startMonitoring();
+        }
 
         // Start Recursive Cycle
         runBreathingCycle("INHALE");
@@ -1132,6 +1153,9 @@ function PracticeContent({ router }: { router: any }) {
     const completePractice = () => {
         setPhase("COMPLETED");
         animState.current.completionStartTime = Date.now(); // Start dispersion
+
+        // Stop Heart Rate Monitoring
+        stopMonitoring();
 
         // 先清理呼吸相关的定时器
         if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
@@ -1227,6 +1251,15 @@ function PracticeContent({ router }: { router: any }) {
                                     {breathPhase === "EXHALE" && "呼 气"}
                                 </span>
                             </motion.div>
+                        )}
+
+                        {/* Heart Rate Graph */}
+                        {phase === "PRACTICING" && (
+                            <HeartRateGraph
+                                data={heartRateHistory}
+                                currentBPM={currentBPM}
+                                isMonitoring={isMonitoring}
+                            />
                         )}
 
                         {phase === "COMPLETED" && (
