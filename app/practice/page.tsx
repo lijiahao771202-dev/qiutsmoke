@@ -14,11 +14,11 @@ import { KeepAwake } from "@capacitor-community/keep-awake";
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
-type Theme = "LIQUID_GLASS" | "ROSE" | "AURORA" | "TIDES" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
+type Theme = "LIQUID" | "ROSE" | "AURORA" | "TIDES" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
 
 // --- Theme Config ---
 const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
-    LIQUID_GLASS: { name: "Liquid Glass", icon: GlassWater, color: "text-blue-100" },
+    LIQUID: { name: "Liquid", icon: GlassWater, color: "text-cyan-200" },
     ROSE: { name: "Rose", icon: Flower2, color: "text-pink-400" },
     AURORA: { name: "Aurora", icon: Sparkles, color: "text-purple-400" },
     TIDES: { name: "Tides", icon: Waves, color: "text-cyan-400" },
@@ -902,68 +902,197 @@ function PracticeContent({ router }: { router: any }) {
         });
     };
 
+    // --- Render Prism (Restored & Enhanced) ---
+    const renderPrism = (ctx: CanvasCanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        // Handle Idle State
+        let effectiveProgress = transitionProgress;
+        const isIdle = state.phase === "IDLE";
+        if (isIdle) {
+            effectiveProgress = 1;
+        }
+
+        // Global Rotation (Slow for Idle, slightly faster for practice?)
+        const rotationSpeed = isIdle ? 0.0001 : 0.0002;
+        const rotation = timestamp * rotationSpeed;
+
+        state.particles.forEach((p: any, i: number) => {
+            // 1. Calculate Hexagonal Geometry
+            const sides = 6;
+            const segmentAngle = (Math.PI * 2) / sides;
+            // Current angle with rotation
+            const currentAngle = p.angle + rotation;
+            // Normalize angle to [-PI, PI] for correct mod
+            const normalizedAngle = (currentAngle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+            // Angle relative to the center of the current hexagonal sector
+            const sectorCenter = Math.floor(normalizedAngle / segmentAngle) * segmentAngle + segmentAngle / 2;
+            const angleInSector = normalizedAngle - sectorCenter;
+
+            // Hexagon Radius Factor: projects circle to hexagon
+            // r_hex = r_circle * (cos(PI/sides) / cos(angle_from_sector_center))
+            const hexFactor = Math.cos(Math.PI / sides) / Math.cos(angleInSector);
+
+            // 2. Breath & Surge Logic
+            const expansion = (breathScale - 1) * 50;
+            // Surge: Internal organic movement
+            const surgeX = Math.sin(timestamp * 0.002 + i * 0.1) * 3;
+            const surgeY = Math.cos(timestamp * 0.003 + i * 0.1) * 3;
+
+            // Calculate final radius
+            const baseDist = 120 + p.dist * 0.5; // Base size
+            const radius = (baseDist + expansion) * hexFactor;
+
+            const orbitX = Math.cos(currentAngle) * radius + surgeX;
+            const orbitY = Math.sin(currentAngle) * radius + surgeY;
+
+            // 3. Transition Interpolation
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * effectiveProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * effectiveProgress;
+
+            // 4. Appearance
+            const alpha = (0.4 + Math.sin(timestamp * 0.002 + i) * 0.4) * effectiveProgress * (1 - bloomProgress);
+
+            // Prism Rainbow Hues
+            const hue = (timestamp * 0.02 + i * 0.5) % 360;
+            const saturation = 80 + Math.sin(timestamp * 0.003 + i) * 20;
+            const lightness = 60 + Math.cos(timestamp * 0.002 + i) * 10;
+
+            ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
+            ctx.beginPath();
+
+            // Diamond Particle Shape
+            // Rotate the particle itself for extra flair
+            const pRot = timestamp * 0.005 + i;
+            ctx.save();
+            ctx.translate(finalX, finalY);
+            ctx.rotate(pRot);
+            const size = p.size * 1.2;
+            ctx.moveTo(0, -size);
+            ctx.lineTo(size, 0);
+            ctx.lineTo(0, size);
+            ctx.lineTo(-size, 0);
+            ctx.fill();
+            ctx.restore();
+        });
+    };
+
     const renderLiquidGlass = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
         const centerY = height / 2;
         const now = timestamp;
 
-        // Custom lifecycle animations
-        // Opening (fragmented crystal formation)
-        const openingEffect = (1 - transitionProgress) * 50;
-        // Closing (liquid merging/melting)
-        const closingEffect = bloomProgress * 1500;
+        // --- Custom Animation State Handling ---
+        // If state.phase is IDLE, transitionProgress is 0. 
+        // We set a base 'effectiveProgress' for the idle state to make it visible.
+        let effectiveProgress = transitionProgress;
+        let isIdle = false;
+
+        if (state.phase === "IDLE") {
+            effectiveProgress = 1;
+            isIdle = true;
+        }
+
+        // Opening Animation: Coalescing Drop (Pouring in)
+        // Only applies if we are transitioning (0 < transitionProgress < 1) NOT IDLE
+        const openingEffect = !isIdle ? (1 - effectiveProgress) * 400 : 0; // Large radius pull-in
+
+        // Closing Animation: Melting dispersion
+        const closingEffect = bloomProgress * 200;
+
+        // Idle Animation: Floating & Pulsing
+        // Subtle distortion of the ring shape
+        const idleDistortion = isIdle ? Math.sin(now * 0.001) * 10 : 0;
 
         ctx.save();
 
+        // Add a global liquid wobble to the entire container
+        if (isIdle) {
+            const wobbleX = Math.sin(now * 0.0005) * 15;
+            const wobbleY = Math.cos(now * 0.0003) * 15;
+            ctx.translate(wobbleX, wobbleY);
+        }
+
         state.particles.forEach((p: any, i: number) => {
             // Liquid Motion Physics
-            const moveSpeed = 0.1;
+            // Higher viscosity in idle
+            const moveSpeed = isIdle ? 0.05 : 0.1;
             p.diffuseX += Math.sin(now * 0.001 + i) * 0.2;
             p.diffuseY += Math.cos(now * 0.001 + i) * 0.2;
 
-            // Breath expansion with smooth liquid drag
+            // Breath expansion
             const expansion = (breathScale - 1) * 60;
             const distScale = 0.7 + Math.sin(now * 0.0005 + i * 0.1) * 0.1;
 
-            // Opening effect: Particles start more fragmented/irregular
-            const angleOffset = openingEffect * Math.sin(i);
-            const orbitX = Math.cos(p.angle + angleOffset) * (p.dist * distScale + expansion + closingEffect);
-            const orbitY = Math.sin(p.angle + angleOffset) * (p.dist * distScale + expansion + closingEffect);
+            // Calculate base position
+            // Opening: Start from far away (large radius) and close in
+            // Logic: center + (orbit * (dist + opening))
+            const radius = (p.dist * distScale + expansion + closingEffect + openingEffect + idleDistortion);
 
-            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
-            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+            const orbitX = Math.cos(p.angle) * radius;
+            const orbitY = Math.sin(p.angle) * radius;
 
-            // Optical effect: Chromatic Aberration (RGB Splitting)
-            // Simulates diffraction within the glass
-            const aberrationVal = 2 + Math.sin(now * 0.002 + i) * 1.5;
-            const alpha = (0.3 + Math.sin(now * 0.001 + i * 0.05) * 0.2) * transitionProgress * (1 - bloomProgress * 0.8);
+            // Transition Interpolation (Standard vs Opening)
+            // If opening, we want to interpolate from diffuse (random) to organized logic?
+            // Actually, the previous 'openingEffect' logic in renderLiquidGlass was (1-progress)*50 which is small.
+            // User wants "Coalescing".
+            // Let's make particles stream in from top/bottom? Or just implode from large radius.
+            // Implosion: radius starts huge.
 
-            // Draw Blue component
+            let finalX, finalY;
+            if (isIdle) {
+                finalX = centerX + orbitX;
+                finalY = centerY + orbitY;
+            } else {
+                // During transition:
+                // Interpolate from diffuse positions to the calculated orbit
+                finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * effectiveProgress;
+                finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * effectiveProgress;
+            }
+
+            // Optical Effect: Chromatic Aberration
+            // Stronger in closing/opening
+            const aberrationBase = isIdle ? 1.5 : 3;
+            const aberrationVal = aberrationBase + Math.sin(now * 0.002 + i) * 1.5;
+
+            // Alpha Calculation
+            // Fade in during opening
+            let alpha = (0.3 + Math.sin(now * 0.001 + i * 0.05) * 0.2);
+            if (!isIdle) alpha *= effectiveProgress;
+            alpha *= (1 - bloomProgress * 0.8);
+
+            // Draw Blue (Left Shift)
             ctx.fillStyle = `hsla(210, 80%, 70%, ${alpha * 0.6})`;
             ctx.beginPath();
             ctx.arc(finalX + aberrationVal, finalY, p.size * 1.5, 0, Math.PI * 2);
             ctx.fill();
 
-            // Draw Red/Orange component (refraction)
+            // Draw Red (Right Shift)
             ctx.fillStyle = `hsla(340, 70%, 70%, ${alpha * 0.4})`;
             ctx.beginPath();
             ctx.arc(finalX - aberrationVal, finalY, p.size * 1.5, 0, Math.PI * 2);
             ctx.fill();
 
-            // Core translucent glass particle
+            // Core Glass
             ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
             ctx.beginPath();
             p.x = finalX; p.y = finalY;
             ctx.arc(finalX, finalY, p.size * 1.2, 0, Math.PI * 2);
             ctx.fill();
 
-            // Specular Glint (Reflections) - Only occasionally
-            if (i % 20 === 0) {
-                const glintAlpha = alpha * (0.5 + Math.sin(now * 0.005 + i) * 0.5);
-                ctx.fillStyle = `rgba(255, 255, 255, ${glintAlpha})`;
-                ctx.beginPath();
-                ctx.arc(finalX - p.size, finalY - p.size, p.size * 0.5, 0, Math.PI * 2);
-                ctx.fill();
+            // Specular Glint (Sparkle)
+            // More frequent in Idle for "premium" feel
+            const sparkleChance = isIdle ? 30 : 20;
+            if (i % sparkleChance === 0) {
+                // Flash based on time
+                const flash = Math.pow(Math.sin(now * 0.003 + i), 10); // Sharp flash
+                if (flash > 0.1) {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${alpha * flash})`;
+                    ctx.beginPath();
+                    ctx.arc(finalX - p.size, finalY - p.size, p.size * 0.8, 0, Math.PI * 2);
+                    ctx.fill();
+                }
             }
         });
 
@@ -987,566 +1116,570 @@ function PracticeContent({ router }: { router: any }) {
         let bloomProgress = 0;
         let breathScale = 1;
 
-        if (state.phase === "COMPLETED") {
-            const elapsed = now - state.completionStartTime;
-            bloomProgress = Math.min(elapsed / 1000, 1); // 1s dispersion
-            transitionProgress = 1;
+        bloomProgress = Math.min(elapsed / 1000, 1); // 1s dispersion
+        transitionProgress = 1;
+    }
+
+    if (state.phase === "PRACTICING") {
+        transitionProgress = 1;
+        const phaseElapsed = now - state.phaseStartTime;
+        const cycleProgress = Math.min(phaseElapsed / state.phaseDuration, 1);
+        const smoothedBreath = easeInOutCubic(cycleProgress);
+
+        if (state.breathPhase === "INHALE") {
+            state.currentRadius = BASE_RADIUS + (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
+            state.hue = 200 + (20 * smoothedBreath);
+        } else if (state.breathPhase === "HOLD") {
+            state.currentRadius = EXPAND_RADIUS + Math.sin(timestamp * 0.003) * 5;
+            state.hue = 220;
+        } else if (state.breathPhase === "EXHALE") {
+            state.currentRadius = EXPAND_RADIUS - (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
+            state.hue = 220 - (20 * smoothedBreath);
         }
+        breathScale = state.currentRadius / BASE_RADIUS;
+    } else if (state.phase === "IDLE") {
+        // Idle Breath Animation
+        state.currentRadius = BASE_RADIUS + Math.sin(timestamp * 0.001) * 10;
+        breathScale = state.currentRadius / BASE_RADIUS;
 
-        if (state.phase === "PRACTICING") {
-            transitionProgress = 1;
-            const phaseElapsed = now - state.phaseStartTime;
-            const cycleProgress = Math.min(phaseElapsed / state.phaseDuration, 1);
-            const smoothedBreath = easeInOutCubic(cycleProgress);
+        // Allow transitionProgress to be 0 for opening effect, 
+        // but for IDLE rendering we usually want full visibility or specific idle handling.
+        // Let's keep transitionProgress at 0, and handle it inside renderLiquid/renderPrism.
+        transitionProgress = 0;
+    }
 
-            if (state.breathPhase === "INHALE") {
-                state.currentRadius = BASE_RADIUS + (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
-                state.hue = 200 + (20 * smoothedBreath);
-            } else if (state.breathPhase === "HOLD") {
-                state.currentRadius = EXPAND_RADIUS + Math.sin(timestamp * 0.003) * 5;
-                state.hue = 220;
-            } else if (state.breathPhase === "EXHALE") {
-                state.currentRadius = EXPAND_RADIUS - (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
-                state.hue = 220 - (20 * smoothedBreath);
-            }
-            breathScale = state.currentRadius / BASE_RADIUS;
-        } else {
-            state.currentRadius = BASE_RADIUS + Math.sin(timestamp * 0.001) * 10;
-            breathScale = state.currentRadius / BASE_RADIUS;
-        }
+    // --- 3. Draw & Dispatch ---
+    // Clear with Fade
+    ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+    ctx.fillRect(0, 0, width, height);
 
-        // --- 3. Draw & Dispatch ---
-        // Clear with Fade
-        ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
-        ctx.fillRect(0, 0, width, height);
-
-        if (state.phase === "SUMMARY" && state.textTargets && state.textTargets.length > 0) {
-            // Determine text color based on theme for better contrast
-            let textColor = "white";
-            if (state.theme === "LIQUID_GLASS") {
-                textColor = "rgba(173, 216, 230, 0.9)"; // Light blue for Liquid Glass
-            } else if (state.theme === "ZEN") {
-                textColor = "rgba(255, 255, 255, 0.9)"; // White for Zen
-            } else if (state.theme === "SAKURA") {
-                textColor = "rgba(255, 200, 220, 0.9)"; // Pink for Sakura
-            } else if (state.theme === "TIDES") {
-                textColor = "rgba(173, 216, 230, 0.9)"; // Light blue for Tides
-            } else if (state.theme === "AURORA") {
-                textColor = "rgba(200, 255, 200, 0.9)"; // Light green for Aurora
-            } else if (state.theme === "GALAXY") {
-                textColor = "rgba(220, 200, 255, 0.9)"; // Light purple for Galaxy
-            } else if (state.theme === "INFERNO") {
-                textColor = "rgba(255, 200, 150, 0.9)"; // Orange for Inferno
-            } else if (state.theme === "CRYSTAL") {
-                textColor = "rgba(200, 255, 255, 0.9)"; // Cyan for Crystal
-            } else if (state.theme === "STARFALL") {
-                textColor = "rgba(255, 255, 200, 0.9)"; // Yellow for Starfall
-            } else if (state.theme === "LOTUS") {
-                textColor = "rgba(255, 240, 200, 0.9)"; // Cream for Lotus
-            } else if (state.theme === "PRISM") {
-                textColor = "rgba(255, 255, 255, 0.9)"; // White for Prism
-            }
-            renderTextMorph(ctx, state, width, height, textColor);
-        } else if (state.theme === "LIQUID_GLASS") {
-            renderLiquidGlass(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-        } else if (state.theme === "AURORA") {
-            renderAurora(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-        } else if (state.theme === "TIDES") {
-            renderTides(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+    if (state.phase === "SUMMARY" && state.textTargets && state.textTargets.length > 0) {
+        // Determine text color based on theme for better contrast
+        let textColor = "white";
+        if (state.theme === "LIQUID") {
+            textColor = "rgba(173, 216, 230, 0.9)"; // Light blue for Liquid
         } else if (state.theme === "ZEN") {
-            renderZen(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-        } else if (state.theme === "GALAXY") {
-            renderGalaxy(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-        } else if (state.theme === "INFERNO") {
-            renderInferno(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-        } else if (state.theme === "CRYSTAL") {
-            renderCrystal(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+            textColor = "rgba(255, 255, 255, 0.9)"; // White for Zen
         } else if (state.theme === "SAKURA") {
-            renderSakura(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+            textColor = "rgba(255, 200, 220, 0.9)"; // Pink for Sakura
+        } else if (state.theme === "TIDES") {
+            textColor = "rgba(173, 216, 230, 0.9)"; // Light blue for Tides
+        } else if (state.theme === "AURORA") {
+            textColor = "rgba(200, 255, 200, 0.9)"; // Light green for Aurora
+        } else if (state.theme === "GALAXY") {
+            textColor = "rgba(220, 200, 255, 0.9)"; // Light purple for Galaxy
+        } else if (state.theme === "INFERNO") {
+            textColor = "rgba(255, 200, 150, 0.9)"; // Orange for Inferno
+        } else if (state.theme === "CRYSTAL") {
+            textColor = "rgba(200, 255, 255, 0.9)"; // Cyan for Crystal
         } else if (state.theme === "STARFALL") {
-            renderStarfall(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+            textColor = "rgba(255, 255, 200, 0.9)"; // Yellow for Starfall
         } else if (state.theme === "LOTUS") {
-            renderLotus(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+            textColor = "rgba(255, 240, 200, 0.9)"; // Cream for Lotus
         } else if (state.theme === "PRISM") {
-            renderPrism(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
-        } else {
-            renderRose(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale); // Default
+            textColor = "rgba(255, 255, 255, 0.9)"; // White for Prism
         }
-    };
+        renderTextMorph(ctx, state, width, height, textColor);
+    } else if (state.theme === "LIQUID") {
+        renderLiquidGlass(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+    } else if (state.theme === "AURORA") {
+        renderAurora(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+    } else if (state.theme === "TIDES") {
+        renderTides(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+    } else if (state.theme === "ZEN") {
+        renderZen(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+    } else if (state.theme === "GALAXY") {
+        renderGalaxy(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+    } else if (state.theme === "INFERNO") {
+        renderInferno(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+    } else if (state.theme === "CRYSTAL") {
+        renderCrystal(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+    } else if (state.theme === "SAKURA") {
+        renderSakura(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+    } else if (state.theme === "STARFALL") {
+        renderStarfall(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+    } else if (state.theme === "LOTUS") {
+        renderLotus(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+    } else if (state.theme === "PRISM") {
+        renderPrism(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+    } else {
+        renderRose(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale); // Default
+    }
+};
 
-    const draw = (time: number) => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
+const draw = (time: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-        updateParticles(time, canvas.width, canvas.height, ctx);
+    updateParticles(time, canvas.width, canvas.height, ctx);
+    requestRef.current = requestAnimationFrame(draw);
+};
+
+useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        initParticles(canvas.width, canvas.height);
         requestRef.current = requestAnimationFrame(draw);
-    };
+    }
 
-    useEffect(() => {
-        const canvas = canvasRef.current;
+    const handleResize = () => {
         if (canvas) {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            initParticles(canvas.width, canvas.height);
-            requestRef.current = requestAnimationFrame(draw);
-        }
-
-        const handleResize = () => {
-            if (canvas) {
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight;
-            }
-        };
-
-        window.addEventListener("resize", handleResize);
-        return () => {
-            window.removeEventListener("resize", handleResize);
-            cancelAnimationFrame(requestRef.current);
-        };
-    }, []);
-
-    // --- Save Theme Preference ---
-    useEffect(() => {
-        localStorage.setItem("practiceTheme", selectedTheme);
-    }, [selectedTheme]);
-
-    // --- Logic ---
-    const clearHapticTimers = () => {
-        hapticTimers.current.forEach(t => clearTimeout(t));
-        hapticTimers.current = [];
-    };
-
-    const playHapticPattern = (phaseType: BreathPhase) => {
-        clearHapticTimers();
-
-        if (phaseType === "INHALE") {
-            // 🌬️ 连续感：70次震动，每57ms一次，从轻到重
-            // Light×23 → Medium×23 → Heavy×24
-            for (let i = 0; i < 70; i++) {
-                const delay = i * 57; // 0, 57, 114, ... 3933
-                let trigger: () => void;
-                if (i < 23) {
-                    trigger = triggerLight;
-                } else if (i < 46) {
-                    trigger = triggerMedium;
-                } else {
-                    trigger = triggerHeavy;
-                }
-                hapticTimers.current.push(setTimeout(trigger, delay));
-            }
-        } else if (phaseType === "HOLD") {
-            // 💓 心跳感：双击节奏 (thump-thump... thump-thump...)
-            // 每对心跳间隔约2秒
-            const heartbeat = (delay: number) => {
-                hapticTimers.current.push(
-                    setTimeout(triggerMedium, delay),
-                    setTimeout(triggerLight, delay + 150),
-                );
-            };
-            heartbeat(0);
-            heartbeat(2000);
-            heartbeat(4000);
-            heartbeat(6000);
-        } else if (phaseType === "EXHALE") {
-            // 🍃 连续释放感：32次震动，每250ms一次，从重到轻
-            // Heavy×11 → Medium×11 → Light×10
-            for (let i = 0; i < 32; i++) {
-                const delay = i * 250; // 0, 250, 500, ... 7750
-                let trigger: () => void;
-                if (i < 11) {
-                    trigger = triggerHeavy;
-                } else if (i < 22) {
-                    trigger = triggerMedium;
-                } else {
-                    trigger = triggerLight;
-                }
-                hapticTimers.current.push(setTimeout(trigger, delay));
-            }
         }
     };
 
-    // --- Keep Awake ---
-    useEffect(() => {
-        const isPracticing = phase === "PRACTICING" || phase === "TRANSITION_TO_PRACTICE" || phase === "COUNTDOWN";
-
-        if (isPracticing) {
-            KeepAwake.keepAwake().catch(console.error);
-        } else {
-            KeepAwake.allowSleep().catch(console.error);
-        }
-
-        return () => {
-            KeepAwake.allowSleep().catch(console.error);
-        };
-    }, [phase]);
-
-    useEffect(() => {
-        // Sync Ref for Animation Loop
-        animState.current.phase = phase;
-        animState.current.breathPhase = breathPhase;
-        animState.current.theme = selectedTheme; // Update theme in ref
-
-        animState.current.phaseStartTime = Date.now();
-        if (breathPhase === "INHALE") animState.current.phaseDuration = BREATH_CYCLE.INHALE;
-        if (breathPhase === "HOLD") animState.current.phaseDuration = BREATH_CYCLE.HOLD;
-        if (breathPhase === "EXHALE") animState.current.phaseDuration = BREATH_CYCLE.EXHALE;
-
-        // Haptics Trigger
-        if (phase === "PRACTICING") {
-            playHapticPattern(breathPhase);
-        }
-    }, [breathPhase, phase, selectedTheme]); // Added selectedTheme
-
-    const handleStart = () => {
-        // 1. Trigger Transition (Particles Implode)
-        setPhase("TRANSITION_TO_PRACTICE");
-        animState.current.transitionStartTime = Date.now();
-        triggerMedium();
-
-        // 2. Wait for transition (2s) then start countdown
-        setTimeout(() => {
-            setPhase("COUNTDOWN");
-            setCountdown(3);
-
-            const countInterval = setInterval(() => {
-                setCountdown((prev) => {
-                    if (prev <= 1) {
-                        clearInterval(countInterval);
-                        startPractice();
-                        return 0;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
-        }, 2000); // 2s transition matches animState.transitionDuration
+    window.addEventListener("resize", handleResize);
+    return () => {
+        window.removeEventListener("resize", handleResize);
+        cancelAnimationFrame(requestRef.current);
     };
+}, []);
 
-    const startPractice = async () => {
-        setPhase("PRACTICING");
-        setBreathPhase("INHALE");
-        practiceStartTimeRef.current = Date.now();
+// --- Save Theme Preference ---
+useEffect(() => {
+    localStorage.setItem("practiceTheme", selectedTheme);
+}, [selectedTheme]);
 
-        // Start Heart Rate Monitoring (if authorized)
-        if (!isAuthorized) {
-            const granted = await requestPermission();
-            if (granted) startMonitoring(true); // Pass true to bypass state timing issue
-        } else {
-            startMonitoring();
+// --- Logic ---
+const clearHapticTimers = () => {
+    hapticTimers.current.forEach(t => clearTimeout(t));
+    hapticTimers.current = [];
+};
+
+const playHapticPattern = (phaseType: BreathPhase) => {
+    clearHapticTimers();
+
+    if (phaseType === "INHALE") {
+        // 🌬️ 连续感：70次震动，每57ms一次，从轻到重
+        // Light×23 → Medium×23 → Heavy×24
+        for (let i = 0; i < 70; i++) {
+            const delay = i * 57; // 0, 57, 114, ... 3933
+            let trigger: () => void;
+            if (i < 23) {
+                trigger = triggerLight;
+            } else if (i < 46) {
+                trigger = triggerMedium;
+            } else {
+                trigger = triggerHeavy;
+            }
+            hapticTimers.current.push(setTimeout(trigger, delay));
         }
+    } else if (phaseType === "HOLD") {
+        // 💓 心跳感：双击节奏 (thump-thump... thump-thump...)
+        // 每对心跳间隔约2秒
+        const heartbeat = (delay: number) => {
+            hapticTimers.current.push(
+                setTimeout(triggerMedium, delay),
+                setTimeout(triggerLight, delay + 150),
+            );
+        };
+        heartbeat(0);
+        heartbeat(2000);
+        heartbeat(4000);
+        heartbeat(6000);
+    } else if (phaseType === "EXHALE") {
+        // 🍃 连续释放感：32次震动，每250ms一次，从重到轻
+        // Heavy×11 → Medium×11 → Light×10
+        for (let i = 0; i < 32; i++) {
+            const delay = i * 250; // 0, 250, 500, ... 7750
+            let trigger: () => void;
+            if (i < 11) {
+                trigger = triggerHeavy;
+            } else if (i < 22) {
+                trigger = triggerMedium;
+            } else {
+                trigger = triggerLight;
+            }
+            hapticTimers.current.push(setTimeout(trigger, delay));
+        }
+    }
+};
 
-        // Start Recursive Cycle
-        runBreathingCycle("INHALE");
+// --- Keep Awake ---
+useEffect(() => {
+    const isPracticing = phase === "PRACTICING" || phase === "TRANSITION_TO_PRACTICE" || phase === "COUNTDOWN";
 
-        // Timer
-        practiceTimerRef.current = setInterval(() => {
-            setTimeLeft((prev) => {
+    if (isPracticing) {
+        KeepAwake.keepAwake().catch(console.error);
+    } else {
+        KeepAwake.allowSleep().catch(console.error);
+    }
+
+    return () => {
+        KeepAwake.allowSleep().catch(console.error);
+    };
+}, [phase]);
+
+useEffect(() => {
+    // Sync Ref for Animation Loop
+    animState.current.phase = phase;
+    animState.current.breathPhase = breathPhase;
+    animState.current.theme = selectedTheme; // Update theme in ref
+
+    animState.current.phaseStartTime = Date.now();
+    if (breathPhase === "INHALE") animState.current.phaseDuration = BREATH_CYCLE.INHALE;
+    if (breathPhase === "HOLD") animState.current.phaseDuration = BREATH_CYCLE.HOLD;
+    if (breathPhase === "EXHALE") animState.current.phaseDuration = BREATH_CYCLE.EXHALE;
+
+    // Haptics Trigger
+    if (phase === "PRACTICING") {
+        playHapticPattern(breathPhase);
+    }
+}, [breathPhase, phase, selectedTheme]); // Added selectedTheme
+
+const handleStart = () => {
+    // 1. Trigger Transition (Particles Implode)
+    setPhase("TRANSITION_TO_PRACTICE");
+    animState.current.transitionStartTime = Date.now();
+    triggerMedium();
+
+    // 2. Wait for transition (2s) then start countdown
+    setTimeout(() => {
+        setPhase("COUNTDOWN");
+        setCountdown(3);
+
+        const countInterval = setInterval(() => {
+            setCountdown((prev) => {
                 if (prev <= 1) {
-                    completePractice();
+                    clearInterval(countInterval);
+                    startPractice();
                     return 0;
                 }
                 return prev - 1;
             });
         }, 1000);
-    };
+    }, 2000); // 2s transition matches animState.transitionDuration
+};
 
-    const runBreathingCycle = (currentPhase: BreathPhase) => {
-        // Use a ref-based check for the phase to avoid stale closure issues
-        if (animState.current.phase === "COMPLETED" || animState.current.phase === "SUMMARY") return;
+const startPractice = async () => {
+    setPhase("PRACTICING");
+    setBreathPhase("INHALE");
+    practiceStartTimeRef.current = Date.now();
 
-        let nextPhase: BreathPhase;
-        let duration: number;
+    // Start Heart Rate Monitoring (if authorized)
+    if (!isAuthorized) {
+        const granted = await requestPermission();
+        if (granted) startMonitoring(true); // Pass true to bypass state timing issue
+    } else {
+        startMonitoring();
+    }
 
-        switch (currentPhase) {
-            case "INHALE": nextPhase = "HOLD"; duration = BREATH_CYCLE.INHALE; break;
-            case "HOLD": nextPhase = "EXHALE"; duration = BREATH_CYCLE.HOLD; break;
-            case "EXHALE": nextPhase = "INHALE"; duration = BREATH_CYCLE.EXHALE; break;
-        }
+    // Start Recursive Cycle
+    runBreathingCycle("INHALE");
 
-        setBreathPhase(currentPhase);
-
-        breathTimerRef.current = setTimeout(() => {
-            runBreathingCycle(nextPhase);
-        }, duration);
-    };
-
-    const completePractice = () => {
-        setPhase("COMPLETED");
-        animState.current.completionStartTime = Date.now(); // Start dispersion
-
-        // 1. Capture Session Data IMMEDIATELY
-        const elapsedSeconds = Math.round((Date.now() - practiceStartTimeRef.current) / 1000);
-        const currentHRHistory = [...heartRateHistory];
-
-        setSessionDuration(elapsedSeconds);
-        setSessionHeartRates(currentHRHistory);
-
-        // Stop Heart Rate Monitoring
-        stopMonitoring();
-
-        if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
-        if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
-        clearHapticTimers();
-
-        // 🎊 完成反馈
-        triggerHeavy();
-        window.setTimeout(() => triggerHeavy(), 150);
-        window.setTimeout(() => triggerHeavy(), 300);
-        window.setTimeout(() => {
-            triggerSuccess();
-            playCompletionSound();
-        }, 500);
-
-        // Show summary after animation completes
-        window.setTimeout(() => {
-            setPhase("SUMMARY");
-
-            // --- Generate Text Targets for Particles ---
-            const durationText = formatTime(elapsedSeconds);
-
-            // Calculate Stats
-            const avgBpm = currentHRHistory.length > 0
-                ? Math.round(currentHRHistory.reduce((a, b) => a + b, 0) / currentHRHistory.length)
-                : 0;
-            const bpmText = avgBpm > 0 ? avgBpm.toString() : "--"; // Just the number is cleaner
-
-            // Calculate BPM Difference
-            const startBpm = currentHRHistory[0] || 0;
-            const endBpm = currentHRHistory[currentHRHistory.length - 1] || 0;
-            const diff = endBpm - startBpm;
-            const diffText = diff === 0 ? "±0" : (diff > 0 ? "+" + diff : diff.toString());
-
-            const canvas = canvasRef.current;
-            if (canvas) {
-                animState.current.morphStartTime = Date.now() + 3000;
-                animState.current.sessionHeartRates = currentHRHistory;
-
-                const { points, bpmStartIndex, dropStartIndex } = getTextPoints(durationText, bpmText, diffText, canvas.width, canvas.height);
-                animState.current.textTargets = points;
-                animState.current.bpmParticleStartIndex = bpmStartIndex;
-                animState.current.dropParticleStartIndex = dropStartIndex;
+    // Timer
+    practiceTimerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+            if (prev <= 1) {
+                completePractice();
+                return 0;
             }
-        }, 5000);
-    };
+            return prev - 1;
+        });
+    }, 1000);
+};
 
-    const cleanup = () => {
-        if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
-        if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
-        clearHapticTimers();
-    };
+const runBreathingCycle = (currentPhase: BreathPhase) => {
+    // Use a ref-based check for the phase to avoid stale closure issues
+    if (animState.current.phase === "COMPLETED" || animState.current.phase === "SUMMARY") return;
 
-    const handleExit = () => {
-        cleanup();
-        if (phase === "IDLE") {
-            // If already in IDLE, go back to home
-            router.back();
-        } else {
-            // Otherwise, return to IDLE state (not home)
-            setPhase("IDLE");
-            setBreathPhase("INHALE");
-            setCountdown(3);
+    let nextPhase: BreathPhase;
+    let duration: number;
+
+    switch (currentPhase) {
+        case "INHALE": nextPhase = "HOLD"; duration = BREATH_CYCLE.INHALE; break;
+        case "HOLD": nextPhase = "EXHALE"; duration = BREATH_CYCLE.HOLD; break;
+        case "EXHALE": nextPhase = "INHALE"; duration = BREATH_CYCLE.EXHALE; break;
+    }
+
+    setBreathPhase(currentPhase);
+
+    breathTimerRef.current = setTimeout(() => {
+        runBreathingCycle(nextPhase);
+    }, duration);
+};
+
+const completePractice = () => {
+    setPhase("COMPLETED");
+    animState.current.completionStartTime = Date.now(); // Start dispersion
+
+    // 1. Capture Session Data IMMEDIATELY
+    const elapsedSeconds = Math.round((Date.now() - practiceStartTimeRef.current) / 1000);
+    const currentHRHistory = [...heartRateHistory];
+
+    setSessionDuration(elapsedSeconds);
+    setSessionHeartRates(currentHRHistory);
+
+    // Stop Heart Rate Monitoring
+    stopMonitoring();
+
+    if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
+    if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
+    clearHapticTimers();
+
+    // 🎊 完成反馈
+    triggerHeavy();
+    window.setTimeout(() => triggerHeavy(), 150);
+    window.setTimeout(() => triggerHeavy(), 300);
+    window.setTimeout(() => {
+        triggerSuccess();
+        playCompletionSound();
+    }, 500);
+
+    // Show summary after animation completes
+    window.setTimeout(() => {
+        setPhase("SUMMARY");
+
+        // --- Generate Text Targets for Particles ---
+        const durationText = formatTime(elapsedSeconds);
+
+        // Calculate Stats
+        const avgBpm = currentHRHistory.length > 0
+            ? Math.round(currentHRHistory.reduce((a, b) => a + b, 0) / currentHRHistory.length)
+            : 0;
+        const bpmText = avgBpm > 0 ? avgBpm.toString() : "--"; // Just the number is cleaner
+
+        // Calculate BPM Difference
+        const startBpm = currentHRHistory[0] || 0;
+        const endBpm = currentHRHistory[currentHRHistory.length - 1] || 0;
+        const diff = endBpm - startBpm;
+        const diffText = diff === 0 ? "±0" : (diff > 0 ? "+" + diff : diff.toString());
+
+        const canvas = canvasRef.current;
+        if (canvas) {
+            animState.current.morphStartTime = Date.now() + 3000;
+            animState.current.sessionHeartRates = currentHRHistory;
+
+            const { points, bpmStartIndex, dropStartIndex } = getTextPoints(durationText, bpmText, diffText, canvas.width, canvas.height);
+            animState.current.textTargets = points;
+            animState.current.bpmParticleStartIndex = bpmStartIndex;
+            animState.current.dropParticleStartIndex = dropStartIndex;
         }
-    };
+    }, 5000);
+};
+
+const cleanup = () => {
+    if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
+    if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
+    clearHapticTimers();
+};
+
+const handleExit = () => {
+    cleanup();
+    if (phase === "IDLE") {
+        // If already in IDLE, go back to home
+        router.back();
+    } else {
+        // Otherwise, return to IDLE state (not home)
+        setPhase("IDLE");
+        setBreathPhase("INHALE");
+        setCountdown(3);
+    }
+};
 
 
-    return (
-        <div className="fixed inset-0 z-[99999] bg-black text-white font-sans overflow-hidden animate-in fade-in duration-500">
+return (
+    <div className="fixed inset-0 z-[99999] bg-black text-white font-sans overflow-hidden animate-in fade-in duration-500">
 
-            {/* Canvas */}
-            <canvas ref={canvasRef} className="absolute inset-0 block touch-none" />
+        {/* Canvas */}
+        <canvas ref={canvasRef} className="absolute inset-0 block touch-none" />
 
-            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-safe">
+        <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-safe">
 
-                {/* Header */}
-                <header className="w-full p-6 flex justify-between items-start pointer-events-auto z-50">
-                    <button
-                        onClick={handleExit}
-                        className="p-3 bg-white/5 backdrop-blur-md rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all border border-white/5 group"
-                    >
-                        <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
-                    </button>
-                    <div className="w-[46px]" />
-                </header>
+            {/* Header */}
+            <header className="w-full p-6 flex justify-between items-start pointer-events-auto z-50">
+                <button
+                    onClick={handleExit}
+                    className="p-3 bg-white/5 backdrop-blur-md rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all border border-white/5 group"
+                >
+                    <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
+                </button>
+                <div className="w-[46px]" />
+            </header>
 
 
 
-                {/* Center UI - Absolute Layer for Perfect Centering */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
-                    <AnimatePresence mode="wait">
-                        {phase === "COUNTDOWN" && (
-                            <motion.div
-                                key="cnt"
-                                initial={{ opacity: 0, scale: 0.5 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 2 }}
-                                className="text-9xl font-thin text-white mix-blend-screen"
-                            >
-                                {countdown}
-                            </motion.div>
-                        )}
-
-                        {phase === "PRACTICING" && (
-                            <motion.div
-                                key={breathPhase}
-                                initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }}
-                                animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                                exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
-                                transition={{ duration: 1 }}
-                                className="text-center mix-blend-screen"
-                            >
-                                <span className="text-4xl md:text-5xl font-light tracking-[0.3em] uppercase text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-                                    {breathPhase === "INHALE" && "吸 气"}
-                                    {breathPhase === "HOLD" && "屏 气"}
-                                    {breathPhase === "EXHALE" && "呼 气"}
-                                </span>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
-
-                {/* Heart Rate Indicator - Top Right */}
-                {phase === "PRACTICING" && (
-                    <HeartRateIndicator
-                        currentBPM={currentBPM}
-                        isMonitoring={isMonitoring}
-                        error={heartRateError}
-                    />
-                )}
-
-                {phase === "COMPLETED" && (
-                    <motion.div
-                        key="done"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="flex flex-col items-center justify-center gap-4 text-center"
-                    >
+            {/* Center UI - Absolute Layer for Perfect Centering */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
+                <AnimatePresence mode="wait">
+                    {phase === "COUNTDOWN" && (
                         <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ type: "spring", damping: 12 }}
-                            className="p-4 rounded-full bg-green-500/20 text-green-400 mb-2"
+                            key="cnt"
+                            initial={{ opacity: 0, scale: 0.5 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 2 }}
+                            className="text-9xl font-thin text-white mix-blend-screen"
                         >
-                            <CheckCircle2 size={48} />
+                            {countdown}
                         </motion.div>
-                        <h1 className="text-3xl font-light text-white tracking-widest">
-                            Session Complete
-                        </h1>
+                    )}
+
+                    {phase === "PRACTICING" && (
+                        <motion.div
+                            key={breathPhase}
+                            initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }}
+                            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                            exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
+                            transition={{ duration: 1 }}
+                            className="text-center mix-blend-screen"
+                        >
+                            <span className="text-4xl md:text-5xl font-light tracking-[0.3em] uppercase text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+                                {breathPhase === "INHALE" && "吸 气"}
+                                {breathPhase === "HOLD" && "屏 气"}
+                                {breathPhase === "EXHALE" && "呼 气"}
+                            </span>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+
+            {/* Heart Rate Indicator - Top Right */}
+            {phase === "PRACTICING" && (
+                <HeartRateIndicator
+                    currentBPM={currentBPM}
+                    isMonitoring={isMonitoring}
+                    error={heartRateError}
+                />
+            )}
+
+            {phase === "COMPLETED" && (
+                <motion.div
+                    key="done"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex flex-col items-center justify-center gap-4 text-center"
+                >
+                    <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: "spring", damping: 12 }}
+                        className="p-4 rounded-full bg-green-500/20 text-green-400 mb-2"
+                    >
+                        <CheckCircle2 size={48} />
                     </motion.div>
-                )}
+                    <h1 className="text-3xl font-light text-white tracking-widest">
+                        Session Complete
+                    </h1>
+                </motion.div>
+            )}
 
 
-                {/* Footer UI (Independent of Center UI) */}
-                <div className="w-full flex flex-col items-center justify-end pointer-events-none z-40 flex-1">
+            {/* Footer UI (Independent of Center UI) */}
+            <div className="w-full flex flex-col items-center justify-end pointer-events-none z-40 flex-1">
 
-                </div>
+            </div>
 
-                {/* Footer */}
-                <footer className="w-full max-w-sm pb-12 px-6 pointer-events-auto z-50">
-                    <AnimatePresence>
-                        {/* IDLE UI */}
-                        {phase === "IDLE" && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 50 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 50 }}
-                                className="flex flex-col gap-10"
-                            >
-                                {/* Scale Selector */}
-                                <RulerTimeSelector
-                                    value={durationMinutes}
-                                    onChange={setDurationMinutes}
-                                />
+            {/* Footer */}
+            <footer className="w-full max-w-sm pb-12 px-6 pointer-events-auto z-50">
+                <AnimatePresence>
+                    {/* IDLE UI */}
+                    {phase === "IDLE" && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 50 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 50 }}
+                            className="flex flex-col gap-10"
+                        >
+                            {/* Scale Selector */}
+                            <RulerTimeSelector
+                                value={durationMinutes}
+                                onChange={setDurationMinutes}
+                            />
 
-                                {/* Theme Selector - Scrollable */}
-                                <div className="w-full overflow-x-auto scrollbar-hide py-4 -mx-4 px-4">
-                                    <div className="flex gap-3 w-max snap-x snap-mandatory">
-                                        {(Object.keys(THEMES) as Theme[]).map((themeKey) => {
-                                            const theme = THEMES[themeKey];
-                                            const isSelected = selectedTheme === themeKey;
-                                            const Icon = theme.icon;
+                            {/* Theme Selector - Scrollable */}
+                            <div className="w-full overflow-x-auto scrollbar-hide py-4 -mx-4 px-4">
+                                <div className="flex gap-3 w-max snap-x snap-mandatory">
+                                    {(Object.keys(THEMES) as Theme[]).map((themeKey) => {
+                                        const theme = THEMES[themeKey];
+                                        const isSelected = selectedTheme === themeKey;
+                                        const Icon = theme.icon;
 
-                                            return (
-                                                <button
-                                                    key={themeKey}
-                                                    onClick={() => {
-                                                        setSelectedTheme(themeKey);
-                                                        triggerLight();
-                                                    }}
-                                                    className={`
+                                        return (
+                                            <button
+                                                key={themeKey}
+                                                onClick={() => {
+                                                    setSelectedTheme(themeKey);
+                                                    triggerLight();
+                                                }}
+                                                className={`
                                                         snap-center flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all min-w-[70px]
                                                         ${isSelected ? "bg-white/15 scale-105 border-white/30" : "bg-white/5 text-white/50 hover:text-white hover:bg-white/10"}
                                                         border ${isSelected ? "border-white/30" : "border-transparent"}
                                                     `}
-                                                >
-                                                    <div className={`p-1.5 rounded-full ${isSelected ? theme.color : "text-current"}`}>
-                                                        <Icon size={22} />
-                                                    </div>
-                                                    <span className="text-[9px] font-medium tracking-wider uppercase whitespace-nowrap">
-                                                        {theme.name}
-                                                    </span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
+                                            >
+                                                <div className={`p-1.5 rounded-full ${isSelected ? theme.color : "text-current"}`}>
+                                                    <Icon size={22} />
+                                                </div>
+                                                <span className="text-[9px] font-medium tracking-wider uppercase whitespace-nowrap">
+                                                    {theme.name}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
+                            </div>
 
-                                {/* Start Button */}
-                                <button
-                                    onClick={handleStart}
-                                    className="w-full py-5 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10 text-xl font-light tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
-                                >
-                                    <Play size={20} fill="currentColor" />
-                                    <span>BEGIN</span>
-                                </button>
-                            </motion.div>
-                        )}
-
-                        {phase === "PRACTICING" && (
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="w-full py-5 text-center"
+                            {/* Start Button */}
+                            <button
+                                onClick={handleStart}
+                                className="w-full py-5 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10 text-xl font-light tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
                             >
-                                <span className="text-2xl font-thin tracking-widest text-white/50 tabular-nums">
-                                    {formatTime(timeLeft)}
-                                </span>
-                            </motion.div>
-                        )}
+                                <Play size={20} fill="currentColor" />
+                                <span>BEGIN</span>
+                            </button>
+                        </motion.div>
+                    )}
 
-                        {phase === "COMPLETED" && (
-                            <motion.button
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                onClick={() => setPhase("IDLE")}
-                                className="w-full py-4 glass-panel rounded-full flex items-center justify-center gap-2 hover:bg-white/10 transition-colors pointer-events-auto"
-                            >
-                                <RefreshCw size={18} />
-                                <span>Repeat Session</span>
-                            </motion.button>
-                        )}
-                    </AnimatePresence>
-                </footer>
-            </div >
+                    {phase === "PRACTICING" && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="w-full py-5 text-center"
+                        >
+                            <span className="text-2xl font-thin tracking-widest text-white/50 tabular-nums">
+                                {formatTime(timeLeft)}
+                            </span>
+                        </motion.div>
+                    )}
 
-            {/* Practice Summary - Immersive Overlay */}
-            {phase === "SUMMARY" && (
-                <PracticeCompletionView
-                    duration={sessionDuration}
-                    heartRateHistory={sessionHeartRates}
-                    theme={selectedTheme}
-                    onClose={() => {
-                        setPhase("IDLE");
-                        setBreathPhase("INHALE");
-                        setCountdown(3);
-                        setTimeLeft(durationMinutes * 60);
-                    }}
-                />
-            )}
+                    {phase === "COMPLETED" && (
+                        <motion.button
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            onClick={() => setPhase("IDLE")}
+                            className="w-full py-4 glass-panel rounded-full flex items-center justify-center gap-2 hover:bg-white/10 transition-colors pointer-events-auto"
+                        >
+                            <RefreshCw size={18} />
+                            <span>Repeat Session</span>
+                        </motion.button>
+                    )}
+                </AnimatePresence>
+            </footer>
+        </div >
 
-            <style jsx global>{`
+        {/* Practice Summary - Immersive Overlay */}
+        {phase === "SUMMARY" && (
+            <PracticeCompletionView
+                duration={sessionDuration}
+                heartRateHistory={sessionHeartRates}
+                theme={selectedTheme}
+                onClose={() => {
+                    setPhase("IDLE");
+                    setBreathPhase("INHALE");
+                    setCountdown(3);
+                    setTimeLeft(durationMinutes * 60);
+                }}
+            />
+        )}
+
+        <style jsx global>{`
         .hide-scrollbar::-webkit-scrollbar {
             display: none;
         }
@@ -1559,8 +1692,8 @@ function PracticeContent({ router }: { router: any }) {
              padding-bottom: env(safe-area-inset-bottom);
         }
       `}</style>
-        </div >
-    );
+    </div >
+);
 }
 
 // --- Particle Text Morphing Helpers ---
@@ -1581,8 +1714,13 @@ const getTextPoints = (text1: string, text2: string, text3: string, width: numbe
     const step = 4; // Denser particles for better clarity
 
     // 1. Scan Duration Text (Center Top)
+
+    // 1. Scan Duration Text (Center Top)
+    // Move HIGHER to avoid overlap: height/2 - 200 (was 140)
+    // Label is at -20 (approx height/2 - 80). So if text is at height/2 - 200, it is 120px ABOVE label.
+    // Text size 120px -> bottom of text ~ -140. Label top ~ -80. 60px gap. Safe.
     ctx.font = '500 120px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(text1, width / 2, height / 2 - 140);
+    ctx.fillText(text1, width / 2, height / 2 - 200);
 
     let imageData = ctx.getImageData(0, 0, width, height).data;
     for (let y = 0; y < height; y += step) {
@@ -1594,9 +1732,14 @@ const getTextPoints = (text1: string, text2: string, text3: string, width: numbe
     const bpmStartIndex = points.length;
 
     // 2. Scan BPM Text (Bottom Left)
+    // Move LOWER: height/2 + 180 (was 100)
+    // Label is at +40 (approx height/2 + 160).
+    // If text is at +180 (center of text). Font 80px. Top of text +140. Label at +160.
+    // They might still be close.
+    // Let's move text to +220.
     ctx.clearRect(0, 0, width, height);
     ctx.font = '500 80px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(text2, width / 2 - 140, height / 2 + 100);
+    ctx.fillText(text2, width / 2 - 140, height / 2 + 220);
 
     imageData = ctx.getImageData(0, 0, width, height).data;
     for (let y = 0; y < height; y += step) {
@@ -1609,7 +1752,7 @@ const getTextPoints = (text1: string, text2: string, text3: string, width: numbe
 
     // 3. Scan Drop Text (Bottom Right)
     ctx.clearRect(0, 0, width, height);
-    ctx.fillText(text3, width / 2 + 140, height / 2 + 100); // Same font as above
+    ctx.fillText(text3, width / 2 + 140, height / 2 + 220); // Sync Y with BPM
 
     imageData = ctx.getImageData(0, 0, width, height).data;
     for (let y = 0; y < height; y += step) {
@@ -1736,7 +1879,7 @@ const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: numbe
     let baseSat = 0; // 0 = white
     let dynamicColor = false;
 
-    if (state.theme === "LIQUID_GLASS") { baseHue = 210; baseSat = 30; dynamicColor = true; }
+    if (state.theme === "LIQUID") { baseHue = 210; baseSat = 30; dynamicColor = true; }
     else if (state.theme === "ROSE") { baseHue = 340; baseSat = 80; dynamicColor = true; }
     else if (state.theme === "AURORA") { baseHue = 160; baseSat = 70; dynamicColor = true; }
     else if (state.theme === "GALAXY") { baseHue = 260; baseSat = 80; dynamicColor = true; }
