@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit, Cherry, Star, Flower } from "lucide-react";
+import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit, Cherry, Star, Flower, GlassWater } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { useHeartRate } from "@/lib/hooks/useHeartRate";
@@ -14,10 +14,11 @@ import { KeepAwake } from "@capacitor-community/keep-awake";
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
-type Theme = "ROSE" | "AURORA" | "TIDES" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
+type Theme = "LIQUID_GLASS" | "ROSE" | "AURORA" | "TIDES" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
 
 // --- Theme Config ---
 const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
+    LIQUID_GLASS: { name: "Liquid Glass", icon: GlassWater, color: "text-blue-100" },
     ROSE: { name: "Rose", icon: Flower2, color: "text-pink-400" },
     AURORA: { name: "Aurora", icon: Sparkles, color: "text-purple-400" },
     TIDES: { name: "Tides", icon: Waves, color: "text-cyan-400" },
@@ -896,67 +897,77 @@ function PracticeContent({ router }: { router: any }) {
             ctx.fillStyle = `hsla(${oceanHue + Math.sin(i) * 20}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
             p.x = finalX; p.y = finalY;
-            ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
+            ctx.arc(finalX, finalY, p.size * 1.1, 0, Math.PI * 2);
             ctx.fill();
         });
     };
 
-    const renderPrism = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+    const renderLiquidGlass = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
         const centerY = height / 2;
+        const now = timestamp;
+
+        // Custom lifecycle animations
+        // Opening (fragmented crystal formation)
+        const openingEffect = (1 - transitionProgress) * 50;
+        // Closing (liquid merging/melting)
+        const closingEffect = bloomProgress * 1500;
+
+        ctx.save();
 
         state.particles.forEach((p: any, i: number) => {
-            // Initial: Random, shimmering points of light
-            if (transitionProgress < 1) {
-                p.diffuseX += (Math.random() - 0.5) * 1.5;
-                p.diffuseY += (Math.random() - 0.5) * 1.5;
-            } else {
-                p.diffuseX += p.dx * 0.1;
-                p.diffuseY += p.dy * 0.1;
-            }
-            p.angle += p.speed * 0.15;
+            // Liquid Motion Physics
+            const moveSpeed = 0.1;
+            p.diffuseX += Math.sin(now * 0.001 + i) * 0.2;
+            p.diffuseY += Math.cos(now * 0.001 + i) * 0.2;
 
-            // Prism: Geometric, refracting light
-            // Use a hexagonal pattern for the base shape
-            const numSides = 6;
-            const angleOffset = (Math.PI * 2 / numSides) * (i % numSides);
-            const baseAngle = p.angle + angleOffset;
+            // Breath expansion with smooth liquid drag
+            const expansion = (breathScale - 1) * 60;
+            const distScale = 0.7 + Math.sin(now * 0.0005 + i * 0.1) * 0.1;
 
-            const shimmer = Math.sin(timestamp * 0.004 + i * 0.2) * 10;
-
-            let effectiveDist = (p.dist * 0.8 + shimmer) * breathScale;
-            let effectiveAlpha = 0.4 + Math.abs(Math.sin(timestamp * 0.002 + p.angle * 3)) * 0.4;
-
-            // Bloom: Iridescent Burst - particles shoot out in rainbow trails
-            let burstX = 0;
-            let burstY = 0;
-            if (bloomProgress > 0) {
-                const burstSpeed = bloomProgress * 800;
-                burstX = Math.cos(baseAngle) * burstSpeed;
-                burstY = Math.sin(baseAngle) * burstSpeed;
-                effectiveAlpha *= (1 - bloomProgress * 0.7); // Fade out
-                p.angle += bloomProgress * 0.1; // Spin faster
-            }
-
-            const orbitX = Math.cos(baseAngle) * effectiveDist + burstX;
-            const orbitY = Math.sin(baseAngle) * effectiveDist + burstY;
+            // Opening effect: Particles start more fragmented/irregular
+            const angleOffset = openingEffect * Math.sin(i);
+            const orbitX = Math.cos(p.angle + angleOffset) * (p.dist * distScale + expansion + closingEffect);
+            const orbitY = Math.sin(p.angle + angleOffset) * (p.dist * distScale + expansion + closingEffect);
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
-            if (transitionProgress < 1) effectiveAlpha *= 0.5;
+            // Optical effect: Chromatic Aberration (RGB Splitting)
+            // Simulates diffraction within the glass
+            const aberrationVal = 2 + Math.sin(now * 0.002 + i) * 1.5;
+            const alpha = (0.3 + Math.sin(now * 0.001 + i * 0.05) * 0.2) * transitionProgress * (1 - bloomProgress * 0.8);
 
-            // Rainbow colors
-            const hue = (timestamp * 0.02 + i * 0.5) % 360;
-            const saturation = 70 + Math.sin(timestamp * 0.003 + i) * 20;
-            const lightness = 70 + Math.cos(timestamp * 0.002 + i) * 10;
+            // Draw Blue component
+            ctx.fillStyle = `hsla(210, 80%, 70%, ${alpha * 0.6})`;
+            ctx.beginPath();
+            ctx.arc(finalX + aberrationVal, finalY, p.size * 1.5, 0, Math.PI * 2);
+            ctx.fill();
 
-            ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
+            // Draw Red/Orange component (refraction)
+            ctx.fillStyle = `hsla(340, 70%, 70%, ${alpha * 0.4})`;
+            ctx.beginPath();
+            ctx.arc(finalX - aberrationVal, finalY, p.size * 1.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Core translucent glass particle
+            ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
             ctx.beginPath();
             p.x = finalX; p.y = finalY;
-            ctx.arc(finalX, finalY, p.size * 1.1, 0, Math.PI * 2);
+            ctx.arc(finalX, finalY, p.size * 1.2, 0, Math.PI * 2);
             ctx.fill();
+
+            // Specular Glint (Reflections) - Only occasionally
+            if (i % 20 === 0) {
+                const glintAlpha = alpha * (0.5 + Math.sin(now * 0.005 + i) * 0.5);
+                ctx.fillStyle = `rgba(255, 255, 255, ${glintAlpha})`;
+                ctx.beginPath();
+                ctx.arc(finalX - p.size, finalY - p.size, p.size * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
         });
+
+        ctx.restore();
     };
 
     const updateParticles = (timestamp: number, width: number, height: number, ctx: CanvasRenderingContext2D) => {
@@ -967,41 +978,36 @@ function PracticeContent({ router }: { router: any }) {
         // --- 1. Transition Logic ---
         const now = Date.now();
         let transitionProgress = 0;
-        let bloomProgress = 0;
-
-        if (state.phase === "TRANSITION_TO_PRACTICE") {
+        if (state.phase !== "IDLE") {
             const elapsed = now - state.transitionStartTime;
             transitionProgress = Math.min(elapsed / state.transitionDuration, 1);
-            transitionProgress = easeInOutCubic(transitionProgress);
-        } else if (state.phase === "PRACTICING" || state.phase === "COUNTDOWN") {
-            transitionProgress = 1;
-        } else if (state.phase === "COMPLETED" || state.phase === "SUMMARY") {
-            transitionProgress = 1;
-            const elapsed = now - (state.completionStartTime || now);
-            bloomProgress = Math.min(elapsed / 3000, 1);
-            if (state.phase === "SUMMARY") bloomProgress = 1; // Keep fully bloomed
-            else if (state.theme === "ROSE") bloomProgress = 1 - Math.pow(1 - bloomProgress, 3);
-            else bloomProgress = elapsed / 3000; // Linear for others or custom
         }
 
-        // --- 2. Breath Logic ---
+        // --- 2. Phase-specific Logic ---
+        let bloomProgress = 0;
         let breathScale = 1;
-        if (state.phase === "PRACTICING" || state.phase === "COMPLETED") {
-            const elapsed = now - state.phaseStartTime;
-            if (state.phase === "PRACTICING") {
-                const breathProg = Math.min(elapsed / state.phaseDuration, 1);
-                const smoothedBreath = easeInOutCubic(breathProg);
 
-                if (state.breathPhase === "INHALE") {
-                    state.currentRadius = BASE_RADIUS + (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
-                    state.hue = 200 + (20 * smoothedBreath);
-                } else if (state.breathPhase === "HOLD") {
-                    state.currentRadius = EXPAND_RADIUS + Math.sin(timestamp * 0.003) * 5;
-                    state.hue = 220;
-                } else if (state.breathPhase === "EXHALE") {
-                    state.currentRadius = EXPAND_RADIUS - (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
-                    state.hue = 220 - (20 * smoothedBreath);
-                }
+        if (state.phase === "COMPLETED") {
+            const elapsed = now - state.completionStartTime;
+            bloomProgress = Math.min(elapsed / 1000, 1); // 1s dispersion
+            transitionProgress = 1;
+        }
+
+        if (state.phase === "PRACTICING") {
+            transitionProgress = 1;
+            const phaseElapsed = now - state.phaseStartTime;
+            const cycleProgress = Math.min(phaseElapsed / state.phaseDuration, 1);
+            const smoothedBreath = easeInOutCubic(cycleProgress);
+
+            if (state.breathPhase === "INHALE") {
+                state.currentRadius = BASE_RADIUS + (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
+                state.hue = 200 + (20 * smoothedBreath);
+            } else if (state.breathPhase === "HOLD") {
+                state.currentRadius = EXPAND_RADIUS + Math.sin(timestamp * 0.003) * 5;
+                state.hue = 220;
+            } else if (state.breathPhase === "EXHALE") {
+                state.currentRadius = EXPAND_RADIUS - (EXPAND_RADIUS - BASE_RADIUS) * smoothedBreath;
+                state.hue = 220 - (20 * smoothedBreath);
             }
             breathScale = state.currentRadius / BASE_RADIUS;
         } else {
@@ -1015,7 +1021,34 @@ function PracticeContent({ router }: { router: any }) {
         ctx.fillRect(0, 0, width, height);
 
         if (state.phase === "SUMMARY" && state.textTargets && state.textTargets.length > 0) {
-            renderTextMorph(ctx, state, width, height);
+            // Determine text color based on theme for better contrast
+            let textColor = "white";
+            if (state.theme === "LIQUID_GLASS") {
+                textColor = "rgba(173, 216, 230, 0.9)"; // Light blue for Liquid Glass
+            } else if (state.theme === "ZEN") {
+                textColor = "rgba(255, 255, 255, 0.9)"; // White for Zen
+            } else if (state.theme === "SAKURA") {
+                textColor = "rgba(255, 200, 220, 0.9)"; // Pink for Sakura
+            } else if (state.theme === "TIDES") {
+                textColor = "rgba(173, 216, 230, 0.9)"; // Light blue for Tides
+            } else if (state.theme === "AURORA") {
+                textColor = "rgba(200, 255, 200, 0.9)"; // Light green for Aurora
+            } else if (state.theme === "GALAXY") {
+                textColor = "rgba(220, 200, 255, 0.9)"; // Light purple for Galaxy
+            } else if (state.theme === "INFERNO") {
+                textColor = "rgba(255, 200, 150, 0.9)"; // Orange for Inferno
+            } else if (state.theme === "CRYSTAL") {
+                textColor = "rgba(200, 255, 255, 0.9)"; // Cyan for Crystal
+            } else if (state.theme === "STARFALL") {
+                textColor = "rgba(255, 255, 200, 0.9)"; // Yellow for Starfall
+            } else if (state.theme === "LOTUS") {
+                textColor = "rgba(255, 240, 200, 0.9)"; // Cream for Lotus
+            } else if (state.theme === "PRISM") {
+                textColor = "rgba(255, 255, 255, 0.9)"; // White for Prism
+            }
+            renderTextMorph(ctx, state, width, height, textColor);
+        } else if (state.theme === "LIQUID_GLASS") {
+            renderLiquidGlass(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "AURORA") {
             renderAurora(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "TIDES") {
@@ -1663,20 +1696,18 @@ const renderHeartRateCurve = (ctx: CanvasRenderingContext2D, state: any, width: 
     ctx.restore();
 };
 
-const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, now: number) => {
-    const particles = state.particles;
+const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, customTextColor?: string) => {
+    const now = Date.now();
     const targets = state.textTargets;
-    if (!targets || targets.length === 0) return;
+    const particles = state.particles;
+    const morphElapsed = now - state.morphStartTime;
 
-    const morphStartTime = state.morphStartTime || 0;
-    const morphElapsed = now - morphStartTime;
-
-    // Phase 2: Drift (Wait until bloom finishes + buffer)
     if (morphElapsed < 0) {
-        // Just drift loosely
+        // Drift Phase
         particles.forEach((p: any) => {
-            p.x += (Math.random() - 0.5) * 0.5;
-            p.y += (Math.random() - 0.5) * 0.5;
+            p.x += (Math.random() - 0.5) * 1;
+            p.y += (Math.random() - 0.5) * 1;
+
             // Use subtle white for drift
             ctx.fillStyle = `rgba(255, 255, 255, 0.3)`;
             ctx.beginPath();
@@ -1705,7 +1736,8 @@ const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: numbe
     let baseSat = 0; // 0 = white
     let dynamicColor = false;
 
-    if (state.theme === "ROSE") { baseHue = 340; baseSat = 80; dynamicColor = true; }
+    if (state.theme === "LIQUID_GLASS") { baseHue = 210; baseSat = 30; dynamicColor = true; }
+    else if (state.theme === "ROSE") { baseHue = 340; baseSat = 80; dynamicColor = true; }
     else if (state.theme === "AURORA") { baseHue = 160; baseSat = 70; dynamicColor = true; }
     else if (state.theme === "GALAXY") { baseHue = 260; baseSat = 80; dynamicColor = true; }
     else if (state.theme === "INFERNO") { baseHue = 20; baseSat = 90; dynamicColor = true; }
