@@ -251,6 +251,7 @@ function PracticeContent({ router }: { router: any }) {
     const hapticTimers = useRef<NodeJS.Timeout[]>([]);
     const requestRef = useRef<number>(0);
     const practiceTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const practiceStartTimeRef = useRef<number>(0);
     const breathTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     // Animation State
@@ -261,6 +262,8 @@ function PracticeContent({ router }: { router: any }) {
         textTargets: [] as { x: number, y: number }[], // NEW: Text Particle Targets
         bpmParticleStartIndex: 0, // NEW: Index where BPM particles start
         morphStartTime: 0, // NEW: When morphing begins
+        dropParticleStartIndex: 0, // NEW: Index where Drop particles start
+        sessionHeartRates: [] as number[], // Heart rates for curve drawing
 
         // Sync State (for stale closure fix)
         phase: "IDLE" as Phase,
@@ -1190,6 +1193,7 @@ function PracticeContent({ router }: { router: any }) {
     const startPractice = async () => {
         setPhase("PRACTICING");
         setBreathPhase("INHALE");
+        practiceStartTimeRef.current = Date.now();
 
         // Start Heart Rate Monitoring (if authorized)
         if (!isAuthorized) {
@@ -1215,7 +1219,8 @@ function PracticeContent({ router }: { router: any }) {
     };
 
     const runBreathingCycle = (currentPhase: BreathPhase) => {
-        if (phase === "COMPLETED") return;
+        // Use a ref-based check for the phase to avoid stale closure issues
+        if (animState.current.phase === "COMPLETED" || animState.current.phase === "SUMMARY") return;
 
         let nextPhase: BreathPhase;
         let duration: number;
@@ -1237,19 +1242,21 @@ function PracticeContent({ router }: { router: any }) {
         setPhase("COMPLETED");
         animState.current.completionStartTime = Date.now(); // Start dispersion
 
-        // Save session data for summary
-        setSessionHeartRates([...heartRateHistory]);
-        setSessionDuration(durationMinutes * 60 - timeLeft);
+        // 1. Capture Session Data IMMEDIATELY
+        const elapsedSeconds = Math.round((Date.now() - practiceStartTimeRef.current) / 1000);
+        const currentHRHistory = [...heartRateHistory];
+
+        setSessionDuration(elapsedSeconds);
+        setSessionHeartRates(currentHRHistory);
 
         // Stop Heart Rate Monitoring
         stopMonitoring();
 
-        // 先清理呼吸相关的定时器
         if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
         clearHapticTimers();
 
-        // 🎊 完成反馈：震动 + 提示音
+        // 🎊 完成反馈
         triggerHeavy();
         window.setTimeout(() => triggerHeavy(), 150);
         window.setTimeout(() => triggerHeavy(), 300);
@@ -1263,31 +1270,31 @@ function PracticeContent({ router }: { router: any }) {
             setPhase("SUMMARY");
 
             // --- Generate Text Targets for Particles ---
-            const durationText = formatTime(durationMinutes * 60 - timeLeft);
+            const durationText = formatTime(elapsedSeconds);
 
             // Calculate Stats
-            const avgBpm = heartRateHistory.length > 0
-                ? Math.round(heartRateHistory.reduce((a, b) => a + b, 0) / heartRateHistory.length)
+            const avgBpm = currentHRHistory.length > 0
+                ? Math.round(currentHRHistory.reduce((a, b) => a + b, 0) / currentHRHistory.length)
                 : 0;
-            const bpmText = avgBpm > 0 ? avgBpm + " BPM" : "-- BPM";
+            const bpmText = avgBpm > 0 ? avgBpm.toString() : "--"; // Just the number is cleaner
 
-            // Calculate BPM Drop (First vs Last)
-            const startBpm = heartRateHistory[0] || 0;
-            const endBpm = heartRateHistory[heartRateHistory.length - 1] || 0;
-            const drop = startBpm > 0 && endBpm > 0 ? startBpm - endBpm : 0;
-            const dropText = drop > 0 ? "-" + drop : "--";
+            // Calculate BPM Difference
+            const startBpm = currentHRHistory[0] || 0;
+            const endBpm = currentHRHistory[currentHRHistory.length - 1] || 0;
+            const diff = endBpm - startBpm;
+            const diffText = diff === 0 ? "±0" : (diff > 0 ? "+" + diff : diff.toString());
 
             const canvas = canvasRef.current;
             if (canvas) {
-                // 3-Phase Animation: Bloom (4s) -> Drift (0.5s) -> Morph
                 animState.current.morphStartTime = Date.now() + 3000;
+                animState.current.sessionHeartRates = currentHRHistory;
 
-                const { points, bpmStartIndex, dropStartIndex } = getTextPoints(durationText, bpmText, dropText, canvas.width, canvas.height);
+                const { points, bpmStartIndex, dropStartIndex } = getTextPoints(durationText, bpmText, diffText, canvas.width, canvas.height);
                 animState.current.textTargets = points;
                 animState.current.bpmParticleStartIndex = bpmStartIndex;
                 animState.current.dropParticleStartIndex = dropStartIndex;
             }
-        }, 5000); // Extended Exit Animation (5s)
+        }, 5000);
     };
 
     const cleanup = () => {
@@ -1538,11 +1545,11 @@ const getTextPoints = (text1: string, text2: string, text3: string, width: numbe
     ctx.textBaseline = 'middle';
 
     const points: { x: number, y: number }[] = [];
-    const step = 6;
+    const step = 4; // Denser particles for better clarity
 
     // 1. Scan Duration Text (Center Top)
-    ctx.font = '300 110px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(text1, width / 2, height / 2 - 120);
+    ctx.font = '500 120px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(text1, width / 2, height / 2 - 140);
 
     let imageData = ctx.getImageData(0, 0, width, height).data;
     for (let y = 0; y < height; y += step) {
@@ -1555,8 +1562,8 @@ const getTextPoints = (text1: string, text2: string, text3: string, width: numbe
 
     // 2. Scan BPM Text (Bottom Left)
     ctx.clearRect(0, 0, width, height);
-    ctx.font = '200 60px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(text2, width / 2 - 140, height / 2 + 50);
+    ctx.font = '500 80px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(text2, width / 2 - 140, height / 2 + 100);
 
     imageData = ctx.getImageData(0, 0, width, height).data;
     for (let y = 0; y < height; y += step) {
@@ -1569,7 +1576,7 @@ const getTextPoints = (text1: string, text2: string, text3: string, width: numbe
 
     // 3. Scan Drop Text (Bottom Right)
     ctx.clearRect(0, 0, width, height);
-    ctx.fillText(text3, width / 2 + 140, height / 2 + 50); // Same font size
+    ctx.fillText(text3, width / 2 + 140, height / 2 + 100); // Same font as above
 
     imageData = ctx.getImageData(0, 0, width, height).data;
     for (let y = 0; y < height; y += step) {
@@ -1599,27 +1606,95 @@ const getTextPoints = (text1: string, text2: string, text3: string, width: numbe
     return { points, bpmStartIndex, dropStartIndex };
 };
 
-const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number) => {
+const renderHeartRateCurve = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, progress: number) => {
+    const history = state.sessionHeartRates;
+    if (!history || history.length < 2) return;
+
+    // Chart Area: Below Duration, Above Stats
+    const chartWidth = width * 0.5;
+    const chartHeight = 80;
+    const startX = (width - chartWidth) / 2;
+    const startY = height / 2 - 40;
+
+    // Get bounds
+    const minHR = Math.min(...history) - 5;
+    const maxHR = Math.max(...history) + 5;
+    const range = maxHR - minHR || 10;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, (progress - 0.5) * 2); // Fade in late in the morph
+    ctx.beginPath();
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    // Glassy Glow
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "rgba(255, 255, 255, 0.4)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+
+    for (let i = 0; i < history.length; i++) {
+        const x = startX + (i / (history.length - 1)) * chartWidth;
+        const y = startY + chartHeight - ((history[i] - minHR) / range) * chartHeight;
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            const prevX = startX + ((i - 1) / (history.length - 1)) * chartWidth;
+            const prevY = startY + chartHeight - ((history[i - 1] - minHR) / range) * chartHeight;
+            // Control points for smooth spline
+            const cp1x = prevX + (x - prevX) / 2;
+            const cp2x = prevX + (x - prevX) / 2;
+            ctx.bezierCurveTo(cp1x, prevY, cp2x, y, x, y);
+        }
+    }
+
+    ctx.stroke();
+
+    // Add endpoints dots
+    [0, history.length - 1].forEach(idx => {
+        const x = startX + (idx / (history.length - 1)) * chartWidth;
+        const y = startY + chartHeight - ((history[idx] - minHR) / range) * chartHeight;
+        ctx.beginPath();
+        ctx.fillStyle = "white";
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    ctx.restore();
+};
+
+const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, now: number) => {
     const particles = state.particles;
     const targets = state.textTargets;
     if (!targets || targets.length === 0) return;
 
-    const now = Date.now();
+    const morphStartTime = state.morphStartTime || 0;
+    const morphElapsed = now - morphStartTime;
+
     // Phase 2: Drift (Wait until bloom finishes + buffer)
-    if (now < (state.morphStartTime || 0)) {
+    if (morphElapsed < 0) {
         // Just drift loosely
         particles.forEach((p: any) => {
             p.x += (Math.random() - 0.5) * 0.5;
             p.y += (Math.random() - 0.5) * 0.5;
             // Use subtle white for drift
-            const alpha = 0.3;
-            ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+            ctx.fillStyle = `rgba(255, 255, 255, 0.3)`;
             ctx.beginPath();
             ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
             ctx.fill();
         });
         return;
     }
+
+    // Phase 3: Morph to Text
+    const morphDuration = 1500;
+    // Assuming easeInOutCubic is defined elsewhere or will be added.
+    const easeInOutCubic = (t: number) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    const progress = Math.min(morphElapsed / morphDuration, 1);
+    const easedProgress = easeInOutCubic(progress);
+
+    // Draw Heart Rate Curve behind particles (fades in with morph)
+    renderHeartRateCurve(ctx, state, width, height, progress);
 
     const lerp = 0.08;
     const beatSpeed = 0.008; // Heartbeat freq
@@ -1636,7 +1711,7 @@ const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: numbe
     else if (state.theme === "INFERNO") { baseHue = 20; baseSat = 90; dynamicColor = true; }
     else if (state.theme === "TIDES") { baseHue = 200; baseSat = 80; dynamicColor = true; }
     else if (state.theme === "ZEN") { baseHue = 45; baseSat = 60; dynamicColor = true; }
-    else if (state.theme === "PRISM") { baseHue = 180; baseSat = 20; dynamicColor = true; } // Iridescent base
+    else if (state.theme === "PRISM") { baseHue = 180; baseSat = 20; dynamicColor = true; }
     else { baseHue = 0; baseSat = 0; }
 
     particles.forEach((p: any, i: number) => {
@@ -1650,51 +1725,56 @@ const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: numbe
             ty = targets[i].y;
             targetAlpha = 0.9;
 
-            // BPM Heartbeat Effect (Avg BPM only - middle segment)
+            // 💓 BPM Heartbeat Effect (BPM segment only)
             if (i >= state.bpmParticleStartIndex && i < (state.dropParticleStartIndex || 999999)) {
-                sizeScale = 1 + beat * 0.5; // Pulse size
-                targetAlpha = 0.7 + beat * 0.3; // Pulse brightness
-                // Slight offset on beat
-                tx += (tx - width / 2) * beat * 0.05;
-                ty += (ty - height / 2) * beat * 0.05;
+                sizeScale = 1 + beat * 0.4;
+                targetAlpha = 0.7 + beat * 0.3;
+                tx += (tx - width / 2) * beat * 0.03;
+                ty += (ty - height / 2) * beat * 0.03;
             }
 
-            // Liquid Noise (alive feeling)
+            // Liquid Noise
             const noise = Math.sin(now * 0.002 + i) * 1.5;
             tx += Math.cos(i) * noise;
             ty += Math.sin(i) * noise;
 
         } else {
-            // Excess particles drift loosely
+            // Excess particles drift and fade
             tx = p.x + (Math.random() - 0.5) * 5;
             ty = p.y + (Math.random() - 0.5) * 5;
-            targetAlpha = 0; // Fade out excess
+            targetAlpha = 0;
         }
 
         // Interpolate
         p.x += (tx - p.x) * lerp;
         p.y += (ty - p.y) * lerp;
 
-        // Draw Color
+        // Draw
         if (dynamicColor && i < targets.length) {
-            if (state.dropParticleStartIndex && i >= state.dropParticleStartIndex) {
-                // Drop value is White/Neutral
-                ctx.fillStyle = `rgba(255, 255, 255, ${targetAlpha})`;
-            } else if (state.theme === "PRISM") {
-                // Prism special text effect: Shimmering Holographic
-                const holoHue = (baseHue + now * 0.1 + i * 2) % 360;
-                ctx.fillStyle = `hsla(${holoHue}, 40%, 90%, ${targetAlpha})`;
+            // Stats (BPM and Drop) - distinct colors
+            if (state.bpmParticleStartIndex && i >= state.bpmParticleStartIndex) {
+                // Determine if it's the Drop segment
+                const isDrop = state.dropParticleStartIndex && i >= state.dropParticleStartIndex;
+
+                if (isDrop) {
+                    // Difference segment (White or Neutral)
+                    ctx.fillStyle = `rgba(255, 255, 255, ${targetAlpha})`;
+                } else {
+                    // BPM segment (Themed)
+                    ctx.fillStyle = `hsla(${baseHue}, ${baseSat}%, 70%, ${targetAlpha})`;
+                }
             } else {
-                // Duration & Avg BPM are Themed
-                const hueOffset = Math.sin(i * 0.1 + now * 0.001) * 30;
-                ctx.fillStyle = `hsla(${baseHue + hueOffset}, ${baseSat}%, 70%, ${targetAlpha})`;
+                // Duration segment (Brightest)
+                ctx.fillStyle = `hsla(${baseHue}, ${baseSat}%, 90%, ${targetAlpha})`;
             }
         } else {
             ctx.fillStyle = `rgba(255, 255, 255, ${targetAlpha})`;
         }
 
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 1.5 * sizeScale, 0, Math.PI * 2);
-        ctx.fill();
+        if (targetAlpha > 0.01) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size * sizeScale, 0, Math.PI * 2);
+            ctx.fill();
+        }
     });
 };

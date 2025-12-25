@@ -45,21 +45,20 @@ export default function PracticeCompletionView({
                 <div />
 
                 {/* Stats Cluster - Labels Only (Numbers rendered by Particles) */}
-                {/* Layout matches canvas: Duration Top, others Bottom */}
-                <motion.div variants={item} className="relative w-full h-[400px]">
-                    {/* Duration Label (Center Top) */}
-                    <div className="absolute top-[35%] left-1/2 -translate-x-1/2 translate-y-24 flex flex-col items-center">
-                        <span className="text-[10px] font-semibold text-white/40 tracking-[0.3em] uppercase">Duration</span>
+                <motion.div variants={item} className="relative w-full h-[300px]">
+                    {/* Duration Label (Center Top - below the 0:00 particles) */}
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-20 flex flex-col items-center">
+                        <span className="text-[10px] font-semibold text-white/30 tracking-[0.3em] uppercase">Duration</span>
                     </div>
 
-                    {/* Avg BPM (Bottom Left) */}
-                    <div className="absolute top-[65%] left-[calc(50%-140px)] -translate-x-1/2 translate-y-16 flex flex-col items-center">
-                        <span className="text-[10px] font-semibold text-white/40 tracking-[0.3em] uppercase">Avg BPM</span>
+                    {/* Avg BPM (Bottom Left - below the BPM particles) */}
+                    <div className="absolute top-1/2 left-[calc(50%-140px)] -translate-x-1/2 translate-y-40 flex flex-col items-center">
+                        <span className="text-[10px] font-semibold text-white/30 tracking-[0.3em] uppercase">Avg BPM</span>
                     </div>
 
-                    {/* BPM Drop (Bottom Right) */}
-                    <div className="absolute top-[65%] left-[calc(50%+140px)] -translate-x-1/2 translate-y-16 flex flex-col items-center">
-                        <span className="text-[10px] font-semibold text-white/40 tracking-[0.3em] uppercase">BPM Drop</span>
+                    {/* BPM Change (Bottom Right - below the Change particles) */}
+                    <div className="absolute top-1/2 left-[calc(50%+140px)] -translate-x-1/2 translate-y-40 flex flex-col items-center">
+                        <span className="text-[10px] font-semibold text-white/30 tracking-[0.3em] uppercase">BPM Change</span>
                     </div>
                 </motion.div>
 
