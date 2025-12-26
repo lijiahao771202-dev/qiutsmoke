@@ -11,6 +11,7 @@ import AIRecommendationCard from "@/components/ui/AIRecommendationCard";
 import JourneyCard from "@/components/ui/JourneyCard";
 import PulseCard from "@/components/ui/PulseCard";
 import O2Card from "@/components/ui/O2Card";
+import GoldenVaultCard from "@/components/ui/GoldenVaultCard";
 
 // MILESTONES removed (moved to JourneyCard)
 
@@ -105,6 +106,11 @@ export default function Home() {
             {/* Card 4: The O2 Vault (Physiological) */}
             <div className="w-full h-full">
               <O2Card />
+            </div>
+
+            {/* Card 5: Golden Vault (Financial/Liquid Gold) */}
+            <div className="w-full h-full">
+              <GoldenVaultCard />
             </div>
 
           </CardStack>

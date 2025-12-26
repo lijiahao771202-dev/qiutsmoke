@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { motion, PanInfo, useMotionValue, useTransform } from "framer-motion";
+import React, { useState, useEffect } from "react";
+import { motion, PanInfo, useAnimation } from "framer-motion";
 
 interface CardStackProps {
     children: React.ReactNode[];
@@ -17,103 +17,119 @@ export function CardStack({ children, className = "" }: CardStackProps) {
     const onDragEnd = (event: any, info: PanInfo) => {
         const swipeThreshold = 50;
 
-        // Swipe LEFT to go forward (next card) -> Current card goes to bottom
+        // Swipe LEFT -> Next Card
         if (info.offset.x < -swipeThreshold) {
             setCurrentIndex((prev) => (prev + 1) % count);
         }
-        // Swipe RIGHT to go backward (prev card) -> Bottom card comes to top
+        // Swipe RIGHT -> Prev Card
         else if (info.offset.x > swipeThreshold) {
             setCurrentIndex((prev) => (prev - 1 + count) % count);
         }
     };
 
     return (
-        <div className={`relative w-full h-full perspective-1000 ${className}`}>
+        <div className={`relative w-full h-full perspective-[1200px] preserve-3d group ${className}`}>
             {childrenArray.map((child, index) => {
-                // Circular Stack Logic
-                // Calculate position in the stack (0 = Front, 1 = Behind 1, ... N-1 = Bottom)
-                const position = (index - currentIndex + count) % count;
+                // Calculate position relative to current index
+                // We handle the circular wrap-around logic here for a consistent "helix" view
+                let offset = (index - currentIndex);
 
-                // Visual States based on position
-                const isActive = position === 0;
-                const isBottom = position === count - 1; // The card at the very back
+                // Adjust offset for infinite scroll illusion (keep items close to center)
+                if (offset > count / 2) offset -= count;
+                if (offset < -count / 2) offset += count;
 
-                // Limit visible stack depth to 3 usually, but for small counts render all
-                // If position is excessively large (e.g. 10 cards), hide > 3
-                // But we need to handle the 'fly in from bottom' effect
-                const isVisible = position < 4 || isBottom;
+                // Visibility check: Only show near items for performance & visual clarity
+                const isVisible = Math.abs(offset) <= 3;
 
-                if (!isVisible) return null;
+                // HELIX & ZERO-G CONFIGURATION
+                const isActive = offset === 0;
 
-                // "Organic" offsets (stable based on index)
-                const randomRotate = ((index * 7) % 10) - 5;
-                const randomX = ((index * 23) % 30) - 15;
+                // 1. Spiral Position
+                // We map the offset to 3D coordinates on a spiral curve
+                const zOffset = -Math.abs(offset) * 120; // Depth: receding into screen
+                const yOffset = offset * 25; // Vertical: gentle cascade
+                const xOffset = offset * 40; // Horizontal: spread out slightly
+                const rotateY = offset * -15; // Y-Rotation: Face inward
+                const rotateZ = offset * 2; // Z-Rotation: Slight localized tilt
+
+                // 2. Scale & Opacity
+                const scale = isActive ? 1 : Math.max(0.8, 1 - Math.abs(offset) * 0.15);
+                const opacity = isActive ? 1 : Math.max(0, 1 - Math.abs(offset) * 0.3);
+                const blur = isActive ? 0 : Math.abs(offset) * 2; // Blur distant cards
+
+                // 3. Floating Animation for Zero-G Effect
+                // Randomized float parameters based on index to desynchronize
+                const floatDuration = 4 + (index % 3);
+                const floatY = 10 + (index % 5);
 
                 return (
                     <motion.div
                         key={index}
-                        className="absolute inset-0 preserve-3d"
-                        drag={isActive ? "x" : false}
-                        dragConstraints={{ left: 0, right: 0 }}
-                        dragElastic={0.1}
-                        onDragEnd={onDragEnd}
-
+                        className="absolute inset-0 will-change-transform"
+                        style={{
+                            transformStyle: "preserve-3d",
+                            zIndex: 100 - Math.abs(offset), // Center item on top
+                            pointerEvents: isVisible ? (isActive ? "auto" : "none") : "none", // Only active card is clickable
+                        }}
                         initial={false}
                         animate={{
-                            // Scale: Front=1, Behind=shrink
-                            scale: isActive ? 1 : Math.max(0.85, 1 - position * 0.08),
-
-                            // Y: Front=0, Behind=Move Up (Negative)
-                            // Note: If isBottom (last card), we might want it 'waiting' at the very back
-                            y: isActive ? 0 : -(position * 50),
-
-                            // X & Rotate:
-                            // Active: Centered, Straight
-                            // Stack: Irregular
-                            x: isActive ? 0 : randomX,
-                            rotate: isActive ? 0 : randomRotate,
-
-                            // Z Index: Front=100, Back=decreases
-                            zIndex: 100 - position,
-
-                            // Opacity
-                            opacity: isActive ? 1 : 1 - (position * 0.15),
+                            x: xOffset,
+                            y: yOffset,
+                            z: zOffset,
+                            rotateY: rotateY,
+                            rotateZ: rotateZ,
+                            scale: scale,
+                            opacity: opacity,
+                            filter: `blur(${blur}px)`,
                         }}
                         transition={{
                             type: "spring",
-                            stiffness: 260,
-                            damping: 20
+                            stiffness: 120, // Softer spring for "floaty" feel
+                            damping: 20,
+                            mass: 1.2
                         }}
-                        style={{
-                            transformOrigin: "center bottom",
-                            zIndex: 100 - position
+                        drag={isActive ? "x" : false}
+                        dragConstraints={{ left: 0, right: 0 }}
+                        dragElastic={0.05} // Stiffer drag resistance
+                        onDragEnd={onDragEnd}
+                        onClick={() => {
+                            if (!isActive && isVisible) setCurrentIndex(index);
                         }}
                     >
-                        {/* Interaction Overlay for clicking upcoming cards */}
-                        {position > 0 && ( // Any card not active is "upcoming" in a circular sense
-                            <div
-                                className="absolute inset-0 z-50 cursor-pointer"
-                                onClick={() => setCurrentIndex(index)}
-                            />
-                        )}
+                        {/* Zero-G Floating Container */}
+                        <motion.div
+                            className="w-full h-full relative preserve-3d"
+                            animate={{
+                                y: isActive ? [0, -floatY, 0] : [0, -floatY * 0.5, 0],
+                                rotateX: isActive ? [0, 2, 0] : 0,
+                            }}
+                            transition={{
+                                duration: floatDuration,
+                                repeat: Infinity,
+                                ease: "easeInOut",
+                                delay: index * 0.5 // Stagger animations
+                            }}
+                        >
+                            {/* Darken distant cards */}
+                            {!isActive && (
+                                <div className="absolute inset-0 bg-black/60 rounded-[2.5rem] z-50 pointer-events-none transition-all duration-500" />
+                            )}
 
-                        {/* Darken upcoming cards for depth */}
-                        {/* Darken upcoming cards for depth */}
-                        {position > 0 && (
-                            <div className="absolute inset-0 bg-black/40 rounded-[2.5rem] z-40 pointer-events-none transition-opacity duration-300" />
-                        )}
-
-                        {child}
+                            {child}
+                        </motion.div>
                     </motion.div>
                 );
             })}
 
             {/* --- Pagination Indicator --- */}
-            <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 flex gap-2 z-50">
+            <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 flex gap-2 z-50">
                 {childrenArray.map((_, i) => (
                     <div
                         key={i}
-                        className={`h-1.5 rounded-full transition-all duration-300 ${i === currentIndex ? 'w-6 bg-white' : 'w-1.5 bg-white/20'}`}
+                        className={`h-1 rounded-full transition-all duration-500 ease-out ${i === currentIndex
+                            ? 'w-8 bg-white shadow-[0_0_10px_white]'
+                            : 'w-1.5 bg-white/10'
+                            }`}
                     />
                 ))}
             </div>
