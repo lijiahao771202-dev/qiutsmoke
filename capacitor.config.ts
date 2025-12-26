@@ -4,6 +4,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // ⚙️ 环境配置中心
 // -----------------------------------------------------------------------------
 
+<<<<<<< HEAD
 // 切换模式：'prod' = 生产/测试版 (热更新) | 'dev' = 本地开发 (Live Reload)
 // 提示：开发时改为 'dev'，打包发布/真机测试时改为 'prod'
 const MODE: 'prod' | 'dev' = 'dev';
@@ -11,9 +12,15 @@ const MODE: 'prod' | 'dev' = 'dev';
 // 🏠 本地开发地址 (请根据 ifconfig 确认本机 IP)
 // 你的本机 IP: 172.20.10.10 (端口 3001)
 const DEV_URL = 'http://172.20.10.10:3001';
+=======
+// 切换模式：'prod' = 生产 (远程 + 缓存) | 'dev' = 本地开发 (Live Reload)
+const MODE: 'prod' | 'dev' = 'prod';
 
-// ☁️ 线上生产地址 (实现"云端热更新"的关键)
-// App 将直接加载此 URL，只要 Cloudflare 部署了新代码，用户打开 App 即刻生效
+// 🏠 本地开发地址
+const DEV_URL = 'http://192.168.31.34:3000';
+>>>>>>> 5ba2b94571c595811380d6c2a103288977662d0f
+
+// ☁️ 线上生产地址
 const PROD_URL = 'https://qiutsmoke.vercel.app';
 
 // -----------------------------------------------------------------------------
@@ -22,21 +29,28 @@ const config: CapacitorConfig = {
   appId: 'com.rain.meditation',
   appName: 'Rain',
   webDir: 'out',
+
   server: {
-    // 决定 App 加载本地文件还是远程 URL
     url: MODE === 'dev' ? DEV_URL : PROD_URL,
-    // 允许 http 请求 (仅用于开发环境连本地 serve)
     cleartext: MODE === 'dev',
+    // 允许 WebView 缓存资源
+    allowNavigation: ['qiutsmoke.vercel.app', '*.vercel.app'],
   },
+
   ios: {
-    // 优化 iOS 状态栏和全屏体验
     contentInset: 'never',
     backgroundColor: '#000000',
     allowsLinkPreview: false,
-    // 恢复滚动能力 (CSS overscroll-behavior 会处理回弹问题)
     scrollEnabled: true,
+    // 启用 WebView 预热和缓存
+    preferredContentMode: 'mobile',
+  },
+
+  plugins: {
+    CapacitorHttp: {
+      enabled: true,
+    },
   },
 };
 
 export default config;
-

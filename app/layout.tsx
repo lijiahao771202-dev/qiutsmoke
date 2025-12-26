@@ -46,6 +46,17 @@ export default function RootLayout({
                   document.documentElement.classList.remove('hydrating');
                 });
               }
+              
+              // 注册 Service Worker 实现离线缓存
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').then(function(registration) {
+                    console.log('SW registered: ', registration);
+                  }).catch(function(error) {
+                    console.log('SW registration failed: ', error);
+                  });
+                });
+              }
             `,
           }}
         />

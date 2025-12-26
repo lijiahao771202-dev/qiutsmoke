@@ -1,104 +1,82 @@
-const CACHE_NAME = 'rain-cache-v1';
-const ASSETS = [
+// Rain Meditation App - Service Worker
+// 缓存静态资源，实现快速加载
+
+const CACHE_NAME = 'rain-meditation-v1';
+const STATIC_ASSETS = [
   '/',
-  '/manifest.json',
+  '/practice',
+  '/meditate',
+  '/stats',
+  '/tts-studio',
 ];
 
+// 安装时预缓存核心页面
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).catch(() => Promise.resolve())
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS);
+    })
   );
   self.skipWaiting();
 });
 
+// 激活时清理旧缓存
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name))
+      );
+    })
   );
   self.clients.claim();
 });
 
+// 拦截请求
 self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  if (request.method !== 'GET') return;
-  const url = new URL(request.url);
+  const url = new URL(event.request.url);
 
-  // Skip Next.js internals, RSC flight requests and API
-  if (url.pathname.startsWith('/_next/') || url.search.includes('_rsc=') || url.pathname.startsWith('/api/')) {
-    return; // let network handle
+  // API 请求不缓存，直接走网络
+  if (url.pathname.startsWith('/api/')) {
+    return;
   }
 
-  // Only cache static resources; don't cache navigations/documents
-  const staticDest = ['style', 'script', 'image', 'font', 'audio'];
-  if (!staticDest.includes(request.destination)) return;
+  // 静态资源使用 Cache First 策略
+  if (url.pathname.startsWith('/_next/static/') ||
+    url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2)$/)) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, clone);
+            });
+          }
+          return response;
+        });
+      })
+    );
+    return;
+  }
 
+  // 页面使用 Network First 策略
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const fetchPromise = fetch(request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => { });
-        return response;
-      }).catch(() => cached);
-      return cached || fetchPromise;
-    })
-  );
-});
-
-// ==================== Push Notifications ====================
-
-self.addEventListener('push', (event) => {
-  console.log('[SW] Push Received:', event);
-  const defaultData = {
-    title: '🧘 该冥想了',
-    body: '来一场心灵放松吧',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    tag: 'meditation-reminder',
-    data: { url: '/meditate' }
-  };
-
-  let data = defaultData;
-  try {
-    if (event.data) {
-      data = { ...defaultData, ...event.data.json() };
-      console.log('[SW] Push Data:', data);
-    }
-  } catch (e) {
-    console.error('[SW] Parse Error:', e);
-  }
-
-  const promise = self.registration.showNotification(data.title, {
-    body: data.body,
-    icon: data.icon,
-    badge: data.badge,
-    tag: data.tag, // iOS might collapse if tag is same?
-    data: data.data,
-    vibrate: [200, 100, 200],
-    requireInteraction: true
-  }).then(() => {
-    console.log('[SW] Notification Shown');
-  });
-
-  event.waitUntil(promise);
-});
-
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-
-  const urlToOpen = event.notification.data?.url || '/meditate';
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If app is already open, focus it
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          return client.focus().then(() => client.navigate(urlToOpen));
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, clone);
+          });
         }
-      }
-      // Otherwise open new window
-      return clients.openWindow(urlToOpen);
-    })
+        return response;
+      })
+      .catch(() => {
+        return caches.match(event.request);
+      })
   );
 });
