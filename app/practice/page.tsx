@@ -591,7 +591,7 @@ function PracticeContent({ router }: { router: any }) {
 
             // Concentric rings logic
             const ringIndex = Math.floor(p.dist / 30);
-            const ringDist = (ringIndex * 40 + 60) * breathScale;
+            let ringDist = (ringIndex * 40 + 60) * breathScale;
 
             let effectiveAlpha = 0.3 + (ringIndex % 2) * 0.2;
 
