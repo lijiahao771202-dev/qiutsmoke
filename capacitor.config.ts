@@ -6,11 +6,11 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 // 切换模式：'prod' = 生产/测试版 (热更新) | 'dev' = 本地开发 (Live Reload)
 // 提示：开发时改为 'dev'，打包发布/真机测试时改为 'prod'
-const MODE: 'prod' | 'dev' = 'prod';
+const MODE: 'prod' | 'dev' = 'dev';
 
 // 🏠 本地开发地址 (请根据 ifconfig 确认本机 IP)
-// 你的本机 IP: 192.168.31.34 (端口 3001)
-const DEV_URL = 'http://192.168.31.34:3000';
+// 你的本机 IP: 172.20.10.10 (端口 3001)
+const DEV_URL = 'http://172.20.10.10:3001';
 
 // ☁️ 线上生产地址 (实现"云端热更新"的关键)
 // App 将直接加载此 URL，只要 Cloudflare 部署了新代码，用户打开 App 即刻生效

@@ -72,19 +72,16 @@ export function PageTransition({ children }: PageTransitionProps) {
         );
     }
 
-    // Ease Out Back 曲线
-    const easeOutBack = [0.175, 0.885, 0.32, 1.275];
-
+    // 交叉淡化动画 - 新旧页面同时存在，不会闪烁
     const transition = {
-        type: "tween",
-        duration: 0.35,
-        ease: easeOutBack,
+        duration: 0.15,
+        ease: "easeOut",
     };
 
     const variants = {
-        initial: { x: 50 },
-        animate: { x: 0 },
-        exit: { x: -30 },
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
     };
 
     if (!isMainPage) {

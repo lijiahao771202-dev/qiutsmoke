@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit, Cherry, Star, Flower } from "lucide-react";
+import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit, Cherry, Star, Flower, Globe, Wind } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { useHeartRate } from "@/lib/hooks/useHeartRate";
@@ -16,7 +16,7 @@ import { useBinauralBeats, BINAURAL_PRESETS } from "@/lib/hooks/useBinauralBeats
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
-type Theme = "LIQUID" | "ROSE" | "AURORA" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
+type Theme = "SPHERE" | "LIQUID" | "ROSE" | "AURORA" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
 type BreathingPatternId = "478" | "box" | "focus" | "sigh" | "energy";
 
 interface BreathingPattern {
@@ -38,6 +38,7 @@ const BREATHING_PATTERNS: BreathingPattern[] = [
 
 // --- Theme Config ---
 const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
+    SPHERE: { name: "Sphere", icon: Globe, color: "text-blue-400" },
     LIQUID: { name: "Liquid", icon: Gem, color: "text-slate-200" },
     ROSE: { name: "Rose", icon: Flower2, color: "text-pink-400" },
     AURORA: { name: "Aurora", icon: Sparkles, color: "text-purple-400" },
@@ -93,8 +94,8 @@ const RulerTimeSelector = ({
 
     // Generate ticks: each minute is a tick.
     // We want some padding before and after so the first/last items can be centered.
-    // Let's say 1 minute = 10px width.
-    const TICK_WIDTH = 12;
+    // Let's say 1 minute = 24px width (More spacing for better touch reliability).
+    const TICK_WIDTH = 24;
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -166,9 +167,7 @@ const RulerTimeSelector = ({
                     </div>
                 </div>
 
-                {/* Fade Edges */}
-                <div className="absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-black to-transparent pointer-events-none" />
-                <div className="absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-black to-transparent pointer-events-none" />
+                {/* Remove black gradients as requested */}
             </div>
         </div>
     );
@@ -327,7 +326,10 @@ function PracticeContent({ router }: { router: any }) {
         // Transition
         transitionStartTime: 0,
         transitionDuration: 2000,
+        transitionStartTime: 0,
+        transitionDuration: 2000,
         completionStartTime: 0, // NEW
+        themeStartTime: 0, // NEW: For theme intro animations
 
         // Breath Cycle
         currentRadius: BASE_RADIUS,
@@ -383,9 +385,39 @@ function PracticeContent({ router }: { router: any }) {
         const centerY = height / 2;
 
         state.particles.forEach((p: any, i: number) => {
-            // Update Diffuse
-            p.diffuseX += p.dx;
-            p.diffuseY += p.dy;
+            // --- IDLE: PHYLLOTAXIS BLOOM ---
+            if (transitionProgress < 1) {
+                // Sacred 3D Geometry
+                const time = timestamp * 0.00005; // Extremely slow "universal" rotation
+
+                // Phyllotaxis (Golden Angle)
+                const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+                const r = 30 * Math.sqrt(i) * 0.5; // Radius grows with sqrt(i)
+                const theta = i * goldenAngle + time * 10; // Rotating spiral
+
+                // 3D Dome Effect
+                // Map radius to a spherical dome curvature
+                const maxR = 250;
+                const normalizeR = Math.min(1, r / maxR);
+                const z = Math.sqrt(1 - normalizeR * normalizeR) * 100; // Hemisphere height
+
+                // Project 3D to 2D with tilt
+                const tiltX = Math.cos(time) * 0.2;
+                const tiltY = Math.sin(time) * 0.2;
+
+                const x = r * Math.cos(theta);
+                const y = r * Math.sin(theta);
+
+                // Minimal 3D projection
+                p.diffuseX = centerX + x * (1 + z * 0.002);
+                p.diffuseY = centerY + y * (1 + z * 0.002);
+
+                // Gentle breathing of the structure
+                const breath = Math.sin(timestamp * 0.001) * 10;
+                p.diffuseX += Math.cos(theta) * breath;
+                p.diffuseY += Math.sin(theta) * breath;
+
+            }
 
             // Update Structured (Orbit)
             p.angle += p.speed;
@@ -434,14 +466,28 @@ function PracticeContent({ router }: { router: any }) {
         const baseHues = [280, 180, 120];
 
         state.particles.forEach((p: any, i: number) => {
-            // Initial: Horizontal magnetic drift (bands)
+            // --- IDLE: MAGNETIC FLUX ---
             if (transitionProgress < 1) {
-                p.diffuseX += p.dx + Math.sin(timestamp * 0.002 + p.dy) * 0.5; // Wavy horizontal
-                p.diffuseY += p.dy * 0.1; // Slow vertical
-            } else {
-                p.diffuseX += p.dx * 0.5;
-                p.diffuseY += p.dy * 0.3;
+                const time = timestamp * 0.001;
+                // Vertical High Velocity Flow
+                p.diffuseY -= 2 + Math.random();
+                if (p.diffuseY < -50) p.diffuseY = height + 50;
+
+                // Horizontal Magnetic Bands
+                const bandIndex = i % 5;
+                const bandOffset = (bandIndex - 2) * 120;
+                // Sine wave tracking
+                const wave = Math.sin(p.diffuseY * 0.005 + time + bandIndex) * 80;
+                const targetX = centerX + bandOffset + wave;
+
+                // Smoothly pull particles into the magnetic bands
+                p.diffuseX += (targetX - p.diffuseX) * 0.1;
+
+                // Add "Spark" jitter
+                p.diffuseX += (Math.random() - 0.5) * 5;
             }
+
+            // Structured Orbit logic
             p.angle += p.speed * 0.3;
 
             // Aurora forms vertical bands that wave horizontally
@@ -451,15 +497,22 @@ function PracticeContent({ router }: { router: any }) {
             let effectiveDist = (p.dist * 0.5 + 80) * breathScale;
             let effectiveAlpha = 0.4 + Math.sin(timestamp * 0.003 + i * 0.5) * 0.3;
 
-            // Bloom: Flare up and dissolve (Magnetic Storm End)
+            // Bloom: Solar Storm - Particles accelerate into vertical light pillars (Beaming Up)
             let yOffset = 0;
             let bloomScale = 1;
             if (bloomProgress > 0) {
-                // Rise faster + intensify brightness then fade
-                yOffset = -bloomProgress * height * 0.8;
-                effectiveAlpha = (effectiveAlpha + 0.5) * (1 - bloomProgress); // Flash then fade
-                bloomScale = 1 + bloomProgress * 2; // Stretch vertically
-                effectiveDist *= (1 - bloomProgress * 0.5); // Narrow into beam
+                // Squeeze horizontally to form beams
+                const squeeze = 1 - bloomProgress * 0.95; // 1 -> 0.05
+                effectiveDist *= squeeze;
+
+                // Accelerate upwards exponentially
+                yOffset = -Math.pow(bloomProgress, 3) * height * 1.5;
+
+                // Stretch vertically
+                bloomScale = 1 + bloomProgress * 10;
+
+                // Fade to white/cyan brightness
+                effectiveAlpha = 1.0 - bloomProgress * 0.2;
             }
 
             const orbitX = Math.cos(p.angle) * effectiveDist + waveOffset;
@@ -488,11 +541,49 @@ function PracticeContent({ router }: { router: any }) {
 
         // Zen: Minimalist concentric rings
         state.particles.forEach((p: any, i: number) => {
-            // Initial: Perfect circular orbits even in idle
+            // --- IDLE: 3D GYROSCOPE ---
             if (transitionProgress < 1) {
-                p.diffuseX = centerX + Math.cos(timestamp * 0.0005 + i) * (p.dist + 50);
-                p.diffuseY = centerY + Math.sin(timestamp * 0.0005 + i) * (p.dist + 50);
+                const time = timestamp * 0.001;
+                const r = 220; // Large mechanical rings
+                const group = i % 3;
+
+                let x = 0, y = 0, z = 0;
+
+                // Ring assignment
+                if (group === 0) { // Ring X
+                    const theta = p.angle + time;
+                    y = r * Math.cos(theta);
+                    z = r * Math.sin(theta);
+                } else if (group === 1) { // Ring Y
+                    const theta = p.angle + time * 1.2;
+                    x = r * Math.cos(theta);
+                    z = r * Math.sin(theta);
+                } else { // Ring Z
+                    const theta = p.angle + time * 0.8;
+                    x = r * Math.cos(theta);
+                    y = r * Math.sin(theta);
+                }
+
+                // Global Rotation of the mechanism
+                const rotX = time * 0.2;
+                const rotY = time * 0.3;
+
+                // Rotate around X
+                let y1 = y * Math.cos(rotX) - z * Math.sin(rotX);
+                let z1 = y * Math.sin(rotX) + z * Math.cos(rotX);
+                y = y1; z = z1;
+
+                // Rotate around Y
+                let x1 = x * Math.cos(rotY) - z * Math.sin(rotY);
+                let z2 = x * Math.sin(rotY) + z * Math.cos(rotY);
+                x = x1; z = z2;
+
+                // Perspective project
+                const scale = 350 / (350 - z);
+                p.diffuseX = centerX + x * scale;
+                p.diffuseY = centerY + y * scale;
             } else {
+                // Active: Smooth drift
                 p.diffuseX += p.dx * 0.2;
                 p.diffuseY += p.dy * 0.2;
             }
@@ -506,27 +597,55 @@ function PracticeContent({ router }: { router: any }) {
 
             const ripple = Math.sin(timestamp * 0.002 - ringIndex * 0.5) * 5;
 
-            // Bloom: "Enso" Void - Expand slowly and fade to transparency (Return to Nothingness)
-            let expansionOffset = 0;
+            // Bloom: Singularity - All rings align and implode to the center
             if (bloomProgress > 0) {
-                expansionOffset = bloomProgress * width * 0.2; // Slow expansion
-                // Fade out from center first
-                const fadeThreshold = bloomProgress * 10;
-                if (ringIndex < fadeThreshold) effectiveAlpha *= (1 - bloomProgress);
+                // Stop rippling
+
+                // Implode Radius to 0
+                const implodeFactor = 1 - Math.pow(bloomProgress, 0.5); // Fast start
+                ringDist *= implodeFactor;
+
+                // Flatten 3D tilt to 2D perfect circle as it implodes
+                // We do this by overriding the final projection in the next step, 
+                // but here we just reduce the distances.
+
+                // Fade out at the very end
+                if (bloomProgress > 0.8) effectiveAlpha *= (1 - (bloomProgress - 0.8) * 5);
             }
 
-            const effectiveDist = ringDist + ripple + expansionOffset;
+            const effectiveDist = ringDist + ripple * (1 - bloomProgress); // Reduce ripple
             const orbitX = Math.cos(p.angle) * effectiveDist;
             const orbitY = Math.sin(p.angle) * effectiveDist;
 
-            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
-            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+            let finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            let finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+
+            // Singularity Override
+            if (bloomProgress > 0) {
+                // Interpolate from 3D projected position (finalX) to 2D center (centerX)
+                // Actually orbitX/Y are 2D circle coords. 
+                // We want to transition from "Mechanical Gyro" (p.diffuseX) to "Perfect 2D Circle" then "Zero"
+                // But p.diffuseX is frozen in idle. 
+                // Let's just pull everything to center.
+
+                finalX = centerX + (finalX - centerX) * (1 - bloomProgress * 0.5); // Pull to center
+                finalY = centerY + (finalY - centerY) * (1 - bloomProgress * 0.5);
+
+                // Also pull z-depth?
+                // Just shrink.
+            }
 
             if (transitionProgress < 1) effectiveAlpha *= 0.3;
 
             // Zen colors
-            const hue = 45 + ringIndex * 5;
-            const lightness = 85 - ringIndex * 3;
+            let hue = 45 + ringIndex * 5;
+            let lightness = 85 - ringIndex * 3;
+
+            if (bloomProgress > 0) {
+                // Turn to pure white light before vanishing
+                lightness = 85 + bloomProgress * 15;
+                hue = 45;
+            }
 
             ctx.fillStyle = `hsla(${hue}, 15%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
@@ -540,22 +659,43 @@ function PracticeContent({ router }: { router: any }) {
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // Galaxy: Deep space colors with spiral arms
+        // Galaxy: Celestial Clockwork (Refined)
         state.particles.forEach((p: any, i: number) => {
-            // Initial: Slow gravitational pull (inward spiral)
+            // --- IDLE: CELESTIAL CLOCKWORK ---
             if (transitionProgress < 1) {
-                const angle = timestamp * 0.0002 + i * 0.01;
-                const radius = p.dist + Math.sin(timestamp * 0.001 + i) * 20;
-                p.diffuseX = centerX + Math.cos(angle) * radius;
-                p.diffuseY = centerY + Math.sin(angle) * radius;
+                // Flattened Accretion Disk
+                // Strict orbital paths, slow rotation
+
+                const time = timestamp * 0.0001; // VERY Slow time
+
+                // Distribution: dense center, sparse edges
+                const r = 40 + Math.pow(i / state.particles.length, 0.8) * 300;
+
+                // Keplerian Orbit Speed: slower at edges
+                const orbitSpeed = 400 / (r * r + 100);
+                const theta = i + time * orbitSpeed * 50;
+
+                // Tilt the galaxy
+                const tilt = 0.6; // 60 degrees tilt
+
+                const rx = Math.cos(theta) * r;
+                const ry = Math.sin(theta) * r * tilt;
+
+                p.diffuseX = centerX + rx;
+                p.diffuseY = centerY + ry;
+
+                // Stabilize Z-depth for sorting/size (simulated)
+                // Particles in "back" are smaller/dimmer
+                const z = Math.sin(theta) * r * tilt;
+                p.z = z;
+
             } else {
                 p.diffuseX += p.dx * 0.3;
                 p.diffuseY += p.dy * 0.3;
             }
 
-            // Spiral rotation
+            // Simplifed Active Spiral rotation
             const spiralFactor = p.dist * 0.01;
-            // Bloom: Rapid spin acceleration
             const spinAccel = bloomProgress > 0 ? bloomProgress * 0.5 : 0;
             p.angle += p.speed * 0.4 + spiralFactor * 0.001 + spinAccel;
 
@@ -566,30 +706,50 @@ function PracticeContent({ router }: { router: any }) {
             let effectiveDist = p.dist * breathScale * (0.8 + armIntensity * 0.4);
             let effectiveAlpha = 0.2 + armIntensity * 0.6;
 
-            // Bloom: Centrifugal Ejection - particles fly outward tangentially
+            // Bloom: Warp Drive - Hyper-stretch into Z-space streaks
             if (bloomProgress > 0) {
-                // Fly out based on current angle
-                effectiveDist += Math.pow(bloomProgress, 2) * 800; // Exponential flyout
-                effectiveAlpha *= (1 - bloomProgress * 0.5); // Fade slower
+                // Exponential Z-stretch
+                const warp = Math.pow(bloomProgress, 4) * 5000;
+
+                // Visual Warp: stretch away from center
+                effectiveDist += warp;
+
+                // Reduce alpha rapidly as they stretch to infinity
+                effectiveAlpha *= (1 - bloomProgress * 0.5);
             }
 
+            // Flatter Y for more drama during warp
             const orbitX = Math.cos(p.angle) * effectiveDist;
-            const orbitY = Math.sin(p.angle) * effectiveDist * 0.6;
+            const orbitY = Math.sin(p.angle) * effectiveDist * (bloomProgress > 0 ? 0.1 : 0.6); // Flatten during warp
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
-            if (transitionProgress < 1) effectiveAlpha *= 0.5;
+            if (transitionProgress < 1) {
+                // Custom Idle Alpha/Size based on Z-depth
+                effectiveAlpha = 0.5 + Math.sin(timestamp * 0.001 + i) * 0.2;
+                // Dim backside
+                if ((p.z || 0) < 0) effectiveAlpha *= 0.5;
+            } else {
+                if (transitionProgress < 1) effectiveAlpha *= 0.5;
+            }
 
             // Galaxy colors
-            const baseHue = 260 + Math.sin(p.angle) * 30;
+            const baseHue = 240 + Math.sin(p.angle) * 40;
             const isStarCore = i % 20 === 0;
             const lightness = isStarCore ? 90 + Math.random() * 10 : 50 + armIntensity * 20;
 
             ctx.fillStyle = `hsla(${baseHue}, ${isStarCore ? 20 : 70}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
             p.x = finalX; p.y = finalY;
-            ctx.arc(finalX, finalY, isStarCore ? p.size * 2 : p.size, 0, Math.PI * 2);
+
+            let size = isStarCore ? p.size * 2 : p.size;
+            if (transitionProgress < 1) {
+                // Perspective scale
+                size = Math.max(0.5, p.size * (1 + (p.z || 0) * 0.002));
+            }
+
+            ctx.arc(finalX, finalY, size, 0, Math.PI * 2);
             ctx.fill();
         });
     };
@@ -600,11 +760,32 @@ function PracticeContent({ router }: { router: any }) {
 
         // Inferno: Flames rising upward
         state.particles.forEach((p: any, i: number) => {
-            // Initial: Embers rising loosely
+            // --- IDLE: FIRE TORNADO ---
             if (transitionProgress < 1) {
-                p.diffuseX += Math.sin(timestamp * 0.01 + i) * 1;
-                p.diffuseY -= 1 + Math.random(); // Fast rise
-                if (p.diffuseY < 0) p.diffuseY = height; // Loop for idle effect
+                const time = timestamp * 0.001;
+
+                // Rising motion (Y decreases)
+                const loopHeight = height + 200;
+                let y = (timestamp * 0.5 + i * 2) % loopHeight;
+                y = height + 100 - y; // Rise up from bottom
+
+                // Funnel Shape (Wider at top)
+                const yNorm = 1 - (y / height); // 0 (bottom) to 1 (top)
+                const funnelRadius = 50 + Math.pow(yNorm, 2) * 200;
+
+                // Fast Rotation
+                const theta = i * 0.05 + time * 8;
+
+                const x = Math.cos(theta) * funnelRadius;
+                const z = Math.sin(theta) * funnelRadius; // Depth
+
+                const scale = 400 / (400 - z * 0.5);
+
+                p.diffuseX = centerX + x * scale;
+                p.diffuseY = y;
+
+                // Violent Shake
+                p.diffuseX += (Math.random() - 0.5) * 10;
             } else {
                 p.diffuseX += p.dx + Math.sin(timestamp * 0.01 + i) * 0.5;
                 p.diffuseY += p.dy - 0.5;
@@ -619,18 +800,33 @@ function PracticeContent({ router }: { router: any }) {
 
             const riseOffset = Math.sin(p.angle) * 30 * breathScale;
 
-            // Bloom: Burnt to Ash - Turn grey/black and float away rapidly
+            // Bloom: Phoenix Ascension - Turn Blue/White and spiral up rapidly
             let ashY = 0;
             let ashColor = false;
+
             if (bloomProgress > 0) {
-                effectiveDist += bloomProgress * width * 0.2; // Minor expansion
-                ashY = -bloomProgress * height * 0.8; // Fly up
-                ashColor = true;
-                effectiveAlpha *= (1 - bloomProgress * 0.3); // Fade slowly
+                ashColor = true; // Use blue/white palette
+
+                // Rapid vertical ascent
+                ashY = -Math.pow(bloomProgress, 2) * height * 1.5;
+
+                // Tighten the spiral (reduce radius)
+                effectiveDist *= (1 - bloomProgress * 0.8);
+
+                // Spin faster
+                const spin = bloomProgress * 15;
+                // Add spin to orbit calc
+                // We do this by modifying p.angle effectively in the orbit calc below? 
+                // No, p.angle is read-only here. We can add offset to orbitX/Y calculation.
+                p.tempAngleOffset = spin;
+
+                effectiveAlpha *= (1 - bloomProgress * 0.2);
+            } else {
+                p.tempAngleOffset = 0;
             }
 
-            const orbitX = Math.cos(p.angle) * effectiveDist;
-            const orbitY = Math.sin(p.angle) * effectiveDist - riseOffset + ashY;
+            const orbitX = Math.cos(p.angle + (p.tempAngleOffset || 0)) * effectiveDist;
+            const orbitY = Math.sin(p.angle + (p.tempAngleOffset || 0)) * effectiveDist - riseOffset + ashY;
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
@@ -643,12 +839,12 @@ function PracticeContent({ router }: { router: any }) {
             let lightness = 50;
 
             if (ashColor) {
-                // Transition from Fire to Ash Grey
+                // Phoenix Colors: Blue -> White
+                // Hue: 200 (Blue) -> 60 (Yellow/White) ? No, Blue flames are 200-240.
                 const distRatio = p.dist / 150;
-                const fireHue = 0 + distRatio * 45;
-                hue = fireHue; // Keep hue but desaturate
-                saturation = 100 * (1 - bloomProgress); // 100 -> 0
-                lightness = 50 + bloomProgress * 20; // 50 -> 70 (Grey smoke)
+                hue = 200 + distRatio * 30; // 200-230
+                saturation = 100;
+                lightness = 50 + bloomProgress * 50; // Go to white
             } else {
                 const distRatio = p.dist / 150;
                 hue = 0 + distRatio * 45;
@@ -669,38 +865,74 @@ function PracticeContent({ router }: { router: any }) {
 
         // Crystal: Rainbow prism effect
         state.particles.forEach((p: any, i: number) => {
-            // Initial: Jittery refraction noise (nervous energy before forming)
+            // --- IDLE: ROTATING MONOLITH ---
             if (transitionProgress < 1) {
-                p.diffuseX += (Math.random() - 0.5) * 2;
-                p.diffuseY += (Math.random() - 0.5) * 2;
+                const time = timestamp * 0.0005;
+
+                // Cube Grid Mapping
+                // Map particles to a structured 3D grid
+                const side = 12; // 12x12x12 = 1728
+                const ix = i % side;
+                const iy = Math.floor(i / side) % side;
+                const iz = Math.floor(i / (side * side)) % side;
+
+                const spacing = 35;
+                const offset = (side * spacing) / 2;
+
+                // Start centered
+                let x = ix * spacing - offset;
+                let y = iy * spacing - offset;
+                let z = iz * spacing - offset;
+
+                // 3D Rotation (Euler)
+                const rotX = time;
+                const rotY = time * 0.7;
+
+                // Rotate X
+                let y1 = y * Math.cos(rotX) - z * Math.sin(rotX);
+                let z1 = y * Math.sin(rotX) + z * Math.cos(rotX);
+                y = y1; z = z1;
+
+                // Rotate Y
+                let x1 = x * Math.cos(rotY) - z * Math.sin(rotY);
+                let z2 = x * Math.sin(rotY) + z * Math.cos(rotY);
+                x = x1; z = z2;
+
+                const fov = 400;
+                const scale = fov / (fov - z);
+
+                p.diffuseX = centerX + x * scale;
+                p.diffuseY = centerY + y * scale;
             } else {
                 p.diffuseX += p.dx * 0.2;
                 p.diffuseY += p.dy * 0.2;
             }
             p.angle += p.speed * 0.2;
 
-            // Crystal facets
             const facetAngle = Math.floor(p.angle / (Math.PI / 3)) * (Math.PI / 3);
             const shimmer = Math.sin(timestamp * 0.003 + i * 0.5) * 10;
 
             let effectiveDist = p.dist * breathScale + shimmer;
             let effectiveAlpha = 0.3 + Math.abs(Math.sin(timestamp * 0.002 + p.angle * 2)) * 0.5;
 
-            // Bloom: Shatter - high velocity linear expansion
-            let shatterX = 0;
-            let shatterY = 0;
+            // Bloom: Sublimation - Dissolve into upward floating mist
+            let riseY = 0;
+            let mistX = 0;
             if (bloomProgress > 0) {
-                const shatterSpeed = 800 * bloomProgress; // Fast!
-                shatterX = Math.cos(p.angle) * shatterSpeed;
-                shatterY = Math.sin(p.angle) * shatterSpeed;
+                // Float Upwards
+                riseY = -bloomProgress * height * 0.8;
 
-                // Spin while shattering
-                p.angle += bloomProgress * 0.2;
-                effectiveAlpha *= (1 - bloomProgress * 0.5);
+                // Jitter X (Dissolving)
+                mistX = (Math.random() - 0.5) * bloomProgress * 100;
+
+                // Shrink Size (Sublime)
+                // Note: we can't change p.size permanently, but we can fake it by alpha
+                // or drawing logic. Let's rely on Alpha fade.
+                effectiveAlpha *= (1 - bloomProgress);
             }
 
-            const orbitX = Math.cos(p.angle) * effectiveDist + shatterX;
-            const orbitY = Math.sin(p.angle) * effectiveDist * 0.5 + shatterY; // Flattened hexagon
+            const orbitX = Math.cos(p.angle) * effectiveDist + mistX;
+            const orbitY = Math.sin(p.angle) * effectiveDist * 0.5 + riseY; // Flattened hexagon
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
@@ -725,11 +957,31 @@ function PracticeContent({ router }: { router: any }) {
 
         // Sakura: Cherry blossoms drifting
         state.particles.forEach((p: any, i: number) => {
-            // Initial: Falling petals even in idle
+            // --- IDLE: WIND RIVER ---
             if (transitionProgress < 1) {
-                p.diffuseX += Math.sin(timestamp * 0.002 + i) * 0.5; // Sway
-                p.diffuseY += 0.5; // Fall
-                if (p.diffuseY > height) p.diffuseY = 0; // Loop
+                const time = timestamp * 0.001;
+
+                // Flow Field: Smooth, laminar flow
+                // Particles move from left to right with sine wave modulated Y
+
+                // Reset to left if off screen
+                if (p.diffuseX > width + 50) {
+                    p.diffuseX = -50;
+                    p.diffuseY = height * Math.random();
+                }
+
+                // Laminar Speed based on Y (faster in middle)
+                const flowSpeed = 1.0 + Math.sin(p.diffuseY / height * Math.PI) * 1.5;
+                p.diffuseX += flowSpeed;
+
+                // Gentle Waviness (River path)
+                const riverCurve = Math.sin(p.diffuseX * 0.002 + time * 0.5) * 0.5;
+                p.diffuseY += riverCurve;
+
+                // Micro-turbulence (Flutter)
+                p.diffuseX += Math.sin(time * 5 + i) * 0.2;
+                p.diffuseY += Math.cos(time * 3 + i) * 0.2;
+
             } else {
                 p.diffuseX += p.dx + Math.sin(timestamp * 0.002 + i * 0.5) * 0.3;
                 p.diffuseY += p.dy + 0.3;
@@ -742,33 +994,41 @@ function PracticeContent({ router }: { router: any }) {
             let effectiveDist = p.dist * breathScale * 0.8 + sway;
             let effectiveAlpha = 0.4 + Math.sin(timestamp * 0.002 + i * 0.3) * 0.3;
 
-            // Bloom: Wind Gust - Blow away to top-right
-            let windX = 0;
-            let windY = 0;
+            // Bloom: Petal Spiral - Double Helix Ascension
+            let spiralX = 0;
+            let spiralY = 0;
             if (bloomProgress > 0) {
-                const windSpeed = bloomProgress * 600;
-                windX = windSpeed;
-                windY = -windSpeed * 0.5;
-                effectiveAlpha *= (1 - bloomProgress * 0.6);
-                p.angle += 0.1; // Rotate faster in wind
+                // Rising Spiral
+                const rise = bloomProgress * height;
+                spiralY = -rise;
+
+                // Spiral Radius expansion
+                const spiralRadius = bloomProgress * 200;
+                spiralX = Math.cos(rise * 0.05 + i) * spiralRadius;
+
+                effectiveAlpha *= (1 - bloomProgress * 0.5);
             }
 
-            const orbitX = Math.cos(p.angle) * effectiveDist + flutter + windX;
-            const orbitY = Math.sin(p.angle) * effectiveDist * 0.7 + windY;
+            const orbitX = Math.cos(p.angle) * effectiveDist + flutter + spiralX;
+            const orbitY = Math.sin(p.angle) * effectiveDist * 0.7 + spiralY;
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
-            if (transitionProgress < 1) effectiveAlpha *= 0.5;
+            if (transitionProgress < 1) effectiveAlpha *= 0.6;
 
             // Sakura colors
-            const hue = 340 + Math.sin(i * 0.1) * 15;
-            const lightness = 80 + Math.sin(timestamp * 0.002 + i) * 10;
+            // More pastel, less neon
+            const hue = 340 + Math.sin(i * 0.1) * 10;
+            const lightness = 85 + Math.sin(timestamp * 0.002 + i) * 10;
+            const saturation = 50 + Math.random() * 20;
 
-            ctx.fillStyle = `hsla(${hue}, 60%, ${lightness}%, ${effectiveAlpha})`;
+            ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
             p.x = finalX; p.y = finalY;
-            ctx.arc(finalX, finalY, p.size * 1.3, 0, Math.PI * 2);
+
+            // Soft petals
+            ctx.arc(finalX, finalY, p.size * 1.2, 0, Math.PI * 2);
             ctx.fill();
         });
     };
@@ -779,11 +1039,27 @@ function PracticeContent({ router }: { router: any }) {
 
         // Starfall: Shooting stars
         state.particles.forEach((p: any, i: number) => {
-            // Initial: Slowly drifting stars (Night sky)
+            // --- IDLE: STAR TRAILS ---
             if (transitionProgress < 1) {
-                p.diffuseX += p.dx * 0.1; // Very slow
-                p.diffuseY += p.dy * 0.1;
-                // Occasional shooting star in background?
+                // Circular Long-Exposure
+                const time = timestamp * 0.0001;
+
+                // Dist: Distance from Celestial Pole (Offset center)
+                // Pole is at top-left
+                const cx = width * 0.3;
+                const cy = height * 0.3;
+
+                // Use i to define stable radius/angle
+                const r = 200 + (i % 100) * 10;
+                const startAngle = i * 0.1;
+
+                // Very slow rotation
+                const currentAngle = startAngle - time;
+
+                p.diffuseX = cx + Math.cos(currentAngle) * r;
+                p.diffuseY = cy + Math.sin(currentAngle) * r;
+
+                // Trails logic is handled in draw phase
             } else {
                 const speed = 0.5 + (i % 10) * 0.1;
                 p.diffuseX += p.dx * speed;
@@ -796,15 +1072,30 @@ function PracticeContent({ router }: { router: any }) {
             let effectiveDist = p.dist * breathScale;
             let effectiveAlpha = 0.3 + Math.random() * 0.4;
 
-            // Bloom: Supernova - Massive expansion and blinding white flash
+            // Bloom: Falling Up - Gravity reversal, stars ascend rapidly
             if (bloomProgress > 0) {
-                effectiveDist += bloomProgress * width; // Rapid expansion
-                // Flash white at start of bloom
-                effectiveAlpha = (1 - bloomProgress) * 1.0;
+                // Inverse gravity acceleration
+                const lift = Math.pow(bloomProgress, 2) * height * 1.5;
+
+                // Add strict vertical lift to orbitY calculation (offset)
+                p.bloomLift = -lift;
+
+                // Stretch vertical streaks (Star Wars jump style but up)
+                // We can simulate this by drawing lines, or just moving particles fast
+
+                // Fade out
+                effectiveAlpha *= (1 - bloomProgress * 0.2);
+                lightness = 100; // Turn white hot
+            } else {
+                p.bloomLift = 0;
             }
 
             const orbitX = Math.cos(p.angle) * effectiveDist;
-            const orbitY = Math.sin(p.angle) * effectiveDist;
+            const orbitY = Math.sin(p.angle) * effectiveDist + (p.bloomLift || 0);
+
+            // Re-calc final position here to ensure we capture the lift
+            // Note: finalX/Y are calculated in next lines, so we just need to ensure orbitY feeds into it.
+
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
@@ -812,8 +1103,8 @@ function PracticeContent({ router }: { router: any }) {
             if (transitionProgress < 1) effectiveAlpha *= 0.4;
 
             // Star colors
-            const hue = 45 + Math.sin(i * 0.2) * 15;
-            let lightness = 70 + Math.sin(timestamp * 0.003 + i) * 20;
+            const hue = 220 + Math.sin(i * 0.2) * 20; // Blueish
+            let lightness = 80 + Math.sin(timestamp * 0.003 + i) * 20;
             const isMainStar = i % 15 === 0;
 
             // Supernova whiteness
@@ -821,20 +1112,45 @@ function PracticeContent({ router }: { router: any }) {
                 lightness = 100 - (bloomProgress * 20); // Start white, fade slightly
             }
 
-            ctx.fillStyle = `hsla(${hue}, ${bloomProgress > 0 ? 0 : 80}%, ${lightness}%, ${effectiveAlpha})`;
+            ctx.fillStyle = `hsla(${hue}, ${bloomProgress > 0 ? 0 : 60}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
 
-            if (isMainStar && transitionProgress > 0.5 && bloomProgress === 0) {
+            // Draw Streak if Falling (Idle) or if Main Star (Active)
+            // For Idle: Draw circular arc trail ? No, simple trail is enough or just dot for "Star Trails" photo effect
+            // Actually "Star Trails" implies long streaks.
+            // Let's draw arcs for idle
+
+            const showStreak = (isMainStar && transitionProgress > 0.5 && bloomProgress === 0);
+
+            if (showStreak) {
+                // Active Trajectory: Orbit
                 const trailX = finalX - Math.cos(p.angle) * streakLength;
                 const trailY = finalY - Math.sin(p.angle) * streakLength;
+
                 ctx.moveTo(trailX, trailY);
                 ctx.lineTo(finalX, finalY);
                 ctx.strokeStyle = `hsla(${hue}, 80%, ${lightness}%, ${effectiveAlpha * 0.5})`;
                 ctx.lineWidth = p.size;
                 ctx.stroke();
+            } else if (transitionProgress < 1) {
+                // Idle: Draw Arc Tail (approximate)
+                const arcLen = 0.05 + Math.random() * 0.05;
+                const cx = width * 0.3;
+                const cy = height * 0.3;
+                const r = Math.sqrt(Math.pow(finalX - cx, 2) + Math.pow(finalY - cy, 2));
+                const angle = Math.atan2(finalY - cy, finalX - cx);
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, angle, angle + arcLen);
+                ctx.strokeStyle = `hsla(${hue}, 60%, ${lightness}%, ${effectiveAlpha * 0.5})`;
+                ctx.lineWidth = p.size * 0.5;
+                ctx.stroke();
             }
 
             p.x = finalX; p.y = finalY;
+
+            // Draw star head
+            ctx.beginPath();
             ctx.arc(finalX, finalY, isMainStar ? p.size * 2 : p.size, 0, Math.PI * 2);
             ctx.fill();
         });
@@ -846,10 +1162,30 @@ function PracticeContent({ router }: { router: any }) {
 
         // Lotus: Peaceful multi-layered petals
         state.particles.forEach((p: any, i: number) => {
-            // Initial: Bobbing on water (vertical sine wave)
+            // --- IDLE: MANDALA GEOMETRY ---
             if (transitionProgress < 1) {
-                p.diffuseX += p.dx * 0.1;
-                p.diffuseY = centerY + Math.sin(timestamp * 0.002 + p.diffuseX * 0.01) * 10;
+                const time = timestamp * 0.0002;
+
+                // Sacred 12-fold symmetry layout
+                const petals = 12;
+                const layers = 8;
+
+                const layer = Math.floor(i / (PARTICLE_COUNT / layers));
+                const petal = i % petals;
+
+                const baseR = (layer + 1) * 35;
+                const baseTheta = (petal / petals) * Math.PI * 2;
+
+                // Complex rotation per layer (Alternating directions)
+                const dir = layer % 2 === 0 ? 1 : -1;
+                const theta = baseTheta + time * dir + layer * 0.1;
+
+                // Breathing/Pulsing Effect
+                const pulse = Math.sin(timestamp * 0.001 + layer) * 10;
+                const r = baseR + pulse;
+
+                p.diffuseX = centerX + Math.cos(theta) * r;
+                p.diffuseY = centerY + Math.sin(theta) * r;
             } else {
                 p.diffuseX += p.dx * 0.1;
                 p.diffuseY += p.dy * 0.1;
@@ -866,12 +1202,15 @@ function PracticeContent({ router }: { router: any }) {
 
             let effectiveAlpha = 0.4 + (1 - layer * 0.1);
 
-            // Bloom: Ascension - Petals glow and float UPwards like lanterns
-            let ascendY = 0;
+            // Bloom: Golden Enlightenment - Full radial expansion into pure gold light
+            let expansion = 0;
             if (bloomProgress > 0) {
-                ascendY = -bloomProgress * height * 0.6; // Float up
-                effectiveDist += bloomProgress * 20; // Slight expansion
-                effectiveAlpha *= (1 - bloomProgress * 0.5);
+                // Expand Layers Outward significantly
+                expansion = bloomProgress * 300;
+                effectiveDist += expansion;
+
+                // Fade? No, staying bright until end
+                effectiveAlpha = Math.max(0, effectiveAlpha * (1 - bloomProgress * 0.1));
             }
 
             const orbitX = Math.cos(p.angle) * effectiveDist;
@@ -883,12 +1222,19 @@ function PracticeContent({ router }: { router: any }) {
             if (transitionProgress < 1) effectiveAlpha *= 0.4;
 
             // Lotus colors
-            const hue = 40 + layer * 5;
-            const saturation = 20 + layer * 10;
+            let hue = 40 + layer * 5;
+            let saturation = 20 + layer * 10;
             let lightness = 90 - layer * 5;
 
             // Bloom glow
-            if (bloomProgress > 0) lightness = Math.min(100, lightness + bloomProgress * 20);
+            if (bloomProgress > 0) {
+                // Transition to Pure Gold
+                hue = 45; // Gold
+                saturation = 80 + bloomProgress * 20; // Max saturation
+                lightness = 70 + bloomProgress * 30; // Bright
+
+                // Add "shine" (no implementation needed, just color)
+            }
 
             ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${effectiveAlpha})`;
             ctx.beginPath();
@@ -906,16 +1252,42 @@ function PracticeContent({ router }: { router: any }) {
         state.particles.forEach((p: any, i: number) => {
             const fluidNoise = Math.sin(now * 0.4 + p.angle * 2) * Math.cos(now * 0.3 + p.dist * 0.01);
 
+            // --- IDLE: SILK TIDES ---
             if (transitionProgress < 1) {
-                // FIXED IDLE: Soft orbit, no clumping
-                const idleOrbitRadius = 160 + Math.sin(i * 0.1) * 40;
-                p.angle += 0.0005 + (i % 3) * 0.0001;
-                const targetIdleX = centerX + Math.cos(p.angle) * idleOrbitRadius;
-                const targetIdleY = centerY + Math.sin(p.angle) * idleOrbitRadius;
-                p.diffuseX += (targetIdleX - p.diffuseX) * 0.005;
-                p.diffuseY += (targetIdleY - p.diffuseY) * 0.005;
-                p.diffuseX += Math.sin(now + i) * 0.2;
-                p.diffuseY += Math.cos(now + i) * 0.2;
+                const time = timestamp * 0.0005;
+
+                // 3D Sine Wave Grid (Silk Fabric)
+                // Particles arranged in a loose grid that undulates
+
+                const cols = 25;
+                const row = Math.floor(i / cols);
+                const col = i % cols;
+
+                // Grid spacing
+                const spacing = 30;
+                const offsetX = (cols * spacing) / 2;
+                const offsetY = (state.particles.length / cols * spacing) / 2;
+
+                const baseX = col * spacing - offsetX + centerX;
+                const baseY = row * spacing - offsetY + centerY;
+
+                // Diagonal Wave flow
+                const wave1 = Math.sin(col * 0.2 + row * 0.1 + time * 2) * 20;
+                const wave2 = Math.cos(col * 0.1 - row * 0.2 + time * 3) * 20;
+
+                // Viscous drifting
+                p.diffuseX = baseX + wave1;
+                p.diffuseY = baseY + wave2;
+
+                // Add depth perspective (pseudo-3D)
+                // Center is "higher" (closer)
+                const distToCenter = Math.sqrt(Math.pow(p.diffuseX - centerX, 2) + Math.pow(p.diffuseY - centerY, 2));
+                const z = Math.max(0, 100 - distToCenter * 0.2);
+                const scale = 1 + z * 0.002;
+
+                p.diffuseX = centerX + (p.diffuseX - centerX) * scale;
+                p.diffuseY = centerY + (p.diffuseY - centerY) * scale;
+
             } else {
                 // Active State: Organic rotation
                 p.angle += 0.002 + Math.sin(now * 0.5 + i * 0.1) * 0.001;
@@ -926,12 +1298,24 @@ function PracticeContent({ router }: { router: any }) {
             const lensEffect = Math.sin(p.angle * 6 + now) * 12;
             let targetDist = (p.dist + displacement + lensEffect) * breathScale;
 
-            let burstX = 0; let burstY = 0;
+            // Bloom: Vaporize - Rise up as bubbles and pop
+            let bubbleY = 0;
             if (bloomProgress > 0) {
-                const burstSpeed = bloomProgress * 800;
-                burstX = Math.cos(p.angle + bloomProgress * 10) * burstSpeed;
-                burstY = Math.sin(p.angle + bloomProgress * 10) * burstSpeed;
+                // Rise Up
+                bubbleY = -bloomProgress * height * 0.8;
+
+                // Jiggle (Boiling)
+                const jiggle = Math.sin(timestamp * 0.05 + i) * 10 * bloomProgress;
+                effectiveDist += jiggle;
+
+                // Expand rings slightly
+                targetDist += bloomProgress * 50;
+
+                effectiveAlpha *= (1 - bloomProgress * 0.4);
             }
+
+            const burstX = 0;
+            const burstY = bubbleY;
 
             const orbitX = Math.cos(p.angle) * targetDist + burstX;
             const orbitY = Math.sin(p.angle) * targetDist + burstY;
@@ -942,11 +1326,12 @@ function PracticeContent({ router }: { router: any }) {
             const fresnel = Math.pow(dot, 4);
 
             // Glass Color Strategy (Strict)
-            const baseHue = 194;
-            const h = baseHue + Math.sin(now * 0.1 + p.angle) * 8;
-            const s = 10 + fresnel * 35;
-            const l = 75 + fresnel * 25;
-            const alpha = 0.25 + fresnel * 0.65;
+            // Mercury: Silver/Chrome
+            const baseHue = 200; // Slight blue tint for metallic feel
+            const h = baseHue;
+            const s = 0 + fresnel * 10; // Very low saturation (Silver)
+            const l = 40 + fresnel * 50; // High contrast metallic
+            const alpha = 0.4 + fresnel * 0.6; // Opaque-ish
 
             // DRAW BODY - OPTIMIZED
             ctx.fillStyle = `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
@@ -958,7 +1343,7 @@ function PracticeContent({ router }: { router: any }) {
 
             // DRAW SPECULAR
             if (fresnel > 0.6 || Math.sin(now * 3 + i) > 0.9) {
-                ctx.fillStyle = `rgba(255, 255, 255, ${0.5 + fresnel * 0.5})`;
+                ctx.fillStyle = `rgba(255, 255, 255, ${0.7 + fresnel * 0.3})`;
                 ctx.beginPath();
                 ctx.arc(finalX - bodySize * 0.25, finalY - bodySize * 0.25, bodySize * 0.35, 0, Math.PI * 2);
                 ctx.fill();
@@ -974,9 +1359,29 @@ function PracticeContent({ router }: { router: any }) {
         const centerY = height / 2;
 
         state.particles.forEach((p: any, i: number) => {
+            // --- IDLE: LASER GRID ---
             if (transitionProgress < 1) {
-                p.diffuseX += (Math.random() - 0.5) * 1.5;
-                p.diffuseY += (Math.random() - 0.5) * 1.5;
+                // Initialize Grid Direction if missing
+                if (!p.gridDir) {
+                    p.gridDir = Math.random() > 0.5 ? 'x' : 'y';
+                    p.gridSpeed = (Math.random() > 0.5 ? 1 : -1) * (2 + Math.random() * 5);
+                }
+
+                // Random 90 degree turn (Cybernetic randomness)
+                if (Math.random() < 0.02) {
+                    p.gridDir = p.gridDir === 'x' ? 'y' : 'x';
+                    p.gridSpeed = (Math.random() > 0.5 ? 1 : -1) * (2 + Math.random() * 5);
+                }
+
+                // Move
+                if (p.gridDir === 'x') p.diffuseX += p.gridSpeed;
+                else p.diffuseY += p.gridSpeed;
+
+                // Wrap around edges
+                if (p.diffuseX < 0) p.diffuseX = width;
+                if (p.diffuseX > width) p.diffuseX = 0;
+                if (p.diffuseY < 0) p.diffuseY = height;
+                if (p.diffuseY > height) p.diffuseY = 0;
             } else {
                 p.diffuseX += p.dx * 0.1;
                 p.diffuseY += p.dy * 0.1;
@@ -990,14 +1395,26 @@ function PracticeContent({ router }: { router: any }) {
             let effectiveDist = (p.dist * 0.8 + shimmer) * breathScale;
             let effectiveAlpha = 0.4 + Math.abs(Math.sin(timestamp * 0.002 + p.angle * 3)) * 0.4;
 
+            // Bloom: Data Transmission - Particles snap to axes and shoot out at light speed
             let burstX = 0;
             let burstY = 0;
+
             if (bloomProgress > 0) {
-                const burstSpeed = bloomProgress * 800;
-                burstX = Math.cos(baseAngle) * burstSpeed;
-                burstY = Math.sin(baseAngle) * burstSpeed;
-                effectiveAlpha *= (1 - bloomProgress * 0.7);
-                p.angle += bloomProgress * 0.1;
+                const speed = bloomProgress * 2000;
+                // Determine Axis based on particle index
+                // (simulating system bus transmission)
+                if (i % 2 === 0) {
+                    // Horizontal Move
+                    const dir = (i % 4 === 0) ? 1 : -1;
+                    burstX = dir * speed;
+                } else {
+                    // Vertical Move
+                    const dir = (i % 4 === 1) ? 1 : -1;
+                    burstY = dir * speed;
+                }
+
+                // Turn white/cyan
+                effectiveAlpha *= (1 - bloomProgress * 0.1);
             }
 
             const orbitX = Math.cos(baseAngle) * effectiveDist + burstX;
@@ -1015,6 +1432,144 @@ function PracticeContent({ router }: { router: any }) {
             ctx.beginPath();
             p.x = finalX; p.y = finalY;
             ctx.arc(finalX, finalY, p.size * 1.1, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    };
+
+    const renderSphere = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const now = Date.now();
+        const introElapsed = now - (state.themeStartTime || 0);
+
+        // --- 1. INTRO: "Celestial Assembly" (Elegant Swirl) ---
+        // 0s -> 2.4s: Particles gently spiral in from a nebula
+        let introExpansion = 0;
+        let introRotation = 0;
+        let introAlpha = 1;
+
+        if (transitionProgress < 1 && introElapsed < 2400) {
+            const introDuration = 2400;
+            const progress = Math.min(introElapsed / introDuration, 1);
+
+            // "Elegant Arrival": Smooth easing (EaseOutCubic)
+            const ease = 1 - Math.pow(1 - progress, 3);
+
+            introExpansion = (1 - ease) * 1200; // Start moderately far
+            introRotation = (1 - ease) * Math.PI * 1.5; // Soft spiral
+            introAlpha = ease; // Fade in gracefully
+        }
+
+        state.particles.forEach((p: any, i: number) => {
+            // --- IDLE STATE: "Quantum Cloud" ---
+            // Instead of static rings, a vibrating, shifting swarm that roughly holds shape
+            if (transitionProgress < 1) {
+                // Chaotic "Electron" movement
+                const time = timestamp * 0.001;
+                const chaoticNoise = Math.sin(time + i * 0.1) + Math.cos(time * 0.5 + p.angle);
+
+                // Target: Loose sphere distribution
+                // We use the same sphere math but with added noise
+                const phi = Math.acos(1 - (2 * i) / PARTICLE_COUNT);
+
+                // Add Intro Spiral Rotation 
+                const theta = Math.sqrt(PARTICLE_COUNT * Math.PI) * phi + time * 0.2 + introRotation;
+
+                // Radius breathes heavily in idle
+                const idlePulse = Math.sin(time * 2) * 20;
+                let r = (160 + idlePulse) + chaoticNoise * 15;
+
+                // 3D Coords
+                let x = r * Math.sin(phi) * Math.cos(theta);
+                let y = r * Math.sin(phi) * Math.sin(theta);
+                let z = r * Math.cos(phi);
+
+                // Add random orbit jitter
+                x += Math.sin(time * 3 + i) * 10;
+                y += Math.cos(time * 2 + i) * 10;
+
+                // Project
+                const fov = 350;
+                const scale = fov / (fov - z);
+                const targetIdleX = centerX + x * scale;
+                const targetIdleY = centerY + y * scale;
+
+                // Apply Implosion Offset (Radial + Spiral twisting visually achieved by theta rotation above)
+                // We physically push them out radially for the "Diffusion" feel
+                const dx = targetIdleX - centerX;
+                const dy = targetIdleY - centerY;
+                const distRaw = Math.sqrt(dx * dx + dy * dy) || 0.001;
+                const nx = dx / distRaw;
+                const ny = dy / distRaw;
+
+                // Force "Diffusion" - if introExpansion is high, they are far away.
+                // Also add some random Z-depth noise to the expansion so they don't look like a flat sheet expanding
+                const expansionZ = introExpansion * (1 + Math.sin(i) * 0.5);
+
+                const finalIntroX = targetIdleX + nx * expansionZ;
+                const finalIntroY = targetIdleY + ny * expansionZ;
+
+                p.diffuseX += (finalIntroX - p.diffuseX) * 0.1; // Softer spring for elegance
+                p.diffuseY += (finalIntroY - p.diffuseY) * 0.1;
+            }
+
+            // --- ACTIVE STATE: Perfect Sphere ---
+            // Sphere rotation angle (Y-axis)
+            const rotY = timestamp * 0.0003;
+
+            // Map to Sphere (Golden Spiral Distribution)
+            const phi = Math.acos(1 - (2 * i) / PARTICLE_COUNT);
+            const theta = Math.sqrt(PARTICLE_COUNT * Math.PI) * phi + rotY;
+
+            let r = 130 * breathScale;
+
+            // Bloom Expansion
+            if (bloomProgress > 0) {
+                r += bloomProgress * 400;
+            }
+
+            // 3D Cartesian Coordinates
+            let x = r * Math.sin(phi) * Math.cos(theta);
+            let y = r * Math.sin(phi) * Math.sin(theta);
+            let z = r * Math.cos(phi);
+
+            // Tilt Sphere (X-axis rotation)
+            const tilt = 0.4;
+            const y_t = y * Math.cos(tilt) - z * Math.sin(tilt);
+            const z_t = y * Math.sin(tilt) + z * Math.cos(tilt);
+            y = y_t;
+            z = z_t;
+
+            // Perspective Projection
+            const fov = 350;
+            const scale = fov / (fov - z);
+            const projX = x * scale;
+            const projY = y * scale;
+
+            const targetX = centerX + projX;
+            const targetY = centerY + projY;
+
+            // Strict interpolation handles the transition from "Cloud" to "Sphere"
+            const finalX = p.diffuseX + (targetX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (targetY - p.diffuseY) * transitionProgress;
+
+            // Colors: Blue & Gold Interleaved
+            const isGold = i % 15 === 0 || (i % 23 === 0);
+            const hue = isGold ? 42 : 215;
+            const sat = isGold ? 95 : 75;
+            // Lighting based on depth (z)
+            const lightness = isGold ? 60 + (z / r) * 20 : 55 + (z / r) * 25;
+            let alpha = 0.5 + (z / r) * 0.5; // Fade back points
+
+            if (transitionProgress < 1 && introElapsed < 2400) {
+                alpha *= introAlpha; // Apply intro fade
+            }
+            if (bloomProgress > 0) alpha *= (1 - bloomProgress);
+
+            ctx.fillStyle = `hsla(${hue}, ${sat}%, ${lightness}%, ${Math.min(alpha, 1)})`;
+            ctx.beginPath();
+            const size = p.size * scale * (isGold ? 1.6 : 1.1);
+            ctx.arc(finalX, finalY, Math.max(0, size), 0, Math.PI * 2);
             ctx.fill();
         });
     };
@@ -1075,7 +1630,7 @@ function PracticeContent({ router }: { router: any }) {
         ctx.fillRect(0, 0, width, height);
 
         if (state.phase === "SUMMARY" && state.textTargets && state.textTargets.length > 0) {
-            renderTextMorph(ctx, state, width, height);
+            renderTextMorph(ctx, state, width, height, timestamp);
         } else if (state.theme === "LIQUID") {
             renderLiquid(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "AURORA") {
@@ -1096,6 +1651,8 @@ function PracticeContent({ router }: { router: any }) {
             renderLotus(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "PRISM") {
             renderPrism(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
+        } else if (state.theme === "SPHERE") {
+            renderSphere(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else {
             renderRose(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale); // Default
         }
@@ -1116,6 +1673,11 @@ function PracticeContent({ router }: { router: any }) {
         if (canvas) {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+
+            // Fix: Initialize themeStartTime so intro plays on reload
+            animState.current.themeStartTime = Date.now();
+            animState.current.theme = selectedTheme;
+
             initParticles(canvas.width, canvas.height);
             requestRef.current = requestAnimationFrame(draw);
         }
@@ -1213,7 +1775,10 @@ function PracticeContent({ router }: { router: any }) {
         // Sync Ref for Animation Loop
         animState.current.phase = phase;
         animState.current.breathPhase = breathPhase;
-        animState.current.theme = selectedTheme; // Update theme in ref
+        if (animState.current.theme !== selectedTheme) {
+            animState.current.theme = selectedTheme;
+            animState.current.themeStartTime = Date.now(); // RESET INTRO TIMER
+        }
 
         animState.current.phaseStartTime = Date.now();
         if (breathPhase === "INHALE") animState.current.phaseDuration = currentPattern.INHALE;
@@ -1236,21 +1801,12 @@ function PracticeContent({ router }: { router: any }) {
         setTimeout(() => {
             setPhase("COUNTDOWN");
             setCountdown(3);
-
-            const countInterval = setInterval(() => {
-                setCountdown((prev) => {
-                    if (prev <= 1) {
-                        clearInterval(countInterval);
-                        startPractice();
-                        return 0;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
         }, 2000); // 2s transition matches animState.transitionDuration
     };
 
     const startPractice = async () => {
+        // Safety Clear: Prevent multiple intervals from running
+        if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
         setPhase("PRACTICING");
         setBreathPhase("INHALE");
         practiceStartTimeRef.current = Date.now();
@@ -1285,22 +1841,26 @@ function PracticeContent({ router }: { router: any }) {
 
         // 🎵 Start Binaural Beats if enabled
         if (binauralEnabled) {
+            console.log('[Practice] Binaural enabled, looking for preset:', selectedBinaural);
             const preset = BINAURAL_PRESETS.find(p => p.id === selectedBinaural);
-            if (preset) startBinaural(preset);
+            if (preset) {
+                console.log('[Practice] Starting binaural with preset:', preset);
+                // Pass duration for frequency ramping
+                startBinaural(preset, durationMinutes * 60);
+            } else {
+                console.warn('[Practice] Preset not found:', selectedBinaural);
+            }
+        } else {
+            console.log('[Practice] Binaural is disabled');
         }
 
         // Start Recursive Cycle
         runBreathingCycle("INHALE");
 
         // Timer
+        setTimeLeft(durationMinutes * 60);
         practiceTimerRef.current = setInterval(() => {
-            setTimeLeft((prev) => {
-                if (prev <= 1) {
-                    completePractice();
-                    return 0;
-                }
-                return prev - 1;
-            });
+            setTimeLeft((prev) => prev - 1);
         }, 1000);
     };
 
@@ -1335,6 +1895,8 @@ function PracticeContent({ router }: { router: any }) {
     };
 
     const completePractice = () => {
+        if (phase === "COMPLETED" || phase === "SUMMARY") return; // Prevent double trigger
+
         setPhase("COMPLETED");
         animState.current.completionStartTime = Date.now(); // Start dispersion
 
@@ -1410,6 +1972,26 @@ function PracticeContent({ router }: { router: any }) {
         }, 5000);
     };
 
+    // Monitor for completion
+    useEffect(() => {
+        if (phase === "PRACTICING" && timeLeft <= 0) {
+            completePractice();
+        }
+    }, [timeLeft, phase]);
+
+    // Countdown Logic
+    useEffect(() => {
+        if (phase === "COUNTDOWN") {
+            if (countdown > 0) {
+                const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+                return () => clearTimeout(timer);
+            } else {
+                // Countdown finished, start practice
+                startPractice();
+            }
+        }
+    }, [phase, countdown]);
+
     const cleanup = () => {
         if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
@@ -1446,7 +2028,45 @@ function PracticeContent({ router }: { router: any }) {
                     >
                         <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
                     </button>
-                    <div className="w-[46px]" />
+                    {/* Right Side Controls - Only show in IDLE */}
+                    {phase === "IDLE" && (
+                        <div className="flex gap-2 items-center">
+                            {/* Binaural Beats Toggle - Icon Only */}
+                            <button
+                                onClick={() => {
+                                    const newValue = !binauralEnabled;
+                                    setBinauralEnabled(newValue);
+                                    localStorage.setItem("binauralEnabled", String(newValue));
+                                    triggerLight();
+                                }}
+                                className={`w-11 h-11 flex items-center justify-center rounded-full backdrop-blur-md transition-all border ${binauralEnabled ? 'bg-red-500/30 text-red-300 border-red-400/30' : 'bg-white/5 text-white/50 border-white/5 hover:bg-white/10'}`}
+                            >
+                                <span className="text-xl">🎧</span>
+                            </button>
+
+                            {/* Breathing Pattern Button - Icon Only */}
+                            <div className="relative">
+                                <button className="w-11 h-11 flex items-center justify-center rounded-full bg-white/5 backdrop-blur-md border border-white/5 text-white/50 hover:bg-white/10 transition-all">
+                                    <Wind size={20} />
+                                </button>
+                                <select
+                                    value={selectedPattern}
+                                    onChange={(e) => {
+                                        setSelectedPattern(e.target.value as BreathingPatternId);
+                                        localStorage.setItem("breathingPattern", e.target.value);
+                                        triggerLight();
+                                    }}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none"
+                                >
+                                    {BREATHING_PATTERNS.map((pattern) => (
+                                        <option key={pattern.id} value={pattern.id}>
+                                            {pattern.name} ({pattern.inhale}-{pattern.hold > 0 ? `${pattern.hold}-` : ''}{pattern.exhale})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    )}
                 </header>
 
 
@@ -1533,13 +2153,18 @@ function PracticeContent({ router }: { router: any }) {
                                 exit={{ opacity: 0, y: 50 }}
                                 className="flex flex-col gap-10"
                             >
-                                {/* Scale Selector */}
-                                <RulerTimeSelector
-                                    value={durationMinutes}
-                                    onChange={setDurationMinutes}
-                                />
+                                {/* Removed Ruler from Top */}
 
-                                {/* Theme Selector - Scrollable */}
+                                { /* Ruler Time Selector - Moved to Top */}
+                                <div className="w-full mb-2">
+                                    <label className="text-xs text-white/40 uppercase tracking-wider mb-4 block text-center">练习时长</label>
+                                    <RulerTimeSelector
+                                        value={durationMinutes}
+                                        onChange={setDurationMinutes}
+                                    />
+                                </div>
+
+                                {/* Theme Selector - Scrollable (Bottom) */}
                                 <div className="w-full overflow-x-auto scrollbar-hide py-4 -mx-4 px-4">
                                     <div className="flex gap-3 w-max snap-x snap-mandatory">
                                         {(Object.keys(THEMES) as Theme[]).map((themeKey) => {
@@ -1572,83 +2197,7 @@ function PracticeContent({ router }: { router: any }) {
                                     </div>
                                 </div>
 
-                                {/* Breathing Pattern Selector */}
-                                <div className="w-full">
-                                    <div className="text-xs text-white/40 mb-3 uppercase tracking-wider text-center">呼吸模式</div>
-                                    <div className="flex gap-2 flex-wrap justify-center">
-                                        {BREATHING_PATTERNS.map((pattern) => {
-                                            const isSelected = selectedPattern === pattern.id;
-                                            return (
-                                                <button
-                                                    key={pattern.id}
-                                                    onClick={() => {
-                                                        setSelectedPattern(pattern.id);
-                                                        localStorage.setItem("breathingPattern", pattern.id);
-                                                        triggerLight();
-                                                    }}
-                                                    className={`
-                                                        px-3 py-2 rounded-xl text-xs transition-all
-                                                        ${isSelected
-                                                            ? "bg-white/15 border-white/30 text-white"
-                                                            : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white"}
-                                                        border ${isSelected ? "border-white/30" : "border-transparent"}
-                                                    `}
-                                                >
-                                                    <div className="font-medium">{pattern.name}</div>
-                                                    <div className="text-[10px] text-white/30 mt-0.5">
-                                                        {pattern.inhale}-{pattern.hold > 0 ? `${pattern.hold}-` : ""}{pattern.exhale}
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                {/* Binaural Beats Toggle & Selector */}
-                                <div className="w-full">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <div className="text-xs text-white/40 uppercase tracking-wider">双耳节拍</div>
-                                        <button
-                                            onClick={() => {
-                                                const newValue = !binauralEnabled;
-                                                setBinauralEnabled(newValue);
-                                                localStorage.setItem("binauralEnabled", String(newValue));
-                                                triggerLight();
-                                            }}
-                                            className={`w-12 h-6 rounded-full transition-all relative ${binauralEnabled ? 'bg-cyan-500/50' : 'bg-white/10'}`}
-                                        >
-                                            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${binauralEnabled ? 'left-7' : 'left-1'}`} />
-                                        </button>
-                                    </div>
-
-                                    {binauralEnabled && (
-                                        <div className="flex gap-2 flex-wrap justify-center">
-                                            {BINAURAL_PRESETS.map((preset) => {
-                                                const isSelected = selectedBinaural === preset.id;
-                                                return (
-                                                    <button
-                                                        key={preset.id}
-                                                        onClick={() => {
-                                                            setSelectedBinaural(preset.id);
-                                                            localStorage.setItem("binauralPreset", preset.id);
-                                                            triggerLight();
-                                                        }}
-                                                        className={`
-                                                            px-3 py-2 rounded-xl text-xs transition-all
-                                                            ${isSelected
-                                                                ? "bg-cyan-500/20 border-cyan-400/30 text-white"
-                                                                : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white"}
-                                                            border ${isSelected ? "border-cyan-400/30" : "border-transparent"}
-                                                        `}
-                                                    >
-                                                        <div className="font-medium">{preset.icon} {preset.name}</div>
-                                                        <div className="text-[10px] text-white/30 mt-0.5">{preset.beatFrequency}Hz</div>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
+                                {/* Binaural section removed - toggle is now in header */}
 
                                 {/* Start Button */}
                                 <button
@@ -1703,6 +2252,8 @@ function PracticeContent({ router }: { router: any }) {
                     }}
                 />
             )}
+
+
 
             <style jsx global>{`
         .hide-scrollbar::-webkit-scrollbar {

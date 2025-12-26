@@ -1,25 +1,28 @@
 "use client";
 
+import { CardStack } from "../components/ui/CardStack";
+
 import { useState, useEffect, useRef } from "react";
 import { useHaptics } from "@/lib/hooks/useHaptics";
-import { motion } from "framer-motion";
-import { Droplets, Wind, Activity, Zap, Heart, Calendar, Play, ChevronRight } from "lucide-react";
-import Link from "next/link";
-import { cn } from "@/lib/utils";
-import { GlassCard } from "@/components/ui/GlassCard";
+
 import { LotusGarden } from "@/components/LotusGarden";
 import { useMeditationSessions } from "@/lib/hooks/useData";
+import AIRecommendationCard from "@/components/ui/AIRecommendationCard";
+import JourneyCard from "@/components/ui/JourneyCard";
+import PulseCard from "@/components/ui/PulseCard";
+import O2Card from "@/components/ui/O2Card";
 
-const MILESTONES = [1, 3, 7, 14, 30, 60, 100, 365];
+// MILESTONES removed (moved to JourneyCard)
 
 export default function Home() {
   const [days, setDays] = useState(0);
-  const [startDate, setStartDate] = useState<string | null>(null);
-  const dateInputRef = useRef<HTMLInputElement>(null);
+  // State for Check-in Days
+
   const { triggerLight, triggerMedium } = useHaptics();
 
-  // 获取冒想会话记录用于莲花花园
+  // 获取冥想会话记录
   const { sessions } = useMeditationSessions();
+
 
   // 转换为莲花花园需要的格式
   const lotusRecords = sessions.map(s => ({
@@ -29,245 +32,84 @@ export default function Home() {
   }));
 
   // --- Logic Preserved from Original ---
+  // Calculate Check-in Days (Unique days with sessions)
   useEffect(() => {
-    const savedDate = localStorage.getItem("quitDate");
-    if (savedDate) {
-      updateDays(savedDate);
+    if (sessions && sessions.length > 0) {
+      // 提取所有会话的日期部分 (YYYY-MM-DD)，去重计算天数
+      const uniqueDates = new Set(
+        sessions.map(s => {
+          const date = new Date(s.started_at);
+          return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+        })
+      );
+      setDays(uniqueDates.size);
+    } else {
+      // 如果没有会话，天数为 0
+      setDays(0);
     }
-  }, []);
+  }, [sessions]);
 
-  const updateDays = (dateStr: string) => {
-    setStartDate(dateStr);
-    const start = new Date(dateStr);
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - start.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    setDays(diffDays);
-  };
-
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newDate = e.target.value;
-    if (newDate) {
-      localStorage.setItem("quitDate", newDate);
-      updateDays(newDate);
-    }
-  };
-
-  const getNextMilestone = () => {
-    for (const milestone of MILESTONES) {
-      if (days < milestone) {
-        return { target: milestone, remaining: milestone - days };
-      }
-    }
-    return { target: 1000, remaining: 0 }; // Default fallthrough
-  };
-
-  const getHealthStatus = () => {
-    // Re-using logic but mapping to icons/colors for new UI
-    // Heart rate (0.014 days), Blood oxygen (0.5 days), Taste (2 days), Lung (14 days), Circulation (14 days), Energy (30 days)
-
-    const metrics = [
-      {
-        id: 'heart',
-        label: '心率',
-        requiredDays: 0.014,
-        icon: Heart,
-        color: "text-rose-400",
-        desc: "恢复正常水平"
-      },
-      {
-        id: 'oxygen',
-        label: '血氧',
-        requiredDays: 0.5,
-        icon: Activity,
-        color: "text-sky-400",
-        desc: "一氧化碳排净"
-      },
-      {
-        id: 'taste',
-        label: '味觉',
-        requiredDays: 2,
-        icon: Droplets,
-        color: "text-orange-400",
-        desc: "神经末梢修复"
-      },
-      {
-        id: 'lungs',
-        label: '肺功能',
-        requiredDays: 14,
-        icon: Wind,
-        color: "text-emerald-400",
-        desc: "纤毛再生中"
-      },
-      {
-        id: 'energy',
-        label: '体力',
-        requiredDays: 30,
-        icon: Zap,
-        color: "text-yellow-400",
-        desc: "循环显著改善"
-      }
-    ];
-
-    return metrics.map(m => ({
-      ...m,
-      progress: Math.min((days / m.requiredDays) * 100, 100),
-      status: days >= m.requiredDays ? '完成' : '进行中'
-    }));
-  };
-
-  const nextMilestone = getNextMilestone();
-  const healthMetrics = getHealthStatus(); // Now returns all for grid display
-
-  // Only show the 4 most relevant metrics to avoid clutter
-  // Filter for metrics that are either in progress or recently completed
-  const activeMetrics = healthMetrics.filter(m => m.progress < 100).slice(0, 4);
-  // If fewer than 4 active, fill with completed ones from the end
-  const displayMetrics = activeMetrics.length < 4
-    ? [...healthMetrics.filter(m => m.progress >= 100).reverse().slice(0, 4 - activeMetrics.length), ...activeMetrics]
-    : activeMetrics;
-
-  // Sort by progress desc (completed first in the filled list, or active ones)
-  // Actually, visual order: Completed -> In Progress makes sense to show achievements
-  displayMetrics.sort((a, b) => b.progress - a.progress);
-
+  // Milestone logic removed (handled in JourneyCard)
 
   return (
-    <div className="relative min-h-screen text-white font-sans selection:bg-white/20">
-      {/* 🪷 全屏莲花花园背景 */}
-      {lotusRecords.length > 0 && <LotusGarden records={lotusRecords} />}
+    <div className="relative h-[100dvh] overflow-hidden text-white font-sans selection:bg-white/20 touch-none">
+      {/* 🪷 Full Screen Lotus Garden Background */}
+      {lotusRecords.length > 0 && <LotusGarden records={lotusRecords} streakDays={Math.min(7, lotusRecords.length)} />}
 
-      <main className="relative z-10 flex flex-col items-center px-6 pt-20 pb-24 mx-auto w-full max-w-lg min-h-screen">
+      {/* Main Content Container */}
+      <main className="relative z-10 flex flex-col px-6 pt-10 pb-24 mx-auto w-full max-w-md h-full justify-around gap-2">
 
-        {/* Header Area */}
-        <header
-          className="w-full flex justify-between items-center mb-12"
-        >
-          <div className="flex flex-col">
-            <span className="text-xs font-medium text-white/50 tracking-widest uppercase">My Journey</span>
-            <h1 className="text-2xl font-semibold tracking-tight">戒烟进度</h1>
-          </div>
-          <GlassCard className="p-2 rounded-full cursor-pointer active:scale-95 transition-transform">
-            <Calendar className="w-5 h-5 text-white/70" />
-            <input
-              type="date"
-              className="absolute inset-0 opacity-0 cursor-pointer"
-              onChange={handleDateChange}
-            />
-          </GlassCard>
-        </header>
+        {/* --- Block 1: Header & Status --- */}
+        <div className="flex flex-col items-center justify-center relative shrink-0">
 
-        {/* Main Counter - Clickable to change date */}
-        <div
-          className="relative mb-16 text-center"
-        >
-          <div className="absolute inset-0 bg-blue-500/20 blur-[80px] rounded-full" />
-          <label
-            htmlFor="days-date-input"
-            onClick={() => triggerMedium()}
-            className="relative cursor-pointer active:scale-95 transition-transform group block"
-          >
-            <h2 className="text-[8rem] font-bold leading-none tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/10 drop-shadow-2xl group-active:from-cyan-100 group-active:to-cyan-100/10 transition-all">
+          {/* Days Counter Block */}
+          <div className="relative text-center z-10 group cursor-pointer" onClick={() => triggerMedium()}>
+
+            {/* Dynamic Aurora Backlight */}
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-gradient-to-tr from-cyan-500/20 via-blue-500/20 to-purple-500/20 blur-[90px] rounded-full opacity-60 group-hover:opacity-80 transition-opacity duration-700" />
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-white/10 blur-[60px] rounded-full mix-blend-overlay" />
+
+            {/* The Big Number */}
+            <h2 className="relative text-[15vh] font-bold leading-none tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/20 drop-shadow-[0_0_30px_rgba(255,255,255,0.3)] transition-all duration-500 group-active:scale-95 group-active:opacity-80">
               {days}
             </h2>
-            <span className="text-xs text-white/30 mt-1 block">点击修改日期</span>
-          </label>
-          <p className="text-lg text-white/40 font-light tracking-widest uppercase mt-2">Days Free</p>
-          {/* Hidden date input - iOS compatible */}
-          <input
-            id="days-date-input"
-            ref={dateInputRef}
-            type="date"
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            value={startDate || ''}
-            onChange={handleDateChange}
-          />
-        </div>
 
-        {/* Milestone Tracker (Horizontal) */}
-        <div
-          className="w-full mb-8"
-        >
-          <div className="flex justify-between items-end mb-3 px-1">
-            <span className="text-sm text-white/60">下一目标</span>
-            <span className="text-sm font-medium text-white">
-              {nextMilestone.remaining > 0 ? `${nextMilestone.remaining} 天后` : "已达成"}
-            </span>
-          </div>
-
-          <GlassCard className="p-1 rounded-2xl h-3 w-full bg-black/20">
-            <motion.div
-              className="h-full bg-white rounded-xl shadow-[0_0_10px_white]"
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.min((days / nextMilestone.target) * 100, 100)}%` }}
-              transition={{ duration: 1.5, ease: "easeOut" }}
-            />
-          </GlassCard>
-          <div className="flex justify-between mt-2 text-xs text-white/30 font-mono">
-            <span>0</span>
-            <span>{nextMilestone.target} DAYS</span>
+            {/* Label */}
+            <div className="flex flex-col items-center space-y-1 mt-2">
+              <span className="text-xl font-medium text-white/80 tracking-[0.2em] uppercase">Check-in Days</span>
+            </div>
           </div>
         </div>
 
-        {/* Health Stats Grid */}
-        <div
-          className="grid grid-cols-2 gap-4 w-full"
-        >
-          {displayMetrics.map((item, idx) => (
-            <GlassCard
-              key={item.id}
-              className="p-5 flex flex-col gap-3 group"
-              hoverEffect
-              style={{ animationDelay: `${idx * 100}ms` }}
-            >
-              <div className="flex justify-between items-start">
-                <div className={cn("p-2 rounded-xl bg-white/5", item.color)}>
-                  <item.icon className="w-5 h-5" />
-                </div>
-                <span className="text-xs font-mono text-white/30">{Math.round(item.progress)}%</span>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-white/90">{item.label}</h3>
-                <p className="text-xs text-white/50 mt-0.5">{item.desc}</p>
-              </div>
 
-              {/* Mini Progress Bar */}
-              <div className="h-1 w-full bg-white/5 rounded-full mt-2 overflow-hidden">
-                <motion.div
-                  className={cn("h-full rounded-full opacity-80", item.progress >= 100 ? "bg-white" : "bg-white/40")}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${item.progress}%` }}
-                  transition={{ duration: 1, delay: 0.5 + idx * 0.1 }}
-                />
-              </div>
-            </GlassCard>
-          ))}
+
+
+        {/* --- Card Queue: Swipeable Stack --- */}
+        <div className="w-full h-[18rem] relative z-20">
+          <CardStack>
+            {/* Card 1: Main Dashboard (Command Center) */}
+            <div className="w-full h-full">
+              <JourneyCard days={days} times={sessions.length} />
+            </div>
+
+            {/* Card 2: AI Recommendation Card */}
+            <div className="w-full h-full">
+              <AIRecommendationCard />
+            </div>
+
+            {/* Card 3: The Pulse Anchor (Tactile Relief) */}
+            <div className="w-full h-full">
+              <PulseCard />
+            </div>
+
+            {/* Card 4: The O2 Vault (Physiological) */}
+            <div className="w-full h-full">
+              <O2Card />
+            </div>
+
+          </CardStack>
         </div>
 
-        {/* --- Added: Practice Entry Point --- */}
-        <div className="w-full mt-12 mb-8">
-          <Link href="/practice">
-            <GlassCard
-              className="p-6 flex items-center justify-between group overflow-hidden relative cursor-pointer active:scale-[0.98] transition-all"
-              hoverEffect
-            >
-              {/* Background Glow */}
-              <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-32 h-32 bg-blue-400/20 blur-[40px] rounded-full group-hover:bg-blue-400/30 transition-colors" />
-
-              <div className="flex items-center gap-4 relative z-10">
-                <div className="p-3 rounded-2xl bg-white/10 text-white shadow-lg">
-                  <Play className="w-6 h-6 fill-white" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-white">正式练习</h3>
-                  <p className="text-sm text-white/50">4-7-8 呼吸冥想引导</p>
-                </div>
-              </div>
-
-              <ChevronRight className="w-6 h-6 text-white/30 group-hover:text-white/60 transition-colors relative z-10" />
-            </GlassCard>
-          </Link>
-        </div>
       </main>
     </div>
   );
