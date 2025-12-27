@@ -2046,296 +2046,297 @@ function PracticeContent({ router }: { router: any }) {
 
 
     return (
-        <div
-            className="fixed z-[99999] bg-black text-white font-sans overflow-hidden animate-in fade-in duration-500"
-            style={{
-                // 🔥 iOS PWA Safe Area Fix: 强制扩展到屏幕边缘
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 'calc(-1 * env(safe-area-inset-bottom, 0px))',
-                minHeight: '100dvh',
-            }}
-        >
+        <>
+            {/* 🔥 背景扩展层 - 强制覆盖到安全区域底部 */}
+            <div
+                className="fixed inset-0 bg-black z-[99998]"
+                style={{
+                    bottom: 'calc(-1 * env(safe-area-inset-bottom, 34px))',
+                    height: 'calc(100% + env(safe-area-inset-bottom, 34px))'
+                }}
+            />
+            <div
+                className="fixed inset-0 z-[99999] text-white font-sans overflow-hidden animate-in fade-in duration-500"
+            >
 
-            {/* Canvas */}
-            <canvas ref={canvasRef} className="absolute inset-0 block touch-none" />
+                {/* Canvas */}
+                <canvas ref={canvasRef} className="absolute inset-0 block touch-none" />
 
-            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-safe">
+                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-safe">
 
-                {/* Header */}
-                <header className="w-full p-6 flex justify-between items-start pointer-events-auto z-50">
-                    <button
-                        onClick={handleExit}
-                        className="p-3 bg-white/5 backdrop-blur-md rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all border border-white/5 group"
-                    >
-                        <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
-                    </button>
-                    {/* Right Side Controls - Only show in IDLE */}
-                    {phase === "IDLE" && (
-                        <div className="flex gap-2 items-center">
-                            {/* Binaural Beats Toggle - Icon Only */}
-                            <button
-                                onClick={() => {
-                                    const newValue = !binauralEnabled;
-                                    setBinauralEnabled(newValue);
-                                    localStorage.setItem("binauralEnabled", String(newValue));
-                                    triggerLight();
-                                }}
-                                className={`w-11 h-11 flex items-center justify-center rounded-full backdrop-blur-md transition-all border ${binauralEnabled ? 'bg-red-500/30 text-red-300 border-red-400/30' : 'bg-white/5 text-white/50 border-white/5 hover:bg-white/10'}`}
-                            >
-                                <span className="text-xl">🎧</span>
-                            </button>
-
-                            {/* Breathing Pattern Button - Icon Only */}
-                            <div className="relative">
-                                <button className="w-11 h-11 flex items-center justify-center rounded-full bg-white/5 backdrop-blur-md border border-white/5 text-white/50 hover:bg-white/10 transition-all">
-                                    <Wind size={20} />
-                                </button>
-                                <select
-                                    value={selectedPattern}
-                                    onChange={(e) => {
-                                        setSelectedPattern(e.target.value as BreathingPatternId);
-                                        localStorage.setItem("breathingPattern", e.target.value);
+                    {/* Header */}
+                    <header className="w-full p-6 flex justify-between items-start pointer-events-auto z-50">
+                        <button
+                            onClick={handleExit}
+                            className="p-3 bg-white/5 backdrop-blur-md rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all border border-white/5 group"
+                        >
+                            <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
+                        </button>
+                        {/* Right Side Controls - Only show in IDLE */}
+                        {phase === "IDLE" && (
+                            <div className="flex gap-2 items-center">
+                                {/* Binaural Beats Toggle - Icon Only */}
+                                <button
+                                    onClick={() => {
+                                        const newValue = !binauralEnabled;
+                                        setBinauralEnabled(newValue);
+                                        localStorage.setItem("binauralEnabled", String(newValue));
                                         triggerLight();
                                     }}
-                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none"
+                                    className={`w-11 h-11 flex items-center justify-center rounded-full backdrop-blur-md transition-all border ${binauralEnabled ? 'bg-red-500/30 text-red-300 border-red-400/30' : 'bg-white/5 text-white/50 border-white/5 hover:bg-white/10'}`}
                                 >
-                                    {BREATHING_PATTERNS.map((pattern) => (
-                                        <option key={pattern.id} value={pattern.id}>
-                                            {pattern.name} ({pattern.inhale}-{pattern.hold > 0 ? `${pattern.hold}-` : ''}{pattern.exhale})
-                                        </option>
-                                    ))}
-                                </select>
+                                    <span className="text-xl">🎧</span>
+                                </button>
+
+                                {/* Breathing Pattern Button - Icon Only */}
+                                <div className="relative">
+                                    <button className="w-11 h-11 flex items-center justify-center rounded-full bg-white/5 backdrop-blur-md border border-white/5 text-white/50 hover:bg-white/10 transition-all">
+                                        <Wind size={20} />
+                                    </button>
+                                    <select
+                                        value={selectedPattern}
+                                        onChange={(e) => {
+                                            setSelectedPattern(e.target.value as BreathingPatternId);
+                                            localStorage.setItem("breathingPattern", e.target.value);
+                                            triggerLight();
+                                        }}
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none"
+                                    >
+                                        {BREATHING_PATTERNS.map((pattern) => (
+                                            <option key={pattern.id} value={pattern.id}>
+                                                {pattern.name} ({pattern.inhale}-{pattern.hold > 0 ? `${pattern.hold}-` : ''}{pattern.exhale})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
-                        </div>
+                        )}
+                    </header>
+
+
+
+                    {/* Center UI - Absolute Layer for Perfect Centering */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
+                        <AnimatePresence mode="wait">
+                            {phase === "COUNTDOWN" && (
+                                <motion.div
+                                    key="cnt"
+                                    initial={{ opacity: 0, scale: 0.5 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 2 }}
+                                    className="text-9xl font-thin text-white mix-blend-screen"
+                                >
+                                    {countdown}
+                                </motion.div>
+                            )}
+
+                            {phase === "PRACTICING" && (
+                                <motion.div
+                                    key={breathPhase}
+                                    initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }}
+                                    animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                                    exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
+                                    transition={{ duration: 1 }}
+                                    className="text-center mix-blend-screen"
+                                >
+                                    <span className="text-4xl md:text-5xl font-light tracking-[0.3em] uppercase text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+                                        {breathPhase === "INHALE" && "吸 气"}
+                                        {breathPhase === "HOLD" && "屏 气"}
+                                        {breathPhase === "EXHALE" && "呼 气"}
+                                    </span>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+
+                    {/* Heart Rate Indicator - Top Right */}
+                    {phase === "PRACTICING" && (
+                        <HeartRateIndicator
+                            currentBPM={currentBPM}
+                            isMonitoring={isMonitoring}
+                            error={heartRateError}
+                        />
                     )}
-                </header>
 
-
-
-                {/* Center UI - Absolute Layer for Perfect Centering */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
-                    <AnimatePresence mode="wait">
-                        {phase === "COUNTDOWN" && (
-                            <motion.div
-                                key="cnt"
-                                initial={{ opacity: 0, scale: 0.5 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 2 }}
-                                className="text-9xl font-thin text-white mix-blend-screen"
-                            >
-                                {countdown}
-                            </motion.div>
-                        )}
-
-                        {phase === "PRACTICING" && (
-                            <motion.div
-                                key={breathPhase}
-                                initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }}
-                                animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                                exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
-                                transition={{ duration: 1 }}
-                                className="text-center mix-blend-screen"
-                            >
-                                <span className="text-4xl md:text-5xl font-light tracking-[0.3em] uppercase text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-                                    {breathPhase === "INHALE" && "吸 气"}
-                                    {breathPhase === "HOLD" && "屏 气"}
-                                    {breathPhase === "EXHALE" && "呼 气"}
-                                </span>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
-
-                {/* Heart Rate Indicator - Top Right */}
-                {phase === "PRACTICING" && (
-                    <HeartRateIndicator
-                        currentBPM={currentBPM}
-                        isMonitoring={isMonitoring}
-                        error={heartRateError}
-                    />
-                )}
-
-                {phase === "COMPLETED" && (
-                    <motion.div
-                        key="done"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="flex flex-col items-center justify-center gap-4 text-center"
-                    >
+                    {phase === "COMPLETED" && (
                         <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ type: "spring", damping: 12 }}
-                            className="p-4 rounded-full bg-green-500/20 text-green-400 mb-2"
+                            key="done"
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="flex flex-col items-center justify-center gap-4 text-center"
                         >
-                            <CheckCircle2 size={48} />
-                        </motion.div>
-                        <h1 className="text-3xl font-light text-white tracking-widest">
-                            Session Complete
-                        </h1>
-                    </motion.div>
-                )}
-
-
-                {/* Footer UI (Independent of Center UI) */}
-                <div className="w-full flex flex-col items-center justify-end pointer-events-none z-40 flex-1">
-
-                </div>
-
-                {/* Footer */}
-                <footer className="w-full max-w-sm pb-safe px-6 pointer-events-auto z-50">
-                    <AnimatePresence>
-                        {/* IDLE UI */}
-                        {phase === "IDLE" && (
                             <motion.div
-                                initial={{ opacity: 0, y: 50 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 50 }}
-                                className="flex flex-col gap-10"
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: "spring", damping: 12 }}
+                                className="p-4 rounded-full bg-green-500/20 text-green-400 mb-2"
                             >
-                                {/* Removed Ruler from Top */}
+                                <CheckCircle2 size={48} />
+                            </motion.div>
+                            <h1 className="text-3xl font-light text-white tracking-widest">
+                                Session Complete
+                            </h1>
+                        </motion.div>
+                    )}
 
-                                { /* Ruler Time Selector - Auto-hides on idle */}
-                                <div className="w-full mb-2 flex flex-col items-center justify-center min-h-[40px]">
-                                    <AnimatePresence mode="wait">
-                                        {isSelectorVisible ? (
-                                            <motion.div
-                                                key="selector"
-                                                initial={{ opacity: 0, height: 0 }}
-                                                animate={{ opacity: 1, height: "auto" }}
-                                                exit={{ opacity: 0, height: 0 }}
-                                                transition={{ duration: 0.3 }}
-                                                className="w-full"
-                                                onTouchStart={() => {
-                                                    // Keep alive on interaction
-                                                    if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
-                                                    selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
-                                                }}
-                                            >
-                                                <RulerTimeSelector
-                                                    value={durationMinutes}
-                                                    onChange={(val) => {
-                                                        setDurationMinutes(val);
-                                                        // Keep alive while scrolling
+
+                    {/* Footer UI (Independent of Center UI) */}
+                    <div className="w-full flex flex-col items-center justify-end pointer-events-none z-40 flex-1">
+
+                    </div>
+
+                    {/* Footer */}
+                    <footer className="w-full max-w-sm pb-safe px-6 pointer-events-auto z-50">
+                        <AnimatePresence>
+                            {/* IDLE UI */}
+                            {phase === "IDLE" && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 50 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 50 }}
+                                    className="flex flex-col gap-10"
+                                >
+                                    {/* Removed Ruler from Top */}
+
+                                    { /* Ruler Time Selector - Auto-hides on idle */}
+                                    <div className="w-full mb-2 flex flex-col items-center justify-center min-h-[40px]">
+                                        <AnimatePresence mode="wait">
+                                            {isSelectorVisible ? (
+                                                <motion.div
+                                                    key="selector"
+                                                    initial={{ opacity: 0, height: 0 }}
+                                                    animate={{ opacity: 1, height: "auto" }}
+                                                    exit={{ opacity: 0, height: 0 }}
+                                                    transition={{ duration: 0.3 }}
+                                                    className="w-full"
+                                                    onTouchStart={() => {
+                                                        // Keep alive on interaction
                                                         if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
                                                         selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
                                                     }}
-                                                />
-                                            </motion.div>
-                                        ) : (
-                                            <motion.button
-                                                key="trigger"
-                                                initial={{ opacity: 0 }}
-                                                animate={{ opacity: 1 }}
-                                                exit={{ opacity: 0 }}
-                                                onClick={() => {
-                                                    setIsSelectorVisible(true);
-                                                    if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
-                                                    selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
-                                                }}
-                                                className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-white/50 text-xs tracking-widest font-light hover:bg-white/10 transition-colors"
-                                            >
-                                                {durationMinutes} MIN
-                                            </motion.button>
-                                        )}
-                                    </AnimatePresence>
-                                </div>
-
-                                {/* Theme Selector - Scrollable (Bottom) */}
-                                <div className="w-full overflow-x-auto scrollbar-hide py-4 -mx-4 px-4">
-                                    <div className="flex gap-3 w-max snap-x snap-mandatory">
-                                        {(Object.keys(THEMES) as Theme[]).map((themeKey) => {
-                                            const theme = THEMES[themeKey];
-                                            const isSelected = selectedTheme === themeKey;
-                                            const Icon = theme.icon;
-
-                                            return (
-                                                <button
-                                                    key={themeKey}
+                                                >
+                                                    <RulerTimeSelector
+                                                        value={durationMinutes}
+                                                        onChange={(val) => {
+                                                            setDurationMinutes(val);
+                                                            // Keep alive while scrolling
+                                                            if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
+                                                            selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
+                                                        }}
+                                                    />
+                                                </motion.div>
+                                            ) : (
+                                                <motion.button
+                                                    key="trigger"
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    exit={{ opacity: 0 }}
                                                     onClick={() => {
-                                                        setSelectedTheme(themeKey);
-                                                        triggerLight();
+                                                        setIsSelectorVisible(true);
+                                                        if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
+                                                        selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
                                                     }}
-                                                    className={`
+                                                    className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-white/50 text-xs tracking-widest font-light hover:bg-white/10 transition-colors"
+                                                >
+                                                    {durationMinutes} MIN
+                                                </motion.button>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+
+                                    {/* Theme Selector - Scrollable (Bottom) */}
+                                    <div className="w-full overflow-x-auto scrollbar-hide py-4 -mx-4 px-4">
+                                        <div className="flex gap-3 w-max snap-x snap-mandatory">
+                                            {(Object.keys(THEMES) as Theme[]).map((themeKey) => {
+                                                const theme = THEMES[themeKey];
+                                                const isSelected = selectedTheme === themeKey;
+                                                const Icon = theme.icon;
+
+                                                return (
+                                                    <button
+                                                        key={themeKey}
+                                                        onClick={() => {
+                                                            setSelectedTheme(themeKey);
+                                                            triggerLight();
+                                                        }}
+                                                        className={`
                                                         snap-center flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all min-w-[70px]
                                                         ${isSelected ? "bg-white/15 scale-105 border-white/30" : "bg-white/5 text-white/50 hover:text-white hover:bg-white/10"}
                                                         border ${isSelected ? "border-white/30" : "border-transparent"}
                                                     `}
-                                                >
-                                                    <div className={`p-1.5 rounded-full ${isSelected ? theme.color : "text-current"}`}>
-                                                        <Icon size={22} />
-                                                    </div>
-                                                    <span className="text-[9px] font-medium tracking-wider uppercase whitespace-nowrap">
-                                                        {theme.name}
-                                                    </span>
-                                                </button>
-                                            );
-                                        })}
+                                                    >
+                                                        <div className={`p-1.5 rounded-full ${isSelected ? theme.color : "text-current"}`}>
+                                                            <Icon size={22} />
+                                                        </div>
+                                                        <span className="text-[9px] font-medium tracking-wider uppercase whitespace-nowrap">
+                                                            {theme.name}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
 
-                                {/* Binaural section removed - toggle is now in header */}
+                                    {/* Binaural section removed - toggle is now in header */}
 
-                                {/* Start Button */}
-                                <button
-                                    onClick={handleStart}
-                                    className="w-full py-5 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10 text-xl font-light tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+                                    {/* Start Button */}
+                                    <button
+                                        onClick={handleStart}
+                                        className="w-full py-5 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10 text-xl font-light tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+                                    >
+                                        <Play size={20} fill="currentColor" />
+                                        <span>BEGIN</span>
+                                    </button>
+                                </motion.div>
+                            )}
+
+                            {phase === "PRACTICING" && (
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="w-full py-5 text-center"
                                 >
-                                    <Play size={20} fill="currentColor" />
-                                    <span>BEGIN</span>
-                                </button>
-                            </motion.div>
-                        )}
+                                    <span className="text-2xl font-thin tracking-widest text-white/50 tabular-nums">
+                                        {formatTime(timeLeft)}
+                                    </span>
+                                </motion.div>
+                            )}
 
-                        {phase === "PRACTICING" && (
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="w-full py-5 text-center"
-                            >
-                                <span className="text-2xl font-thin tracking-widest text-white/50 tabular-nums">
-                                    {formatTime(timeLeft)}
-                                </span>
-                            </motion.div>
-                        )}
+                            {phase === "COMPLETED" && (
+                                <motion.button
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    onClick={() => setPhase("IDLE")}
+                                    className="w-full py-4 glass-panel rounded-full flex items-center justify-center gap-2 hover:bg-white/10 transition-colors pointer-events-auto"
+                                >
+                                    <RefreshCw size={18} />
+                                    <span>Repeat Session</span>
+                                </motion.button>
+                            )}
+                        </AnimatePresence>
+                    </footer>
+                </div >
 
-                        {phase === "COMPLETED" && (
-                            <motion.button
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                onClick={() => setPhase("IDLE")}
-                                className="w-full py-4 glass-panel rounded-full flex items-center justify-center gap-2 hover:bg-white/10 transition-colors pointer-events-auto"
-                            >
-                                <RefreshCw size={18} />
-                                <span>Repeat Session</span>
-                            </motion.button>
-                        )}
-                    </AnimatePresence>
-                </footer>
-            </div >
-
-            {/* Practice Summary - Immersive Overlay */}
-            {phase === "SUMMARY" && (
-                <PracticeCompletionView
-                    duration={sessionDuration}
-                    heartRateHistory={sessionHeartRates}
-                    theme={selectedTheme}
-                    onClose={() => {
-                        setPhase("IDLE");
-                        setBreathPhase("INHALE");
-                        setCountdown(3);
-                        setTimeLeft(durationMinutes * 60);
-                    }}
-                />
-            )}
+                {/* Practice Summary - Immersive Overlay */}
+                {phase === "SUMMARY" && (
+                    <PracticeCompletionView
+                        duration={sessionDuration}
+                        heartRateHistory={sessionHeartRates}
+                        theme={selectedTheme}
+                        onClose={() => {
+                            setPhase("IDLE");
+                            setBreathPhase("INHALE");
+                            setCountdown(3);
+                            setTimeLeft(durationMinutes * 60);
+                        }}
+                    />
+                )}
 
 
 
-            <style jsx global>{`
+                <style jsx global>{`
         .hide-scrollbar::-webkit-scrollbar {
             display: none;
         }
@@ -2348,7 +2349,8 @@ function PracticeContent({ router }: { router: any }) {
              padding-bottom: env(safe-area-inset-bottom);
         }
       `}</style>
-        </div >
+            </div>
+        </>
     );
 }
 
