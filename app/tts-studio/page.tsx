@@ -727,7 +727,26 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     useEffect(() => {
         // 停止播放时清理
         if (!isPlaying) {
-            if (currentAudio) currentAudio.pause();
+            // 🔥 [Audio Fix] 平滑淡出，避免爆音
+            if (currentAudio) {
+                const audio = currentAudio;
+                const fadeOutDuration = 100; // ms
+                const steps = 10;
+                const stepTime = fadeOutDuration / steps;
+                const volumeStep = audio.volume / steps;
+
+                let currentStep = 0;
+                const fadeInterval = setInterval(() => {
+                    currentStep++;
+                    audio.volume = Math.max(0, audio.volume - volumeStep);
+
+                    if (currentStep >= steps) {
+                        clearInterval(fadeInterval);
+                        audio.pause();
+                        audio.volume = 1; // 恢复音量供下次使用
+                    }
+                }, stepTime);
+            }
             if (audioContextRef.current?.state === 'running') {
                 audioContextRef.current.suspend();
             }
