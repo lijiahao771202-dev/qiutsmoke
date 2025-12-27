@@ -52,6 +52,16 @@ export default function Home() {
   // Calculate Total Minutes
   const totalMinutes = sessions.reduce((acc, s) => acc + Math.round((s.duration_seconds || 0) / 60), 0);
 
+  // Calculate Today's Minutes
+  const todayMinutes = sessions.reduce((acc, s) => {
+    const sessionDate = new Date(s.started_at);
+    const today = new Date();
+    const isToday = sessionDate.getDate() === today.getDate() &&
+      sessionDate.getMonth() === today.getMonth() &&
+      sessionDate.getFullYear() === today.getFullYear();
+    return isToday ? acc + Math.round((s.duration_seconds || 0) / 60) : acc;
+  }, 0);
+
   // Milestone logic removed (handled in JourneyCard)
 
   return (
@@ -92,7 +102,7 @@ export default function Home() {
           <CardStack>
             {/* Card 1: Main Dashboard (Command Center) */}
             <div className="w-full h-full">
-              <JourneyCard days={days} times={sessions.length} />
+              <JourneyCard days={days} times={sessions.length} minutes={totalMinutes} todayMinutes={todayMinutes} />
             </div>
 
             {/* Card 2: AI Recommendation Card */}

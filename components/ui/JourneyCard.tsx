@@ -1,12 +1,15 @@
 import React, { useMemo } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { ChevronRight, Calendar, Sparkles } from "lucide-react";
+import { ChevronRight, Calendar, Sparkles, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface JourneyCardProps {
     days: number;
     times: number;
+    minutes?: number;
+    minutes?: number;
+    todayMinutes?: number;
 }
 
 // --- VISUAL ENGINE CONFIG ---
@@ -87,21 +90,95 @@ const STAGES = [
     }
 ];
 
-export default function JourneyCard({ days, times }: JourneyCardProps) {
-    // Strategy: 8 Weeks Goal
-    const GOAL_DAYS = 56;
+export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0 }: JourneyCardProps) {
+    // --- Daily Goal State (Persistent) ---
+    const [dailyGoal, setDailyGoal] = React.useState(20);
 
-    // Resolve State
-    const stage = useMemo(() => {
-        return STAGES.find(s => times >= s.min && times <= s.max) || STAGES[STAGES.length - 1];
-    }, [times]);
+    // Load from local storage on mount
+    React.useEffect(() => {
+        if (typeof window !== "undefined") {
+            const savedGoal = localStorage.getItem("dailyMeditationGoal");
+            if (savedGoal) setDailyGoal(parseInt(savedGoal, 10));
+        }
+    }, []);
 
-    const progress = useMemo(() => {
-        return Math.min(Math.max(days / GOAL_DAYS, 0.05), 1);
-    }, [days]);
+    // Dynamic Progress Calculation & Color
+    const { progress, progressColor } = useMemo(() => {
+        const p = Math.min(Math.max(todayMinutes / dailyGoal, 0.05), 1);
+
+        let color = "url(#mercuryGradient-blue)";
+        if (p > 0.3) color = "url(#mercuryGradient-cyan)";
+        if (p > 0.7) color = "url(#mercuryGradient-gold)";
+
+        return { progress: p, progressColor: color };
+    }, [todayMinutes, dailyGoal]);
+
+    // Handle Native Select Change
+    const handleNativeGoalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const newGoal = parseInt(e.target.value, 10);
+        setDailyGoal(newGoal);
+        localStorage.setItem("dailyMeditationGoal", newGoal.toString());
+    };
+
+    // Resolve State - Fixed to default theme (Hermès Orange)
+    const stage = STAGES[0];
+
+    // Removed old progress logic in favor of goalProgress
 
     return (
         <div className="relative w-full h-full group isolate">
+            {/* SVG Defs for Mercury Gradient */}
+            <svg className="absolute w-0 h-0">
+                <defs>
+                    {/* Level 1: Cool Blue (Start) */}
+                    <linearGradient id="mercuryGradient-blue" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#E0E7FF" />
+                        <stop offset="50%" stopColor="#FFFFFF" />
+                        <stop offset="100%" stopColor="#A5B4FC" />
+                    </linearGradient>
+
+                    {/* Level 2: Energetic Cyan (Mid) */}
+                    <linearGradient id="mercuryGradient-cyan" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#CFFAFE" />
+                        <stop offset="50%" stopColor="#FFFFFF" />
+                        <stop offset="100%" stopColor="#67E8F9" />
+                    </linearGradient>
+
+                    {/* Level 3: Radiating Gold (Goal) */}
+                    <linearGradient id="mercuryGradient-gold" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#FEF3C7" />
+                        <stop offset="50%" stopColor="#FFFFFF" />
+                        <stop offset="100%" stopColor="#FCD34D" />
+                    </linearGradient>
+
+                    {/* ULTRA ENHANCED Glow Filter - Multi-layer for intense light */}
+                    <filter id="mercuryGlow" x="-100%" y="-100%" width="300%" height="300%">
+                        {/* Layer 1: Soft outer glow */}
+                        <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur1" />
+
+                        {/* Layer 2: Medium glow */}
+                        <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur2" />
+
+                        {/* Layer 3: Tight inner glow */}
+                        <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur3" />
+
+                        {/* Brighten the glows */}
+                        <feColorMatrix in="blur1" type="matrix"
+                            values="1.5 0 0 0 0.2  0 1.5 0 0 0.2  0 0 1.5 0 0.2  0 0 0 1 0" result="glow1" />
+                        <feColorMatrix in="blur2" type="matrix"
+                            values="1.8 0 0 0 0.1  0 1.8 0 0 0.1  0 0 1.8 0 0.1  0 0 0 1 0" result="glow2" />
+
+                        {/* Composite all layers */}
+                        <feMerge>
+                            <feMergeNode in="glow1" />
+                            <feMergeNode in="glow2" />
+                            <feMergeNode in="blur3" />
+                            <feMergeNode in="SourceGraphic" />
+                        </feMerge>
+                    </filter>
+                </defs>
+            </svg>
+
             {/* 
                 THE CHASSIS: Matches base color to prevent "Black Border"
                 Dynamic Base Color based on stage
@@ -160,12 +237,22 @@ export default function JourneyCard({ days, times }: JourneyCardProps) {
                             <h3 className="text-sm font-bold tracking-widest text-white/90 uppercase drop-shadow-sm font-sans">Journey</h3>
                         </div>
 
-                        {/* Capsule Badge */}
-                        <div className="bg-white/20 backdrop-blur-md pl-3 pr-4 py-1.5 rounded-full border border-white/30 shadow-sm flex items-center gap-2">
-                            <div className="bg-white/30 p-1 rounded-full">
-                                <Calendar className="w-3 h-3 text-white" />
+                        <div className="flex items-center gap-2">
+                            {/* Minutes Capsule */}
+                            <div className="bg-white/20 backdrop-blur-md pl-2 pr-3 py-1.5 rounded-full border border-white/30 shadow-sm flex items-center gap-1.5">
+                                <div className="bg-white/30 p-1 rounded-full">
+                                    <Clock className="w-2.5 h-2.5 text-white" />
+                                </div>
+                                <span className="text-[10px] font-bold text-white tracking-wide">{minutes} <span className="text-white/60">MIN</span></span>
                             </div>
-                            <span className="text-xs font-bold text-white tracking-wide">Day {days} <span className="text-white/50 mx-1">/</span> {GOAL_DAYS}</span>
+
+                            {/* Days Capsule */}
+                            <div className="bg-white/20 backdrop-blur-md pl-2 pr-3 py-1.5 rounded-full border border-white/30 shadow-sm flex items-center gap-1.5">
+                                <div className="bg-white/30 p-1 rounded-full">
+                                    <Calendar className="w-2.5 h-2.5 text-white" />
+                                </div>
+                                <span className="text-[10px] font-bold text-white tracking-wide">Day {days}</span>
+                            </div>
                         </div>
                     </div>
 
@@ -181,34 +268,65 @@ export default function JourneyCard({ days, times }: JourneyCardProps) {
                             </span>
                         </div>
 
-                        {/* Progress Ring */}
-                        <div className="relative w-20 h-20">
+                        {/* Progress Ring - Tap to Open Native Picker */}
+                        <div
+                            className="relative w-24 h-24 flex items-center justify-center z-50 rounded-full overflow-hidden"
+                            onPointerDown={(e) => e.stopPropagation()}
+                        >
+                            {/* Native Select - Invisible but triggers iOS picker */}
+                            <select
+                                value={dailyGoal}
+                                onChange={handleNativeGoalChange}
+                                className="absolute inset-0 w-full h-full cursor-pointer z-10 outline-none border-none appearance-none"
+                                style={{
+                                    opacity: 0, // Should be typically 0, ensuring invisibility
+                                    WebkitAppearance: "none",
+                                    backgroundColor: "transparent",
+                                    color: "transparent",
+                                    WebkitTapHighlightColor: "transparent", // CRITICAL: Removes iOS tap highlight box
+                                    outline: "none"
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {[5, 10, 15, 20, 25, 30, 45, 60, 90, 120].map((min) => (
+                                    <option key={min} value={min}>{min} 分钟</option>
+                                ))}
+                            </select>
+
                             {/* Glass Base Track */}
-                            <svg className="absolute inset-0 w-full h-full -rotate-90 filter drop-shadow-md">
+                            <svg className="absolute inset-0 w-full h-full -rotate-90 filter drop-shadow-md pointer-events-none">
                                 <circle
-                                    cx="50%" cy="50%" r="36"
+                                    cx="50%" cy="50%" r="40"
                                     stroke="currentColor" strokeWidth="6"
                                     fill="transparent"
-                                    className="text-white/20"
+                                    className="text-white/10"
                                 />
-                                {/* Liquid Fill Path */}
+                                {/* Liquid Fill Path - Mercury Style with Dynamic Color */}
                                 <motion.circle
-                                    cx="50%" cy="50%" r="36"
-                                    stroke="currentColor"
+                                    cx="50%" cy="50%" r="40"
+                                    stroke={progressColor}
                                     strokeWidth="6"
                                     fill="transparent"
                                     strokeLinecap="round"
-                                    strokeDasharray={226}
-                                    initial={{ strokeDashoffset: 226 }}
-                                    animate={{ strokeDashoffset: 226 - (226 * progress) }}
-                                    transition={{ duration: 1.8, ease: "easeOut" }}
-                                    className="text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]"
+                                    style={{ filter: "url(#mercuryGlow)" }}
+                                    strokeDasharray={251}
+                                    initial={{ strokeDashoffset: 251 }}
+                                    animate={{ strokeDashoffset: 251 - (251 * progress) }}
+                                    transition={{ duration: 1.2, ease: "easeOut" }}
                                 />
                             </svg>
+
                             {/* Center Metric */}
-                            <div className="absolute inset-0 flex flex-col items-center justify-center pt-0.5">
-                                <span className="text-[8px] font-bold text-white/80 uppercase tracking-wider mb-px">Goal</span>
-                                <span className="text-lg font-bold text-white filter drop-shadow-md leading-none">{Math.round(progress * 100)}%</span>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <div className="flex items-baseline gap-0.5 translate-y-1">
+                                    <span className="text-2xl font-bold text-white filter drop-shadow-md leading-none tracking-tight">
+                                        {Math.round(todayMinutes)}
+                                    </span>
+                                    <span className="text-sm font-medium text-white/50 leading-none">
+                                        / {dailyGoal}
+                                    </span>
+                                </div>
+                                <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest mt-1">Today</span>
                             </div>
                         </div>
                     </div>
@@ -251,7 +369,6 @@ export default function JourneyCard({ days, times }: JourneyCardProps) {
                             </div>
                         </div>
                     </Link>
-
                 </div>
             </div>
         </div>

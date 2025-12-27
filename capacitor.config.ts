@@ -8,7 +8,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const MODE: 'prod' | 'dev' = 'dev';
 
 // 🏠 本地开发地址 (请根据 ifconfig 确认本机 IP)
-const DEV_URL = 'http://192.168.31.35:3001';
+const DEV_URL = 'http://192.168.31.35:3002';
 
 // ☁️ 线上生产地址
 const PROD_URL = 'https://qiutsmoke.vercel.app';

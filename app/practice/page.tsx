@@ -219,7 +219,19 @@ export default function ImmersivePracticePage() {
 function PracticeContent({ router }: { router: any }) {
     // --- State ---
     const [phase, setPhase] = useState<Phase>("IDLE");
-    const [durationMinutes, setDurationMinutes] = useState(15);
+    const [durationMinutes, setDurationMinutes] = useState(() => {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("practiceDuration");
+            if (saved) return parseInt(saved, 10);
+        }
+        return 15;
+    });
+
+    // Save Duration Preference
+    useEffect(() => {
+        localStorage.setItem("practiceDuration", durationMinutes.toString());
+    }, [durationMinutes]);
+
     const [timeLeft, setTimeLeft] = useState(0);
     const [breathPhase, setBreathPhase] = useState<BreathPhase>("INHALE");
     const [countdown, setCountdown] = useState(3);
@@ -239,6 +251,22 @@ function PracticeContent({ router }: { router: any }) {
         return "478";
     });
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess } = useHaptics();
+
+    // --- Time Selector Visibility ---
+    const [isSelectorVisible, setIsSelectorVisible] = useState(false); // Default hidden
+    const selectorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Initial Show on Mount (optional, user said "defaults to hidden" if no operation, but usually better to show briefly?)
+    // User said: "if no operation default to hidden". Let's default to false as requested.
+    // However, if default is hidden, user doesn't know it's there. 
+    // Maybe show briefly on mount then hide?
+    useEffect(() => {
+        setIsSelectorVisible(true);
+        selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
+        return () => {
+            if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
+        };
+    }, []);
 
     // 计算当前呼吸模式的毫秒值
     const currentPattern = useMemo(() => {
@@ -2190,13 +2218,50 @@ function PracticeContent({ router }: { router: any }) {
                             >
                                 {/* Removed Ruler from Top */}
 
-                                { /* Ruler Time Selector - Moved to Top */}
-                                <div className="w-full mb-2">
-                                    <label className="text-xs text-white/40 uppercase tracking-wider mb-4 block text-center">练习时长</label>
-                                    <RulerTimeSelector
-                                        value={durationMinutes}
-                                        onChange={setDurationMinutes}
-                                    />
+                                { /* Ruler Time Selector - Auto-hides on idle */}
+                                <div className="w-full mb-2 flex flex-col items-center justify-center min-h-[40px]">
+                                    <AnimatePresence mode="wait">
+                                        {isSelectorVisible ? (
+                                            <motion.div
+                                                key="selector"
+                                                initial={{ opacity: 0, height: 0 }}
+                                                animate={{ opacity: 1, height: "auto" }}
+                                                exit={{ opacity: 0, height: 0 }}
+                                                transition={{ duration: 0.3 }}
+                                                className="w-full"
+                                                onTouchStart={() => {
+                                                    // Keep alive on interaction
+                                                    if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
+                                                    selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
+                                                }}
+                                            >
+                                                <RulerTimeSelector
+                                                    value={durationMinutes}
+                                                    onChange={(val) => {
+                                                        setDurationMinutes(val);
+                                                        // Keep alive while scrolling
+                                                        if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
+                                                        selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
+                                                    }}
+                                                />
+                                            </motion.div>
+                                        ) : (
+                                            <motion.button
+                                                key="trigger"
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                exit={{ opacity: 0 }}
+                                                onClick={() => {
+                                                    setIsSelectorVisible(true);
+                                                    if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
+                                                    selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
+                                                }}
+                                                className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-white/50 text-xs tracking-widest font-light hover:bg-white/10 transition-colors"
+                                            >
+                                                {durationMinutes} MIN
+                                            </motion.button>
+                                        )}
+                                    </AnimatePresence>
                                 </div>
 
                                 {/* Theme Selector - Scrollable (Bottom) */}
