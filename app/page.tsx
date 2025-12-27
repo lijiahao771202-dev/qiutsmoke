@@ -6,7 +6,6 @@ import { useState, useEffect, useRef } from "react";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 
 import { LotusGarden } from "@/components/LotusGarden";
-import { SplashScreen } from "@/components/SplashScreen";
 import { useMeditationSessions } from "@/lib/hooks/useData";
 import AIRecommendationCard from "@/components/ui/AIRecommendationCard";
 import JourneyCard from "@/components/ui/JourneyCard";
@@ -23,22 +22,6 @@ export default function Home() {
 
   // 获取冥想会话记录
   const { sessions, isLoading: isSessionsLoading } = useMeditationSessions();
-
-  // 🌟 Splash Screen Logic
-  const [showSplash, setShowSplash] = useState(true);
-
-  useEffect(() => {
-    // Check if splash has been shown in this session
-    const hasShownSplash = sessionStorage.getItem('hasShownSplash');
-    if (hasShownSplash) {
-      setShowSplash(false);
-    }
-  }, []);
-
-  const handleSplashComplete = () => {
-    setShowSplash(false);
-    sessionStorage.setItem('hasShownSplash', 'true');
-  };
 
 
   // 转换为莲花花园需要的格式（只计算正式练习的记录）
@@ -85,8 +68,6 @@ export default function Home() {
 
   return (
     <div className="relative h-[100dvh] overflow-hidden text-white font-sans selection:bg-white/20 touch-none">
-      {/* 🌟 Splash Screen */}
-      {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
 
       {/* 🪷 Full Screen Lotus Garden Background - Only render after data loads */}
       {!isSessionsLoading && lotusRecords.length > 0 && <LotusGarden records={lotusRecords} streakDays={Math.min(7, lotusRecords.length)} />}

@@ -399,165 +399,128 @@ function PracticeContent({ router }: { router: any }) {
     // --- Theme Renderers ---
 
     /**
-     * 🌹 Theme v2.0 Redesign: "The Velvet Rose" (Ethereal / Geometric)
-     * Renders a procedural rose using Bezier curves instead of particles for a high-end,
-     * silky aesthetic with deep visual tension.
+     * 🌹 Theme v3.0 Redesign: "The Quantum Rose" (Mathematical / Abstract)
+     * "Rose is not a shape, but a frequency."
+     * Uses parametric Rose Curves (r = cos(k*theta)) to visualize energy fields.
      */
     const renderRose = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
         const centerY = height / 2;
+        const time = timestamp * 0.001;
 
-        // --- 1. Background Magic Dust (Repurposed Particles) ---
-        // Existing particles become subtle background bokeh
-        state.particles.forEach((p: any, i: number) => {
-            // Gentle ambient drift
-            p.diffuseX = centerX + Math.cos(p.angle + timestamp * 0.0002) * (p.dist * 2);
-            p.diffuseY = centerY + Math.sin(p.angle + timestamp * 0.0002) * (p.dist * 2);
-
-            const alpha = 0.15 * (1 - p.dist / 400); // Fade out at edges
-            if (alpha > 0) {
-                ctx.fillStyle = `hsla(${340 + Math.random() * 20}, 60%, 80%, ${alpha})`;
-                ctx.beginPath();
-                ctx.arc(p.diffuseX, p.diffuseY, Math.random() * 1.5, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        });
-
-        // --- 2. The Velvet Rose (Procedural Geometry) ---
-        // We draw layers of petals from outside in, or inside out depending on Painter's Algorithm.
-        // For a rose, Outside petals are behind inner ones? No, usually inner petals are wrapped inside.
-        // So we draw Outer First (Background) -> Inner Last (Foreground).
-
-        // Configuration for Layers
-        const layers = [
-            { count: 12, scale: 1.0, hue: 330, saturation: 50, lightness: 85, alpha: 0.3, type: 'outer' }, // Guard Petals (Glass)
-            { count: 8, scale: 0.75, hue: 340, saturation: 80, lightness: 60, alpha: 0.6, type: 'mid' },   // Mid Bloom
-            { count: 6, scale: 0.5, hue: 350, saturation: 90, lightness: 30, alpha: 0.9, type: 'core' },  // Deep Core (Velvet)
-            { count: 3, scale: 0.25, hue: 355, saturation: 100, lightness: 15, alpha: 1.0, type: 'bud' }   // The Eye
-        ];
-
-        // Global Breathing State
-        // Unfurl: When breathing in (bloomProgress -> 1), petals bend outwards.
-        // Twist: Layers rotate slightly against each other.
-        const baseRotation = timestamp * 0.0001;
-        const breathTension = bloomProgress; // 0 (Exhale/Bud) to 1 (Inhale/Open)
+        // --- 1. CONFIGURATION ---
+        // Quantum Colors
+        const baseHue = 340; // Deep Magenta
+        const accentHue = 260; // Electric Indigo
 
         ctx.save();
         ctx.translate(centerX, centerY);
 
-        // Scale the whole flower based on breath
-        // "Heartbeat" expansion
-        const globalScale = 1 + breathTension * 0.15 + (breathScale - 1) * 0.05;
-        ctx.scale(globalScale, globalScale);
+        // Global Composition
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        // Additive Blending for "Light" feel
+        ctx.globalCompositeOperation = 'lighter';
 
-        layers.forEach((layer, layerIdx) => {
-            const petalCount = layer.count;
-            const angleStep = (Math.PI * 2) / petalCount;
+        // --- 2. STATE LOGIC ---
 
-            // Layer-specific animation
-            // Outer layers rotate slowly, Inner layers might twist faster
-            const layerRotation = baseRotation * (layerIdx % 2 === 0 ? 1 : -1) + (breathTension * 0.1 * (layerIdx + 1));
+        // A. IDLE: "Potential Energy" (The Knot)
+        // High tension, unstable core.
+        // k (petals) is fractional and shifting, creating a chaotic knot.
+        const idleK = 2.5 + Math.sin(time * 2) * 0.1;
+        const idleScale = 80 + Math.random() * 5; // Nervous vibration
 
-            for (let i = 0; i < petalCount; i++) {
-                ctx.save();
+        // B. BREATH: "Harmonic Expansion" (The Rose)
+        // Transitions to a perfect integer k (e.g., k=4 for 8 petals, k=5 for 5 petals).
+        // Let's use k=4 for a classic balanced rose.
+        const targetK = 4;
+        const targetScale = 250 * breathScale; // Expands with breath
 
-                // Position Petal
-                const theta = i * angleStep + layerRotation;
-                ctx.rotate(theta);
+        // Interpolate based on bloomProgress
+        // We use a "spring" easing for the transition to feel organic
+        const currentK = idleK + (targetK - idleK) * bloomProgress;
+        const currentScale = idleScale + (targetScale - idleScale) * bloomProgress;
 
-                // Petal Shape Geometry
-                // Using Dual Cubic Bezier Curves to form a tear-drop / silky shape
-                //     C1 --- C2
-                //   /          \
-                // Start ------ End (Tip)
+        // C. EXIT: "Decoherence" (Unraveling)
+        // If we were handling exit state explicitly...
+        // For now, let's assume if bloomProgress drops back to 0 rapidly it snaps back.
+        // But if we wanted a "leave" animation, we'd need an 'exitProgress'.
+        // Assuming the current system just stops rendering or fades out component on exit.
 
-                // Dynamic Shape modification based on "Tension"
-                // As we breathe in (Tension goes up), petals Flatten/Widen (Unfurl)
-                // As we breathe out, they Cup/Curl inward.
+        // --- 3. RENDERING LAYERS ---
+        // We draw multiple "Orbitals" (variants of the curve) to create depth/interference.
 
-                const size = 180 * layer.scale;
-                const curlFactor = 1 - breathTension * 0.5; // High curl at rest
+        const orbitals = 3;
+        const pointsPerLap = 200;
+        const lapCount = 10; // How many rotations to draw (needs to be high for fractional k)
 
-                const width = size * (0.8 + breathTension * 0.2); // Widen on inhale
-                const length = size;
+        for (let l = 0; l < orbitals; l++) {
+            const orbitalProgress = l / (orbitals - 1);
 
-                // Control Points
-                // Base is at (0,0)
-                // Tip is at (length, 0) - wait, let's draw upwards along Y-axis for easier mental model? 
-                // Let's draw along positive X axis.
+            // Phase Shift: Each orbital is slightly rotated
+            const phaseShift = time * 0.2 + orbitalProgress * Math.PI * 0.1;
 
-                ctx.beginPath();
-                ctx.moveTo(0, 0); // Center
+            // Amplitude Modulation (Breathing)
+            const amplitude = currentScale * (1 - orbitalProgress * 0.1);
 
-                // Upper/Left Edge
-                // Control Point 1: Outwards and Wide
-                const cp1x = length * 0.3;
-                const cp1y = -width * 0.5 * curlFactor; // Cupping effect
+            // Color Shift (Chromatic Aberration style)
+            const hue = baseHue + (accentHue - baseHue) * orbitalProgress + bloomProgress * 20;
+            const alpha = 0.6 - orbitalProgress * 0.2 + bloomProgress * 0.4;
 
-                // Control Point 2: Near the tip
-                const cp2x = length * 0.8;
-                const cp2y = -width * 0.6; // Flared tip
+            ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
 
-                const tipX = length;
-                const tipY = 0;
-
-                ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, tipX, tipY);
-
-                // Lower/Right Edge (Mirror)
-                const cp3x = length * 0.8;
-                const cp3y = width * 0.6;
-
-                const cp4x = length * 0.3;
-                const cp4y = width * 0.5 * curlFactor;
-
-                ctx.bezierCurveTo(cp3x, cp3y, cp4x, cp4y, 0, 0);
-
-                // --- Material / Shading ---
-
-                // 1. Base Gradient (Radial from center outward)
-                const gradient = ctx.createLinearGradient(0, 0, length, 0);
-
-                // Deep center
-                gradient.addColorStop(0, `hsla(${layer.hue}, ${layer.saturation}%, ${layer.lightness * 0.5}%, ${layer.alpha})`);
-                // Vibrant Body
-                gradient.addColorStop(0.4, `hsla(${layer.hue}, ${layer.saturation}%, ${layer.lightness}%, ${layer.alpha})`);
-                // Glowing Tip (Glass effect)
-                if (layer.type === 'outer' || layer.type === 'mid') {
-                    gradient.addColorStop(0.9, `hsla(${layer.hue + 10}, ${layer.saturation - 20}%, ${Math.min(layer.lightness + 40, 95)}%, ${layer.alpha})`);
-                    gradient.addColorStop(1, `hsla(${layer.hue}, 50%, 95%, ${Math.max(layer.alpha - 0.2, 0)})`); // Translucent rim
-                } else {
-                    // Velvet core - stays dark
-                    gradient.addColorStop(1, `hsla(${layer.hue}, ${layer.saturation}%, ${layer.lightness * 0.8}%, ${layer.alpha})`);
-                }
-
-                ctx.fillStyle = gradient;
-
-                // 2. Stroke for Definition (Visual Tension)
-                if (layer.type === 'outer') {
-                    // Glass rim
-                    ctx.shadowColor = `hsla(${layer.hue}, 80%, 80%, 0.8)`;
-                    ctx.shadowBlur = 15;
-                    ctx.strokeStyle = `hsla(${layer.hue}, 30%, 90%, 0.3)`;
-                    ctx.lineWidth = 1;
-                    ctx.stroke();
-                }
-
-                ctx.fill();
-
-                // 3. Highlight ("Velvet Sheen")
-                // A subtle streak of light across the petal
-                if (layer.type === 'mid' || layer.type === 'core') {
-                    ctx.shadowBlur = 0; // Reset shadow for internal detail
-                    const sheenGrad = ctx.createRadialGradient(length * 0.5, 0, 5, length * 0.5, 0, width * 0.5);
-                    sheenGrad.addColorStop(0, `hsla(${layer.hue}, 80%, 70%, 0.1)`);
-                    sheenGrad.addColorStop(1, `hsla(${layer.hue}, 80%, 70%, 0)`);
-                    ctx.fillStyle = sheenGrad;
-                    ctx.fill();
-                }
-
-                ctx.restore();
+            // Bloom / Glow
+            if (l === 0) {
+                ctx.shadowBlur = 20 * bloomProgress;
+                ctx.shadowColor = `hsla(${hue}, 90%, 70%, 1)`;
+            } else {
+                ctx.shadowBlur = 0;
             }
-        });
+
+            ctx.beginPath();
+
+            // Parametric Equation
+            // r = cos(k * theta)
+            // But we add some "Noise" in Idle state
+
+            const jitterAmount = (1 - bloomProgress) * 5; // Jitter only in Idle
+
+            for (let i = 0; i <= pointsPerLap * lapCount; i++) {
+                const theta = (i / pointsPerLap) * Math.PI * 2;
+
+                // Rose Curve Radius
+                // Modulate k slightly per point for "Energy" feel in Idle
+                const kMod = currentK + (Math.sin(theta * 10 + time * 5) * 0.02 * (1 - bloomProgress));
+
+                let r = Math.sin(kMod * theta + phaseShift) * amplitude;
+
+                // Add noise
+                if (jitterAmount > 0) {
+                    r += (Math.random() - 0.5) * jitterAmount;
+                }
+
+                // Convert to Cartesian
+                const x = r * Math.cos(theta);
+                const y = r * Math.sin(theta);
+
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+
+            ctx.stroke();
+        }
+
+        // --- 4. THE CORE (Source) ---
+        // A bright singularity in the middle
+        if (bloomProgress < 0.2) {
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = '#fff';
+            ctx.beginPath();
+            ctx.arc(0, 0, 3 + Math.random() * 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         ctx.restore();
     };
