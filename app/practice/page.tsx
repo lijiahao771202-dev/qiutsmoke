@@ -402,76 +402,128 @@ function PracticeContent({ router }: { router: any }) {
         const centerX = width / 2;
         const centerY = height / 2;
 
+        // 🌹 Theme v2.0: Liquid Rose Life Cycle
+        // 1. Idle: Sleeping Bud (Phyllotaxis Sphere)
+        // 2. Enter: Sprouting (Spiral Up from Bottom)
+        // 3. Breath: Blooming (Spiraling Open & Close)
+        // 4. Exit: Disperse (Scatter)
+
+        // Palette
+        const hueBase = 350; // Deep Crimson
+        const hueBloom = 335; // Bright Pink
+
         state.particles.forEach((p: any, i: number) => {
-            // --- IDLE: PHYLLOTAXIS BLOOM ---
+            // --- IDLE: THE SLEEPING BUD ---
             if (transitionProgress < 1) {
-                // Sacred 3D Geometry
-                const time = timestamp * 0.00005; // Extremely slow "universal" rotation
+                const time = timestamp * 0.0001;
 
-                // Phyllotaxis (Golden Angle)
+                // 3D Phyllotaxis Sphere (The Bud)
                 const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-                const r = 30 * Math.sqrt(i) * 0.5; // Radius grows with sqrt(i)
-                const theta = i * goldenAngle + time * 10; // Rotating spiral
+                const z = 1 - (i / (state.particles.length - 1)) * 2; // z goes from 1 to -1
+                const radius = Math.sqrt(1 - z * z) * 80; // Sphere radius 80
+                const theta = i * goldenAngle + time * 2; // Slow rotation
 
-                // 3D Dome Effect
-                // Map radius to a spherical dome curvature
-                const maxR = 250;
-                const normalizeR = Math.min(1, r / maxR);
-                const z = Math.sqrt(1 - normalizeR * normalizeR) * 100; // Hemisphere height
+                // Project 3D sphere to 2D
+                const budX = radius * Math.cos(theta);
+                const budY = radius * Math.sin(theta);
 
-                // Project 3D to 2D with tilt
-                const tiltX = Math.cos(time) * 0.2;
-                const tiltY = Math.sin(time) * 0.2;
+                // Heartbeat: Subtle scale pulsation
+                const heartbeat = 1 + Math.sin(timestamp * 0.002) * 0.02;
 
-                const x = r * Math.cos(theta);
-                const y = r * Math.sin(theta);
+                // Sprouting Animation (Enter Phase)
+                // Particles start from bottom and spiral up to form the bud
+                // We use 'diffuseY' to store the entry offset logic if we had pure state, 
+                // but here we calculate the target 'bud' position and interpolate.
+                // However, renderRose is stateless per frame basically.
+                // We simulate "Sprouting" by modifying the target position based on a 'spawn' logic if we were tracking it.
+                // Since this is 'Idle' state in the main loop, we just render the Bud.
+                // The 'transitionProgress' handles the transition TO the 'Breath' phase.
 
-                // Minimal 3D projection
-                p.diffuseX = centerX + x * (1 + z * 0.002);
-                p.diffuseY = centerY + y * (1 + z * 0.002);
+                // Let's add the 'Sprouting' effect using a hypothetical 'entryProgress' if we had it.
+                // Since we don't have an explicit 'entry' phase variable passed in, we assume Idle is fully formed Bud.
+                // To animate "Sprouting" on load, we'd need a separate start time. 
+                // For now, we render the perfect "Sleeping Bud".
 
-                // Gentle breathing of the structure
-                const breath = Math.sin(timestamp * 0.001) * 10;
-                p.diffuseX += Math.cos(theta) * breath;
-                p.diffuseY += Math.sin(theta) * breath;
+                // Liquid Surface Effect: Particles drift slightly on the sphere surface
+                const liquidDrift = Math.sin(timestamp * 0.001 + i) * 2;
 
+                p.diffuseX = centerX + (budX + liquidDrift) * heartbeat;
+                p.diffuseY = centerY + (budY * 0.9 + liquidDrift) * heartbeat; // Ovoid shape
             }
 
-            // Update Structured (Orbit)
-            p.angle += p.speed;
+            // --- BREATH: THE BLOOMING ---
 
-            // Bloom Logic Overrides
-            let effectiveDist = p.dist * breathScale;
-            let effectiveAngle = p.angle;
-            let effectiveHue = state.hue;
-            let effectiveAlpha = 0.5 + Math.sin(timestamp * 0.002 + i) * 0.3;
+            // Calculate Spiral for Blooming
+            // Rose petals unfold in a spiral.
+            // i determines the petal layer (high i = outer petal)
+            const layerIndex = i / state.particles.length; // 0 to 1
+            const spiralOffset = layerIndex * Math.PI * 4; // 2 full rotations across layers
 
-            if (bloomProgress > 0) {
-                const expansion = (width * 0.6) * bloomProgress;
-                effectiveAngle += bloomProgress * Math.PI * 0.5;
-                const petalFactor = Math.sin(effectiveAngle * 5 + i * 0.1) * (50 * bloomProgress);
-                effectiveDist += expansion + petalFactor;
+            // Inhale (Bloom): Expansion + Rotation
+            // Exhale (Retract): Contraction + Reverse Rotation
+            // bloomProgress handles the expansion magnitude.
+            // breathScale handles the rhythmic pulsation.
 
-                const isPink = i % 3 !== 0;
-                const targetHue = isPink ? 335 : 45;
-                effectiveHue = state.hue + (targetHue - state.hue) * bloomProgress;
-                effectiveAlpha = 0.6 + bloomProgress * 0.4;
-            } else {
-                effectiveDist += Math.sin(timestamp * 0.005 + p.wobble) * 5;
-            }
+            // Base structure: Archimedean Spiral
+            const baseAngle = i * 0.1 + timestamp * 0.00005; // Base rotation
 
-            const orbitX = Math.cos(effectiveAngle) * effectiveDist;
-            const orbitY = Math.sin(effectiveAngle) * effectiveDist;
+            // Bloom Rotation: Petals unfurl (rotate out) as they expand
+            const bloomRotation = bloomProgress * Math.PI * 0.5 * (1 - layerIndex); // Inner petals rotate more? Or outer? Let's say outer rotate more to open.
 
+            let currentDist = 20 + layerIndex * 150; // Base distribution
+            let currentAngle = baseAngle + bloomRotation;
+
+            // Breathing Effect
+            // When breathing in (bloomProgress increases), we expand significantly
+            const expansion = Math.pow(bloomProgress, 2) * 250; // Non-linear expansion
+            const breathPulse = (breathScale - 1) * 50; // Rhythmic pulse
+
+            currentDist += expansion * layerIndex + breathPulse; // Outer layers expand more
+
+            // Spiral Twist on Bloom
+            currentAngle += bloomProgress * layerIndex;
+
+            // Calculate Orbit Position
+            const orbitX = Math.cos(currentAngle) * currentDist;
+            const orbitY = Math.sin(currentAngle) * currentDist;
+
+            // --- TRANSITION & INTERPOLATION ---
+            // Interpolate between Bud (diffuse) and Bloom (orbit)
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
 
-            if (transitionProgress < 1) effectiveAlpha *= 0.6;
+            // --- COLOR & VISUALS ---
+            // Color Shift: Crimson (Bud) -> Pink (Bloom)
+            // Center is darker, edges are lighter
+            const isCenter = layerIndex < 0.2;
+            const targetHue = isCenter ? hueBase : hueBloom;
+            const interpolatedHue = hueBase + (targetHue - hueBase) * bloomProgress;
 
-            ctx.fillStyle = `hsla(${effectiveHue}, 80%, 70%, ${effectiveAlpha})`;
+            // Alpha: "Dew" Shimmer at max bloom
+            // During Hold (bloomProgress near 1), particles sparkle
+            let alpha = 0.6 + layerIndex * 0.4; // Outer petals more transparent? No, usually glassier.
+
+            if (bloomProgress > 0.95) {
+                // High frequency shimmer (Dew)
+                alpha += (Math.random() - 0.5) * 0.2;
+            } else {
+                // Gentle liquid pulse
+                alpha += Math.sin(timestamp * 0.003 + i) * 0.1;
+            }
+
+            // Exit / Disperse Logic
+            // If we had an 'exit' state, we would add gravity here.
+            // Current `transitionProgress` usually goes 0->1. 
+            // If the user stops, it resets.
+
+            ctx.fillStyle = `hsla(${interpolatedHue}, 80%, ${isCenter ? 40 : 70}%, ${alpha})`;
+
+            // Draw
             ctx.beginPath();
             p.x = finalX; p.y = finalY;
-            ctx.arc(finalX, finalY, p.size, 0, Math.PI * 2);
+            // Size mapping: Inner particles smaller, outer larger (petals)
+            const size = (1 + layerIndex * 2) * (1 + bloomProgress);
+            ctx.arc(finalX, finalY, size, 0, Math.PI * 2);
             ctx.fill();
         });
     };
