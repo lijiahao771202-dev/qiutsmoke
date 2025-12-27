@@ -2206,7 +2206,7 @@ function PracticeContent({ router }: { router: any }) {
                 </div>
 
                 {/* Footer */}
-                <footer className="w-full max-w-sm pb-12 px-6 pointer-events-auto z-50">
+                <footer className="w-full max-w-sm pb-safe px-6 pointer-events-auto z-50">
                     <AnimatePresence>
                         {/* IDLE UI */}
                         {phase === "IDLE" && (

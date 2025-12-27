@@ -172,4 +172,21 @@ body {
   .pt-safe {
     padding-top: env(safe-area-inset-top);
   }
+
+  .p-safe {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* 全屏fixed容器安全区域扩展 */
+  .inset-safe {
+    top: 0;
+    left: 0;
+    right: 0;
+    /* 底部延伸到屏幕边缘，背景填充安全区 */
+    bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
