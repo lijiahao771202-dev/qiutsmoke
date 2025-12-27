@@ -2046,7 +2046,14 @@ function PracticeContent({ router }: { router: any }) {
 
 
     return (
-        <div className="fixed inset-0 z-[99999] bg-black text-white font-sans overflow-hidden animate-in fade-in duration-500">
+        <div
+            className="fixed inset-0 z-[99999] bg-black text-white font-sans overflow-hidden animate-in fade-in duration-500"
+            style={{
+                // 🔥 Extend background into safe area (covers iOS home indicator area)
+                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+                height: 'calc(100% + env(safe-area-inset-bottom, 0px))',
+            }}
+        >
 
             {/* Canvas */}
             <canvas ref={canvasRef} className="absolute inset-0 block touch-none" />
