@@ -10,7 +10,7 @@ import { useMeditationSessions } from "@/lib/hooks/useData";
 import AIRecommendationCard from "@/components/ui/AIRecommendationCard";
 import JourneyCard from "@/components/ui/JourneyCard";
 import PulseCard from "@/components/ui/PulseCard";
-import MindfulnessReminderCard from "@/components/MindfulnessReminderCard";
+
 
 // MILESTONES removed (moved to JourneyCard)
 
@@ -21,7 +21,7 @@ export default function Home() {
   const { triggerLight, triggerMedium } = useHaptics();
 
   // 获取冥想会话记录
-  const { sessions } = useMeditationSessions();
+  const { sessions, isLoading: isSessionsLoading } = useMeditationSessions();
 
 
   // 转换为莲花花园需要的格式
@@ -49,12 +49,15 @@ export default function Home() {
     }
   }, [sessions]);
 
+  // Calculate Total Minutes
+  const totalMinutes = sessions.reduce((acc, s) => acc + Math.round((s.duration_seconds || 0) / 60), 0);
+
   // Milestone logic removed (handled in JourneyCard)
 
   return (
     <div className="relative h-[100dvh] overflow-hidden text-white font-sans selection:bg-white/20 touch-none">
-      {/* 🪷 Full Screen Lotus Garden Background */}
-      {lotusRecords.length > 0 && <LotusGarden records={lotusRecords} streakDays={Math.min(7, lotusRecords.length)} />}
+      {/* 🪷 Full Screen Lotus Garden Background - Only render after data loads */}
+      {!isSessionsLoading && lotusRecords.length > 0 && <LotusGarden records={lotusRecords} streakDays={Math.min(7, lotusRecords.length)} />}
 
       {/* Main Content Container */}
       <main className="relative z-10 flex flex-col px-6 pt-10 pb-24 mx-auto w-full max-w-md h-full justify-around gap-2">
@@ -102,11 +105,6 @@ export default function Home() {
               <PulseCard />
             </div>
 
-
-            {/* Card 4: Mindfulness Reminders (S-R Breaker) */}
-            <div className="w-full h-full">
-              <MindfulnessReminderCard />
-            </div>
 
           </CardStack>
         </div>

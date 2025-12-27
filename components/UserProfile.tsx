@@ -2,22 +2,23 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { LogOut, ChevronDown, Bell, Image as ImageIcon, Check, Shuffle, User, Pencil, Trash2 } from "lucide-react";
+import { LogOut, ChevronDown, Image as ImageIcon, Check, Shuffle, User, Pencil, Trash2, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import NotificationSettings from "./NotificationSettings";
 import { useBackground, WALLPAPERS } from "./BackgroundContext";
 import { cn } from "@/lib/utils";
 import { AVATAR_PRESETS, getAvatarById } from "@/lib/avatars";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { getApiUrl } from "@/lib/config";
+import ReminderSettings from "./ReminderSettings";
 
 export default function UserProfile() {
     const [user, setUser] = useState<any>(null);
     const [isOpen, setIsOpen] = useState(false);
-    const [showNotificationSettings, setShowNotificationSettings] = useState(false);
+
     const [showWallpaperPicker, setShowWallpaperPicker] = useState(false);
     const [showProfileEditor, setShowProfileEditor] = useState(false);
+    const [showReminderSettings, setShowReminderSettings] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
@@ -213,18 +214,18 @@ export default function UserProfile() {
                                     <span className="font-light">更换壁纸</span>
                                 </button>
 
-                                {/* Notification Settings */}
+                                {/* Reminder Settings */}
                                 <button
                                     onClick={() => {
                                         setIsOpen(false);
-                                        setShowNotificationSettings(true);
+                                        setShowReminderSettings(true);
                                     }}
                                     className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-white/10 text-amber-400 hover:text-amber-300 transition-colors text-sm text-left group"
                                 >
                                     <div className="p-1.5 rounded-lg bg-amber-500/10 group-hover:bg-amber-500/20 transition-colors">
                                         <Bell className="w-4 h-4" />
                                     </div>
-                                    <span className="font-light">每日提醒</span>
+                                    <span className="font-light">提醒设置</span>
                                 </button>
 
                                 {/* Delete Meditation Data */}
@@ -360,24 +361,17 @@ export default function UserProfile() {
                 )}
             </AnimatePresence>
 
-            {/* Notification Settings Modal */}
+            {/* Reminder Settings Modal */}
             <AnimatePresence>
-                {showNotificationSettings && (
+                {showReminderSettings && (
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-                        onClick={() => setShowNotificationSettings(false)}
+                        onClick={() => setShowReminderSettings(false)}
                     >
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <NotificationSettings onClose={() => setShowNotificationSettings(false)} />
-                        </motion.div>
+                        <ReminderSettings onClose={() => setShowReminderSettings(false)} />
                     </motion.div>
                 )}
             </AnimatePresence>

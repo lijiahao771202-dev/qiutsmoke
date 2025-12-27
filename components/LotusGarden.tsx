@@ -88,6 +88,9 @@ export function LotusGarden({ records, className = "", streakDays = 0 }: LotusGa
     const runnerRef = useRef<Matter.Runner | null>(null);
     const lotusesRef = useRef<Matter.Body[]>([]);
 
+    // 🔒 Track which records have been initialized to prevent re-creation
+    const initializedRecordIdsRef = useRef<Set<string>>(new Set());
+
     const { triggerLight, triggerMedium } = useHaptics();
     const [isInitialized, setIsInitialized] = useState(false);
 
@@ -239,17 +242,14 @@ export function LotusGarden({ records, className = "", streakDays = 0 }: LotusGa
         ctx.restore();
     }, []);
 
-    // 初始化物理世界
+    // 初始化物理世界 - 只在首次挂载时运行
     useEffect(() => {
         if (!containerRef.current || !canvasRef.current) return;
+        // 🔒 If already initialized, skip (prevents re-init on hot reload or re-render)
+        if (engineRef.current) return;
 
-        // 🔥 Mock 数据：如果没有记录，使用 3 个测试莲花
-        // const activeRecords = records.length > 0 ? records : [
-        //     { id: 'mock-1', duration: 5, created_at: '' },
-        //     { id: 'mock-2', duration: 15, created_at: '' },
-        //     { id: 'mock-3', duration: 30, created_at: '' }
-        // ];
-        const activeRecords = records; // 仅显示真实数据
+        const activeRecords = records;
+        if (activeRecords.length === 0) return; // Wait for actual data
 
         const container = containerRef.current;
         const canvas = canvasRef.current;
@@ -280,6 +280,9 @@ export function LotusGarden({ records, className = "", streakDays = 0 }: LotusGa
         const totalCount = activeRecords.length;
 
         activeRecords.forEach((record, index) => {
+            // 🔒 Mark as initialized
+            initializedRecordIdsRef.current.add(record.id);
+
             const size = getLotusSize(record.duration);
             const rarity = getLotusRarity(index, totalCount, streakDays);
             const x = Math.random() * (width - size * 2) + size;
@@ -354,8 +357,11 @@ export function LotusGarden({ records, className = "", streakDays = 0 }: LotusGa
             cancelAnimationFrame(animationId);
             if (runnerRef.current) Matter.Runner.stop(runnerRef.current);
             if (engineRef.current) Matter.Engine.clear(engineRef.current);
+            engineRef.current = null; // Reset for potential remount
+            initializedRecordIdsRef.current.clear();
         };
-    }, [records, drawLotus, triggerLight, triggerMedium, streakDays]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // 🔒 Empty dependency array - initialize only once on mount
 
     // (陀螺仪自动启用逻辑已移动到下面的 Capacitor Motion useEffect 中)
 

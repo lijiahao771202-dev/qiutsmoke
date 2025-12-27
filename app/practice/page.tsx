@@ -12,6 +12,7 @@ import PracticeCompletionView from "@/components/PracticeCompletionView";
 import { KeepAwake } from "@capacitor-community/keep-awake";
 import { getApiUrl } from "@/lib/config";
 import { useBinauralBeats, BINAURAL_PRESETS } from "@/lib/hooks/useBinauralBeats";
+import { useLocalNotifications } from "@/lib/hooks/useLocalNotifications";
 
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
@@ -281,6 +282,9 @@ function PracticeContent({ router }: { router: any }) {
         return "alpha";
     });
     const { start: startBinaural, stop: stopBinaural, isPlaying: isBinauralPlaying } = useBinauralBeats();
+
+    // --- Local Notifications (for auto habit reminder) ---
+    const { scheduleBreakReminder } = useLocalNotifications();
 
     // --- 完成提示音 ---
     const playCompletionSound = () => {
@@ -1650,7 +1654,7 @@ function PracticeContent({ router }: { router: any }) {
         ctx.fillRect(0, 0, width, height);
 
         if (state.phase === "SUMMARY" && state.textTargets && state.textTargets.length > 0) {
-            renderTextMorph(ctx, state, width, height, timestamp);
+            renderTextMorph(ctx, state, width, height, now);
         } else if (state.theme === "LIQUID") {
             renderLiquid(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "AURORA") {
@@ -1938,6 +1942,11 @@ function PracticeContent({ router }: { router: any }) {
                 })
             }).then(() => {
                 setCurrentSessionId(null); // Clear for next session
+
+                // 🔔 Auto-refresh break reminder (reschedule for 3 days from now)
+                scheduleBreakReminder(3).catch(e =>
+                    console.log("[Practice] Break reminder refresh skipped:", e)
+                );
             }).catch(e => console.error("Failed to end session recording", e));
         }
 

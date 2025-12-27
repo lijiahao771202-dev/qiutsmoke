@@ -5,10 +5,10 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // -----------------------------------------------------------------------------
 
 // 切换模式：'prod' = 生产 (远程 + 缓存) | 'dev' = 本地开发 (Live Reload)
-const MODE: 'prod' | 'dev' = 'prod';
+const MODE: 'prod' | 'dev' = 'dev';
 
 // 🏠 本地开发地址 (请根据 ifconfig 确认本机 IP)
-const DEV_URL = 'http://172.20.10.10:3001';
+const DEV_URL = 'http://192.168.31.35:3001';
 
 // ☁️ 线上生产地址
 const PROD_URL = 'https://qiutsmoke.vercel.app';
