@@ -1,0 +1,15 @@
+{
+    "name": "qiutsmoke-proxy",
+    "version": "1.0.0",
+    "description": "Cloudflare Worker 反向代理 - 解决 Vercel 国内访问问题",
+    "main": "src/index.ts",
+    "scripts": {
+        "dev": "wrangler dev",
+        "deploy": "wrangler deploy",
+        "tail": "wrangler tail"
+    },
+    "devDependencies": {
+        "@cloudflare/workers-types": "^4.20240117.0",
+        "wrangler": "^3.22.1"
+    }
+}

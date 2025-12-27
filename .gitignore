@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+cloudflare-proxy/node_modules
+cloudflare-pages/node_modules
 /.pnp
 .pnp.*
 .yarn/*
