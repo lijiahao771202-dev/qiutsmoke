@@ -77,7 +77,7 @@ function formatTime(seconds: number): string {
 // -----------------------------------------------------------------------------
 // Component: Ruler Time Selector
 // -----------------------------------------------------------------------------
-const RulerTimeSelector = ({
+const RulerTimeSelector = React.memo(({
     value,
     onChange,
     min = 1,
@@ -89,12 +89,18 @@ const RulerTimeSelector = ({
     max?: number
 }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
     const { triggerLight } = useHaptics();
-    const lastValue = useRef(value);
+
+    // Local state for immediate UI feedback without waiting for parent
+    const [localValue, setLocalValue] = useState(value);
+
+    // Sync local state if parent updates externally (unlikely during scroll, but good practice)
+    useEffect(() => {
+        setLocalValue(value);
+    }, [value]);
 
     // Generate ticks: each minute is a tick.
-    // We want some padding before and after so the first/last items can be centered.
-    // Let's say 1 minute = 24px width (More spacing for better touch reliability).
     const TICK_WIDTH = 24;
 
     useEffect(() => {
@@ -104,7 +110,7 @@ const RulerTimeSelector = ({
             const index = value - min;
             scrollRef.current.scrollLeft = index * TICK_WIDTH;
         }
-    }, []); // Run once on mount to set initial position
+    }, []); // Run once on mount
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const scrollLeft = e.currentTarget.scrollLeft;
@@ -118,18 +124,28 @@ const RulerTimeSelector = ({
         if (newValue < min) newValue = min;
         if (newValue > max) newValue = max;
 
-        if (newValue !== lastValue.current) {
+        // Immediate Visual Feedback
+        if (newValue !== localValue) {
+            setLocalValue(newValue);
             triggerLight();
-            lastValue.current = newValue;
-            onChange(newValue);
+
+            // Debounce the parent update to avoid expensive re-renders on every frame.
+            // The local value handles the UI feedback, so we only need to sync with parent
+            // when the user pauses or stops scrolling.
+            if (timerRef.current) {
+                clearTimeout(timerRef.current);
+            }
+            timerRef.current = setTimeout(() => {
+                onChange(newValue);
+            }, 100); // 100ms debounce
         }
     };
 
     return (
         <div className="w-full relative h-24 flex flex-col items-center justify-center">
-            {/* Current Value Display */}
+            {/* Current Value Display - Uses fast local state */}
             <div className="text-4xl font-light mb-2 text-white tabular-nums tracking-widest">
-                {value}<span className="text-base text-white/40 ml-1">min</span>
+                {localValue}<span className="text-base text-white/40 ml-1">min</span>
             </div>
 
             {/* Ruler Container */}
@@ -145,8 +161,12 @@ const RulerTimeSelector = ({
                     style={{ scrollBehavior: 'smooth' }}
                 >
                     <div
-                        className="flex items-end h-full px-[50%]"
-                        style={{ width: 'max-content' }}
+                        className="flex items-end h-full"
+                        style={{
+                            width: 'max-content',
+                            paddingLeft: 'calc(50% - 12px)', // TICK_WIDTH / 2
+                            paddingRight: 'calc(50% - 12px)'
+                        }}
                     >
                         {Array.from({ length: max - min + 1 }).map((_, i) => {
                             const val = min + i;
@@ -171,7 +191,7 @@ const RulerTimeSelector = ({
             </div>
         </div>
     );
-};
+});
 
 
 // -----------------------------------------------------------------------------
@@ -1214,7 +1234,7 @@ function PracticeContent({ router }: { router: any }) {
             }
 
             const orbitX = Math.cos(p.angle) * effectiveDist;
-            const orbitY = Math.sin(p.angle) * effectiveDist * 0.9 + ascendY;
+            const orbitY = Math.sin(p.angle) * effectiveDist * 0.9;
 
             const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
             const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
@@ -1996,6 +2016,7 @@ function PracticeContent({ router }: { router: any }) {
         if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
         clearHapticTimers();
+        stopBinaural(); // Ensure audio stops on exit
     };
 
     const handleExit = () => {
@@ -2010,6 +2031,11 @@ function PracticeContent({ router }: { router: any }) {
             setCountdown(3);
         }
     };
+
+    // Ensure cleanup runs on unmount
+    useEffect(() => {
+        return () => cleanup();
+    }, []);
 
 
     return (

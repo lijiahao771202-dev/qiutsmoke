@@ -80,7 +80,7 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                             rotateZ: rotateZ,
                             scale: scale,
                             opacity: opacity,
-                            filter: `blur(${blur}px)`,
+                            // blur removed for performance
                         }}
                         transition={{
                             type: "spring",

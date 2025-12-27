@@ -10,6 +10,7 @@ import { useMeditationSessions } from "@/lib/hooks/useData";
 import AIRecommendationCard from "@/components/ui/AIRecommendationCard";
 import JourneyCard from "@/components/ui/JourneyCard";
 import PulseCard from "@/components/ui/PulseCard";
+import MindfulnessReminderCard from "@/components/MindfulnessReminderCard";
 
 // MILESTONES removed (moved to JourneyCard)
 
@@ -101,6 +102,11 @@ export default function Home() {
               <PulseCard />
             </div>
 
+
+            {/* Card 4: Mindfulness Reminders (S-R Breaker) */}
+            <div className="w-full h-full">
+              <MindfulnessReminderCard />
+            </div>
 
           </CardStack>
         </div>
