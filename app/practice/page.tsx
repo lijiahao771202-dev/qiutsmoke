@@ -398,134 +398,168 @@ function PracticeContent({ router }: { router: any }) {
 
     // --- Theme Renderers ---
 
+    /**
+     * 🌹 Theme v2.0 Redesign: "The Velvet Rose" (Ethereal / Geometric)
+     * Renders a procedural rose using Bezier curves instead of particles for a high-end,
+     * silky aesthetic with deep visual tension.
+     */
     const renderRose = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // 🌹 Theme v2.0: Liquid Rose Life Cycle
-        // 1. Idle: Sleeping Bud (Phyllotaxis Sphere)
-        // 2. Enter: Sprouting (Spiral Up from Bottom)
-        // 3. Breath: Blooming (Spiraling Open & Close)
-        // 4. Exit: Disperse (Scatter)
-
-        // Palette
-        const hueBase = 350; // Deep Crimson
-        const hueBloom = 335; // Bright Pink
-
+        // --- 1. Background Magic Dust (Repurposed Particles) ---
+        // Existing particles become subtle background bokeh
         state.particles.forEach((p: any, i: number) => {
-            // --- IDLE: THE SLEEPING BUD ---
-            if (transitionProgress < 1) {
-                const time = timestamp * 0.0001;
+            // Gentle ambient drift
+            p.diffuseX = centerX + Math.cos(p.angle + timestamp * 0.0002) * (p.dist * 2);
+            p.diffuseY = centerY + Math.sin(p.angle + timestamp * 0.0002) * (p.dist * 2);
 
-                // 3D Phyllotaxis Sphere (The Bud)
-                const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-                const z = 1 - (i / (state.particles.length - 1)) * 2; // z goes from 1 to -1
-                const radius = Math.sqrt(1 - z * z) * 80; // Sphere radius 80
-                const theta = i * goldenAngle + time * 2; // Slow rotation
-
-                // Project 3D sphere to 2D
-                const budX = radius * Math.cos(theta);
-                const budY = radius * Math.sin(theta);
-
-                // Heartbeat: Subtle scale pulsation
-                const heartbeat = 1 + Math.sin(timestamp * 0.002) * 0.02;
-
-                // Sprouting Animation (Enter Phase)
-                // Particles start from bottom and spiral up to form the bud
-                // We use 'diffuseY' to store the entry offset logic if we had pure state, 
-                // but here we calculate the target 'bud' position and interpolate.
-                // However, renderRose is stateless per frame basically.
-                // We simulate "Sprouting" by modifying the target position based on a 'spawn' logic if we were tracking it.
-                // Since this is 'Idle' state in the main loop, we just render the Bud.
-                // The 'transitionProgress' handles the transition TO the 'Breath' phase.
-
-                // Let's add the 'Sprouting' effect using a hypothetical 'entryProgress' if we had it.
-                // Since we don't have an explicit 'entry' phase variable passed in, we assume Idle is fully formed Bud.
-                // To animate "Sprouting" on load, we'd need a separate start time. 
-                // For now, we render the perfect "Sleeping Bud".
-
-                // Liquid Surface Effect: Particles drift slightly on the sphere surface
-                const liquidDrift = Math.sin(timestamp * 0.001 + i) * 2;
-
-                p.diffuseX = centerX + (budX + liquidDrift) * heartbeat;
-                p.diffuseY = centerY + (budY * 0.9 + liquidDrift) * heartbeat; // Ovoid shape
+            const alpha = 0.15 * (1 - p.dist / 400); // Fade out at edges
+            if (alpha > 0) {
+                ctx.fillStyle = `hsla(${340 + Math.random() * 20}, 60%, 80%, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(p.diffuseX, p.diffuseY, Math.random() * 1.5, 0, Math.PI * 2);
+                ctx.fill();
             }
-
-            // --- BREATH: THE BLOOMING ---
-
-            // Calculate Spiral for Blooming
-            // Rose petals unfold in a spiral.
-            // i determines the petal layer (high i = outer petal)
-            const layerIndex = i / state.particles.length; // 0 to 1
-            const spiralOffset = layerIndex * Math.PI * 4; // 2 full rotations across layers
-
-            // Inhale (Bloom): Expansion + Rotation
-            // Exhale (Retract): Contraction + Reverse Rotation
-            // bloomProgress handles the expansion magnitude.
-            // breathScale handles the rhythmic pulsation.
-
-            // Base structure: Archimedean Spiral
-            const baseAngle = i * 0.1 + timestamp * 0.00005; // Base rotation
-
-            // Bloom Rotation: Petals unfurl (rotate out) as they expand
-            const bloomRotation = bloomProgress * Math.PI * 0.5 * (1 - layerIndex); // Inner petals rotate more? Or outer? Let's say outer rotate more to open.
-
-            let currentDist = 20 + layerIndex * 150; // Base distribution
-            let currentAngle = baseAngle + bloomRotation;
-
-            // Breathing Effect
-            // When breathing in (bloomProgress increases), we expand significantly
-            const expansion = Math.pow(bloomProgress, 2) * 250; // Non-linear expansion
-            const breathPulse = (breathScale - 1) * 50; // Rhythmic pulse
-
-            currentDist += expansion * layerIndex + breathPulse; // Outer layers expand more
-
-            // Spiral Twist on Bloom
-            currentAngle += bloomProgress * layerIndex;
-
-            // Calculate Orbit Position
-            const orbitX = Math.cos(currentAngle) * currentDist;
-            const orbitY = Math.sin(currentAngle) * currentDist;
-
-            // --- TRANSITION & INTERPOLATION ---
-            // Interpolate between Bud (diffuse) and Bloom (orbit)
-            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
-            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
-
-            // --- COLOR & VISUALS ---
-            // Color Shift: Crimson (Bud) -> Pink (Bloom)
-            // Center is darker, edges are lighter
-            const isCenter = layerIndex < 0.2;
-            const targetHue = isCenter ? hueBase : hueBloom;
-            const interpolatedHue = hueBase + (targetHue - hueBase) * bloomProgress;
-
-            // Alpha: "Dew" Shimmer at max bloom
-            // During Hold (bloomProgress near 1), particles sparkle
-            let alpha = 0.6 + layerIndex * 0.4; // Outer petals more transparent? No, usually glassier.
-
-            if (bloomProgress > 0.95) {
-                // High frequency shimmer (Dew)
-                alpha += (Math.random() - 0.5) * 0.2;
-            } else {
-                // Gentle liquid pulse
-                alpha += Math.sin(timestamp * 0.003 + i) * 0.1;
-            }
-
-            // Exit / Disperse Logic
-            // If we had an 'exit' state, we would add gravity here.
-            // Current `transitionProgress` usually goes 0->1. 
-            // If the user stops, it resets.
-
-            ctx.fillStyle = `hsla(${interpolatedHue}, 80%, ${isCenter ? 40 : 70}%, ${alpha})`;
-
-            // Draw
-            ctx.beginPath();
-            p.x = finalX; p.y = finalY;
-            // Size mapping: Inner particles smaller, outer larger (petals)
-            const size = (1 + layerIndex * 2) * (1 + bloomProgress);
-            ctx.arc(finalX, finalY, size, 0, Math.PI * 2);
-            ctx.fill();
         });
+
+        // --- 2. The Velvet Rose (Procedural Geometry) ---
+        // We draw layers of petals from outside in, or inside out depending on Painter's Algorithm.
+        // For a rose, Outside petals are behind inner ones? No, usually inner petals are wrapped inside.
+        // So we draw Outer First (Background) -> Inner Last (Foreground).
+
+        // Configuration for Layers
+        const layers = [
+            { count: 12, scale: 1.0, hue: 330, saturation: 50, lightness: 85, alpha: 0.3, type: 'outer' }, // Guard Petals (Glass)
+            { count: 8, scale: 0.75, hue: 340, saturation: 80, lightness: 60, alpha: 0.6, type: 'mid' },   // Mid Bloom
+            { count: 6, scale: 0.5, hue: 350, saturation: 90, lightness: 30, alpha: 0.9, type: 'core' },  // Deep Core (Velvet)
+            { count: 3, scale: 0.25, hue: 355, saturation: 100, lightness: 15, alpha: 1.0, type: 'bud' }   // The Eye
+        ];
+
+        // Global Breathing State
+        // Unfurl: When breathing in (bloomProgress -> 1), petals bend outwards.
+        // Twist: Layers rotate slightly against each other.
+        const baseRotation = timestamp * 0.0001;
+        const breathTension = bloomProgress; // 0 (Exhale/Bud) to 1 (Inhale/Open)
+
+        ctx.save();
+        ctx.translate(centerX, centerY);
+
+        // Scale the whole flower based on breath
+        // "Heartbeat" expansion
+        const globalScale = 1 + breathTension * 0.15 + (breathScale - 1) * 0.05;
+        ctx.scale(globalScale, globalScale);
+
+        layers.forEach((layer, layerIdx) => {
+            const petalCount = layer.count;
+            const angleStep = (Math.PI * 2) / petalCount;
+
+            // Layer-specific animation
+            // Outer layers rotate slowly, Inner layers might twist faster
+            const layerRotation = baseRotation * (layerIdx % 2 === 0 ? 1 : -1) + (breathTension * 0.1 * (layerIdx + 1));
+
+            for (let i = 0; i < petalCount; i++) {
+                ctx.save();
+
+                // Position Petal
+                const theta = i * angleStep + layerRotation;
+                ctx.rotate(theta);
+
+                // Petal Shape Geometry
+                // Using Dual Cubic Bezier Curves to form a tear-drop / silky shape
+                //     C1 --- C2
+                //   /          \
+                // Start ------ End (Tip)
+
+                // Dynamic Shape modification based on "Tension"
+                // As we breathe in (Tension goes up), petals Flatten/Widen (Unfurl)
+                // As we breathe out, they Cup/Curl inward.
+
+                const size = 180 * layer.scale;
+                const curlFactor = 1 - breathTension * 0.5; // High curl at rest
+
+                const width = size * (0.8 + breathTension * 0.2); // Widen on inhale
+                const length = size;
+
+                // Control Points
+                // Base is at (0,0)
+                // Tip is at (length, 0) - wait, let's draw upwards along Y-axis for easier mental model? 
+                // Let's draw along positive X axis.
+
+                ctx.beginPath();
+                ctx.moveTo(0, 0); // Center
+
+                // Upper/Left Edge
+                // Control Point 1: Outwards and Wide
+                const cp1x = length * 0.3;
+                const cp1y = -width * 0.5 * curlFactor; // Cupping effect
+
+                // Control Point 2: Near the tip
+                const cp2x = length * 0.8;
+                const cp2y = -width * 0.6; // Flared tip
+
+                const tipX = length;
+                const tipY = 0;
+
+                ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, tipX, tipY);
+
+                // Lower/Right Edge (Mirror)
+                const cp3x = length * 0.8;
+                const cp3y = width * 0.6;
+
+                const cp4x = length * 0.3;
+                const cp4y = width * 0.5 * curlFactor;
+
+                ctx.bezierCurveTo(cp3x, cp3y, cp4x, cp4y, 0, 0);
+
+                // --- Material / Shading ---
+
+                // 1. Base Gradient (Radial from center outward)
+                const gradient = ctx.createLinearGradient(0, 0, length, 0);
+
+                // Deep center
+                gradient.addColorStop(0, `hsla(${layer.hue}, ${layer.saturation}%, ${layer.lightness * 0.5}%, ${layer.alpha})`);
+                // Vibrant Body
+                gradient.addColorStop(0.4, `hsla(${layer.hue}, ${layer.saturation}%, ${layer.lightness}%, ${layer.alpha})`);
+                // Glowing Tip (Glass effect)
+                if (layer.type === 'outer' || layer.type === 'mid') {
+                    gradient.addColorStop(0.9, `hsla(${layer.hue + 10}, ${layer.saturation - 20}%, ${Math.min(layer.lightness + 40, 95)}%, ${layer.alpha})`);
+                    gradient.addColorStop(1, `hsla(${layer.hue}, 50%, 95%, ${Math.max(layer.alpha - 0.2, 0)})`); // Translucent rim
+                } else {
+                    // Velvet core - stays dark
+                    gradient.addColorStop(1, `hsla(${layer.hue}, ${layer.saturation}%, ${layer.lightness * 0.8}%, ${layer.alpha})`);
+                }
+
+                ctx.fillStyle = gradient;
+
+                // 2. Stroke for Definition (Visual Tension)
+                if (layer.type === 'outer') {
+                    // Glass rim
+                    ctx.shadowColor = `hsla(${layer.hue}, 80%, 80%, 0.8)`;
+                    ctx.shadowBlur = 15;
+                    ctx.strokeStyle = `hsla(${layer.hue}, 30%, 90%, 0.3)`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+
+                ctx.fill();
+
+                // 3. Highlight ("Velvet Sheen")
+                // A subtle streak of light across the petal
+                if (layer.type === 'mid' || layer.type === 'core') {
+                    ctx.shadowBlur = 0; // Reset shadow for internal detail
+                    const sheenGrad = ctx.createRadialGradient(length * 0.5, 0, 5, length * 0.5, 0, width * 0.5);
+                    sheenGrad.addColorStop(0, `hsla(${layer.hue}, 80%, 70%, 0.1)`);
+                    sheenGrad.addColorStop(1, `hsla(${layer.hue}, 80%, 70%, 0)`);
+                    ctx.fillStyle = sheenGrad;
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        });
+
+        ctx.restore();
     };
 
     const renderAurora = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
