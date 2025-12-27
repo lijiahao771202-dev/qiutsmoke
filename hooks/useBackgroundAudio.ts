@@ -79,7 +79,7 @@ export function useBackgroundAudio(): BackgroundAudioReturn {
         // 🔥 抖动静音：微小随机噪声 (约 -60dB)
         // 这足以让 iOS 认为音频有内容，但听起来完全静音
         for (let i = 0; i < numSamples; i++) {
-            const dither = (Math.random() - 0.5) * 50; // 极小的随机值 (-25 到 +25)
+            const dither = (Math.random() - 0.5) * 6; // ±3 极微小噪声（几乎听不到）
             view.setInt16(44 + i * 2, Math.round(dither), true);
         }
 
