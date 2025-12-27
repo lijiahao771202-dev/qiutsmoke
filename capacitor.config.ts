@@ -40,6 +40,15 @@ const config: CapacitorConfig = {
     CapacitorHttp: {
       enabled: false, // 🔥 禁用以避免拦截 TTS API 请求导致解码错误
     },
+    SplashScreen: {
+      backgroundColor: "#000000",
+      launchShowDuration: 2000,
+      launchAutoHide: true,
+      showSpinner: false,
+      androidScaleType: "CENTER_CROP",
+      splashFullScreen: true,
+      splashImmersive: true,
+    },
   },
 };
 

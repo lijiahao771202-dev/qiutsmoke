@@ -399,9 +399,9 @@ function PracticeContent({ router }: { router: any }) {
     // --- Theme Renderers ---
 
     /**
-     * 🌹 Theme v3.0 Redesign: "The Quantum Rose" (Mathematical / Abstract)
+     * 🌹 Theme v3.0 Redesign: "The Quantum Rose" (Particle System)
      * "Rose is not a shape, but a frequency."
-     * Uses parametric Rose Curves (r = cos(k*theta)) to visualize energy fields.
+     * Replaces line drawing with a high-density particle field.
      */
     const renderRose = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
@@ -409,120 +409,120 @@ function PracticeContent({ router }: { router: any }) {
         const time = timestamp * 0.001;
 
         // --- 1. CONFIGURATION ---
-        // Quantum Colors
-        const baseHue = 340; // Deep Magenta
-        const accentHue = 260; // Electric Indigo
+        const baseHue = 340; // Deep Rose
+        const k = 4; // 8 Petals (k=4)
 
-        ctx.save();
-        ctx.translate(centerX, centerY);
+        // --- 2. PARTICLE LOOP ---
+        state.particles.forEach((p: any, i: number) => {
+            // A. Target Calculation (The Ideal Rose)
+            // Distribute particles along the curve parameter 'theta'
+            // We use 'i' to determine the theta for this particle
+            const theta = (i / state.particles.length) * Math.PI * 2 * k; // Wrap multiple times
 
-        // Global Composition
-        ctx.lineWidth = 1.5;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        // Additive Blending for "Light" feel
-        ctx.globalCompositeOperation = 'lighter';
+            // Add some depth/volume: modifiy radius based on index to create "thick" petals
+            const layerOffset = (i % 5) * 0.1;
 
-        // --- 2. STATE LOGIC ---
+            // Rose Equation: r = cos(k * theta)
+            let rBase = Math.cos(k * theta);
 
-        // A. IDLE: "Potential Energy" (The Knot)
-        // High tension, unstable core.
-        // k (petals) is fractional and shifting, creating a chaotic knot.
-        const idleK = 2.5 + Math.sin(time * 2) * 0.1;
-        const idleScale = 80 + Math.random() * 5; // Nervous vibration
+            // Make it positive only usually creates 4 petals, allowing negative creates 8. 
+            // Let's use the absolute value or just let it cross center for the full 8 petal look.
 
-        // B. BREATH: "Harmonic Expansion" (The Rose)
-        // Transitions to a perfect integer k (e.g., k=4 for 8 petals, k=5 for 5 petals).
-        // Let's use k=4 for a classic balanced rose.
-        const targetK = 4;
-        const targetScale = 250 * breathScale; // Expands with breath
+            // Apply scale
+            // Breathing modulates the scale
+            const currentScale = 200 * breathScale + 20 * Math.sin(time * 2);
 
-        // Interpolate based on bloomProgress
-        // We use a "spring" easing for the transition to feel organic
-        const currentK = idleK + (targetK - idleK) * bloomProgress;
-        const currentScale = idleScale + (targetScale - idleScale) * bloomProgress;
+            let targetR = rBase * currentScale * (1 - layerOffset * 0.2);
 
-        // C. EXIT: "Decoherence" (Unraveling)
-        // If we were handling exit state explicitly...
-        // For now, let's assume if bloomProgress drops back to 0 rapidly it snaps back.
-        // But if we wanted a "leave" animation, we'd need an 'exitProgress'.
-        // Assuming the current system just stops rendering or fades out component on exit.
+            // Convert to Cartesian
+            let targetX = centerX + targetR * Math.cos(theta);
+            let targetY = centerY + targetR * Math.sin(theta);
 
-        // --- 3. RENDERING LAYERS ---
-        // We draw multiple "Orbitals" (variants of the curve) to create depth/interference.
+            // B. STATE: IDLE (Visual Tension)
+            // In idle, particles vibrate/orbit around their target slightly
+            if (transitionProgress < 1 || bloomProgress === 0) {
+                // Lissajous orbit around the target point
+                const tension = 10;
+                const orbitSpeed = 2 + (i % 3);
+                const orbitX = Math.cos(time * orbitSpeed + i) * tension;
+                const orbitY = Math.sin(time * orbitSpeed + i) * tension;
 
-        const orbitals = 3;
-        const pointsPerLap = 200;
-        const lapCount = 10; // How many rotations to draw (needs to be high for fractional k)
-
-        for (let l = 0; l < orbitals; l++) {
-            const orbitalProgress = l / (orbitals - 1);
-
-            // Phase Shift: Each orbital is slightly rotated
-            const phaseShift = time * 0.2 + orbitalProgress * Math.PI * 0.1;
-
-            // Amplitude Modulation (Breathing)
-            const amplitude = currentScale * (1 - orbitalProgress * 0.1);
-
-            // Color Shift (Chromatic Aberration style)
-            const hue = baseHue + (accentHue - baseHue) * orbitalProgress + bloomProgress * 20;
-            const alpha = 0.6 - orbitalProgress * 0.2 + bloomProgress * 0.4;
-
-            ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
-
-            // Bloom / Glow
-            if (l === 0) {
-                ctx.shadowBlur = 20 * bloomProgress;
-                ctx.shadowColor = `hsla(${hue}, 90%, 70%, 1)`;
-            } else {
-                ctx.shadowBlur = 0;
+                targetX += orbitX;
+                targetY += orbitY;
             }
 
-            ctx.beginPath();
+            // C. STATE: BLOOM / EXIT (Disperse)
+            if (bloomProgress > 0) {
+                // Particles spiral out
+                const disperseAngle = Math.atan2(p.y - centerY, p.x - centerX);
+                const disperseDist = 500 * bloomProgress * (1 + (i % 10) * 0.1);
 
-            // Parametric Equation
-            // r = cos(k * theta)
-            // But we add some "Noise" in Idle state
+                targetX = centerX + Math.cos(disperseAngle + bloomProgress * 2) * (currentScale + disperseDist);
+                targetY = centerY + Math.sin(disperseAngle + bloomProgress * 2) * (currentScale + disperseDist);
 
-            const jitterAmount = (1 - bloomProgress) * 5; // Jitter only in Idle
-
-            for (let i = 0; i <= pointsPerLap * lapCount; i++) {
-                const theta = (i / pointsPerLap) * Math.PI * 2;
-
-                // Rose Curve Radius
-                // Modulate k slightly per point for "Energy" feel in Idle
-                const kMod = currentK + (Math.sin(theta * 10 + time * 5) * 0.02 * (1 - bloomProgress));
-
-                let r = Math.sin(kMod * theta + phaseShift) * amplitude;
-
-                // Add noise
-                if (jitterAmount > 0) {
-                    r += (Math.random() - 0.5) * jitterAmount;
-                }
-
-                // Convert to Cartesian
-                const x = r * Math.cos(theta);
-                const y = r * Math.sin(theta);
-
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
+                // Add some chaotic wind
+                targetX += Math.sin(time * 5 + p.y * 0.01) * 20 * bloomProgress;
             }
 
-            ctx.stroke();
-        }
+            // D. PHYSICS (Interpolation)
+            // Smoothly move particle 'p' towards 'target'
+            // Use specialized 'rose' props on p if needed, or just reuse diffuseX/Y or x/y
+            // For this transition to work with other themes, we usually interpolate 
+            // derived coordinates (orbitX/Y) with p.diffuse (idle state of other themes).
+            // But here, let's treat 'targetX/Y' as the active destination.
 
-        // --- 4. THE CORE (Source) ---
-        // A bright singularity in the middle
-        if (bloomProgress < 0.2) {
-            ctx.fillStyle = '#fff';
-            ctx.shadowBlur = 30;
-            ctx.shadowColor = '#fff';
+            // Since we are replacing the line logic which didn't use p.x/p.y persistence for the shape,
+            // we will use the standard "transition" blend for entry/exit to other themes.
+            // But within the theme, we want responsive movement.
+
+            // Let's assume 'p.diffuseX' is valid from the generic init or other themes.
+            // We want to pull p.diffuseX/Y towards our Rose Target when active.
+
+            const dx = targetX - p.diffuseX;
+            const dy = targetY - p.diffuseY;
+
+            // Spring strength
+            const spring = 0.05;
+            p.diffuseX += dx * spring;
+            p.diffuseY += dy * spring;
+
+            // Apply transition from previous theme (if any)
+            // 'transitionProgress' goes 0->1 when entering this theme.
+            // The standard renderer logic usually interpolates:
+            // finalX = p.diffuseX + (TargetShape - p.diffuseX) * transitionProgress
+            // But here we are modifying p.diffuseX directly to BE the rose shape? 
+            // Looking at 'renderAurora', it updates p.diffuseX/Y for idle, then calculates orbitX/Y for active.
+            // Let's follow that pattern for consistency.
+
+            // Let's say the Rose Target IS the computed orbit position.
+            const orbitX = targetX - centerX; // Local coords
+            const orbitY = targetY - centerY;
+
+            // Final interpolation
+            const finalX = p.diffuseX + (centerX + orbitX - p.diffuseX) * transitionProgress;
+            const finalY = p.diffuseY + (centerY + orbitY - p.diffuseY) * transitionProgress;
+
+            // E. RENDER
+            // Visuals
+            const petalIndex = Math.floor((theta / (Math.PI * 2)) * k * 2) % (k * 2);
+            // Shade pinks with some variation
+            const hueVar = Math.sin(i + time) * 10;
+            const alpha = 0.6 + Math.sin(time * 3 + i) * 0.3; // Twinkle
+
+            // Bloom fade out
+            const bloomAlpha = alpha * (1 - bloomProgress);
+
+            ctx.fillStyle = `hsla(${baseHue + hueVar}, 80%, 70%, ${bloomAlpha})`;
+
+            // Additive glow
+            ctx.globalCompositeOperation = 'lighter';
+
             ctx.beginPath();
-            ctx.arc(0, 0, 3 + Math.random() * 2, 0, Math.PI * 2);
+            ctx.arc(finalX, finalY, p.size * (1 + breathScale * 0.5), 0, Math.PI * 2);
             ctx.fill();
-        }
+        });
 
-        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over'; // Reset
     };
 
     const renderAurora = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
