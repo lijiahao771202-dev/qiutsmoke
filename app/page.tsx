@@ -24,12 +24,14 @@ export default function Home() {
   const { sessions, isLoading: isSessionsLoading } = useMeditationSessions();
 
 
-  // 转换为莲花花园需要的格式
-  const lotusRecords = sessions.map(s => ({
-    id: s.id,
-    duration: Math.round((s.duration_seconds || 0) / 60), // 转换为分钟
-    created_at: s.started_at
-  }));
+  // 转换为莲花花园需要的格式（只计算正式练习的记录）
+  const lotusRecords = sessions
+    .filter(s => s.topic_id?.startsWith('practice-')) // 🪷 只有正式练习才生成莲花
+    .map(s => ({
+      id: s.id,
+      duration: Math.round((s.duration_seconds || 0) / 60), // 转换为分钟
+      created_at: s.started_at
+    }));
 
   // --- Logic Preserved from Original ---
   // Calculate Check-in Days (Unique days with sessions)
