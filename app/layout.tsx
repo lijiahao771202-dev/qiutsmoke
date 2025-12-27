@@ -64,7 +64,7 @@ export default function RootLayout({
       <body
         className="antialiased"
         style={{
-          background: 'transparent',
+          background: '#000000',
           overflowX: 'hidden',
           overscrollBehaviorY: 'none',
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'

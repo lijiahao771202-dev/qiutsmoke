@@ -20,11 +20,11 @@
 }
 
 html {
-  background: transparent;
+  background: #000000;
 }
 
 body {
-  background: transparent;
+  background: #000000;
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
@@ -106,6 +106,8 @@ body {
   min-height: 100dvh;
   min-height: -webkit-fill-available;
   /* iOS Safari 兼容 */
+  /* PWA 安全区域填充 */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* 背景层全屏覆盖 - 终极强制覆盖方案 (The Nuclear Option) */
