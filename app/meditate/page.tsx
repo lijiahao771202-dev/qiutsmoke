@@ -1112,7 +1112,7 @@ export default function MeditatePage() {
         // 🔥 [iOS Fix] 抖动静音：微小随机噪声，防止 iOS 检测为纯静音
         // 纯静音 (view.setInt16(_, 0, true)) 会被 iOS 检测并暂停
         for (let i = 0; i < samples; i++) {
-            const dither = (Math.random() - 0.5) * 50; // -25 到 +25 的微小噪声
+            const dither = (Math.random() - 0.5) * 6; // ±3 的极微小噪声（几乎听不到）
             view.setInt16(dataOffset + i * 2, Math.round(dither), true);
         }
 
