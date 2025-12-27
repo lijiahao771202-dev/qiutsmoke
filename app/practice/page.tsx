@@ -2047,11 +2047,14 @@ function PracticeContent({ router }: { router: any }) {
 
     return (
         <div
-            className="fixed inset-0 z-[99999] bg-black text-white font-sans overflow-hidden animate-in fade-in duration-500"
+            className="fixed z-[99999] bg-black text-white font-sans overflow-hidden animate-in fade-in duration-500"
             style={{
-                // 🔥 Extend background into safe area (covers iOS home indicator area)
-                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-                height: 'calc(100% + env(safe-area-inset-bottom, 0px))',
+                // 🔥 iOS PWA Safe Area Fix: 强制扩展到屏幕边缘
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 'calc(-1 * env(safe-area-inset-bottom, 0px))',
+                minHeight: '100dvh',
             }}
         >
 
