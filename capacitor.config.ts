@@ -38,7 +38,7 @@ const config: CapacitorConfig = {
 
   plugins: {
     CapacitorHttp: {
-      enabled: true,
+      enabled: false, // 🔥 禁用以避免拦截 TTS API 请求导致解码错误
     },
   },
 };
