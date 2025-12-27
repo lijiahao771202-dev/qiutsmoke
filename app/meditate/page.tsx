@@ -14,8 +14,7 @@ import { useMeditationTopics } from "@/lib/hooks/useData";
 import { useBackgroundAudio } from "@/hooks/useBackgroundAudio";
 import { getApiUrl } from "@/lib/config";
 
-// IP Address from system check
-const LAN_IP = "10.173.165.153:3001";
+// 🚀 引导模式常量
 
 // 🚀 引导模式常量
 const GUIDANCE_LEVELS = {
