@@ -13,6 +13,7 @@ import { KeepAwake } from "@capacitor-community/keep-awake";
 import { getApiUrl } from "@/lib/config";
 import { useBinauralBeats, BINAURAL_PRESETS } from "@/lib/hooks/useBinauralBeats";
 import { useLocalNotifications } from "@/lib/hooks/useLocalNotifications";
+import { unlockAudio, playCompletionSound } from "@/lib/audioUnlock";
 
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
@@ -314,42 +315,7 @@ function PracticeContent({ router }: { router: any }) {
     // --- Local Notifications (for auto habit reminder) ---
     const { scheduleBreakReminder } = useLocalNotifications();
 
-    // --- 完成提示音 ---
-    const playCompletionSound = () => {
-        try {
-            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-            const masterGain = audioCtx.createGain();
-            masterGain.connect(audioCtx.destination);
-            masterGain.gain.value = 0.3;
-
-            // 愉悦的大三和弦 C-E-G + 上行琶音
-            const frequencies = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
-            const delays = [0, 0.08, 0.16, 0.24];
-
-            frequencies.forEach((freq, i) => {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-
-                osc.type = 'sine';
-                osc.frequency.value = freq;
-                osc.connect(gain);
-                gain.connect(masterGain);
-
-                const startTime = audioCtx.currentTime + delays[i];
-                gain.gain.setValueAtTime(0, startTime);
-                gain.gain.linearRampToValueAtTime(0.4, startTime + 0.05);
-                gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.8);
-
-                osc.start(startTime);
-                osc.stop(startTime + 0.85);
-            });
-
-            // 清理
-            setTimeout(() => audioCtx.close(), 2000);
-        } catch (e) {
-            console.warn('[Sound] Completion sound failed:', e);
-        }
-    };
+    // playCompletionSound 已从 @/lib/audioUnlock 导入，使用共享 AudioContext
 
     // --- Refs ---
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1844,6 +1810,10 @@ function PracticeContent({ router }: { router: any }) {
     }, [breathPhase, phase, selectedTheme]); // Added selectedTheme
 
     const handleStart = () => {
+        // 🔥 CRITICAL: Unlock audio FIRST in the synchronous user click context
+        // This must happen before any setTimeout/async breaks the interaction chain
+        unlockAudio();
+
         // 1. Trigger Transition (Particles Implode)
         setPhase("TRANSITION_TO_PRACTICE");
         animState.current.transitionStartTime = Date.now();

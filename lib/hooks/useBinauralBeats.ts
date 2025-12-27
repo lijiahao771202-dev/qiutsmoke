@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useCallback, useState } from 'react';
+import { getSharedAudioContext } from '@/lib/audioUnlock';
 
 export type BrainwaveType = "delta" | "theta" | "alpha" | "beta";
 
@@ -73,11 +74,11 @@ export function useBinauralBeats() {
                 try {
                     leftOscRef.current?.stop();
                     rightOscRef.current?.stop();
-                    ctx.close();
+                    // 🔥 Don't close shared context - just clean up nodes
                 } catch (e) {
                     // Already stopped
                 }
-                audioContextRef.current = null;
+                // Keep audioContextRef pointing to shared context
                 leftOscRef.current = null;
                 rightOscRef.current = null;
                 gainNodeRef.current = null;
@@ -95,23 +96,28 @@ export function useBinauralBeats() {
      */
     const start = useCallback((preset: BinauralPreset, durationSeconds?: number) => {
         // Stop any existing playback first
-        if (audioContextRef.current) {
+        if (audioContextRef.current && leftOscRef.current) {
             try {
                 leftOscRef.current?.stop();
                 rightOscRef.current?.stop();
-                audioContextRef.current.close();
+                // Don't close the shared context!
             } catch (e) { }
         }
 
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        // 🔥 Use the shared (pre-unlocked) AudioContext
+        const ctx = getSharedAudioContext();
         audioContextRef.current = ctx;
 
-        // iOS requires explicit resume after user interaction
-        ctx.resume().then(() => {
-            console.log('[BinauralBeats] AudioContext resumed, state:', ctx.state);
-        }).catch(e => {
-            console.error('[BinauralBeats] Failed to resume AudioContext:', e);
-        });
+        // Ensure context is running (should already be unlocked)
+        if (ctx.state === 'suspended') {
+            ctx.resume().then(() => {
+                console.log('[BinauralBeats] AudioContext resumed, state:', ctx.state);
+            }).catch(e => {
+                console.error('[BinauralBeats] Failed to resume AudioContext:', e);
+            });
+        } else {
+            console.log('[BinauralBeats] Using shared AudioContext, state:', ctx.state);
+        }
 
         // Create gain node for volume control
         const gainNode = ctx.createGain();
