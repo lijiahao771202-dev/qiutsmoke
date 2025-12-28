@@ -45,81 +45,79 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                 JADE STONE CARD - Pure CSS Implementation (No Framer Motion inside)
                 ═══════════════════════════════════════════════════════════════════
             */}
-            {/* SOLID OPAQUE BASE - Prevents seeing through to cards behind */}
+            {/* SOLID OPAQUE BASE - Deep Jade w/ Noise Pattern */}
             <div
                 className="absolute inset-0 rounded-[2.5rem]"
-                style={{ backgroundColor: '#0D3B35' }}
+                style={{
+                    backgroundColor: '#064E3B', // Darker base for contrast
+                    backgroundImage: `
+                        radial-gradient(at 100% 0%, rgba(52, 211, 153, 0.4) 0px, transparent 50%),
+                        radial-gradient(at 0% 0%, rgba(6, 182, 212, 0.3) 0px, transparent 50%)
+                    `
+                }}
             />
 
             <div
                 className={cn(
                     "relative w-full h-full overflow-hidden rounded-[2.5rem]",
-                    "border border-white/30",
+                    "border border-white/20",
                 )}
                 style={{
-                    // Multi-layer background for smooth jade effect (on top of solid base)
+                    // Main Gradient Body - Smoother, single layer logic
                     background: `
-                        linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%),
-                        linear-gradient(to bottom, rgba(52,211,153,0.25) 0%, rgba(16,185,129,0.15) 100%),
                         linear-gradient(180deg, 
-                            rgba(110,231,183,0.5) 0%, 
-                            rgba(52,211,153,0.45) 20%, 
-                            rgba(16,185,129,0.4) 40%, 
-                            rgba(20,184,166,0.45) 60%, 
-                            rgba(45,212,191,0.4) 80%, 
-                            rgba(94,234,212,0.35) 100%
+                            rgba(255,255,255,0.1) 0%, 
+                            rgba(20,184,166,0.2) 40%, 
+                            rgba(13,148,136,0.3) 100%
                         )
                     `,
-                    // Fluorescent glow - inner + outer
+                    // Stronger Fluorescence - Neon Cyan/Teal glow
                     boxShadow: `
-                        inset 0 0 60px rgba(110,231,183,0.4),
-                        inset 0 0 100px rgba(52,211,153,0.2),
-                        0 0 40px rgba(52,211,153,0.3),
-                        0 8px 32px rgba(0,0,0,0.15)
+                        inset 0 0 40px rgba(45,212,191,0.3),     /* Cyan inner glow */
+                        inset 0 0 20px rgba(255,255,255,0.1),    /* White rim highlight */
+                        0 10px 40px -10px rgba(45,212,191,0.5),  /* Outer cyan glow */
+                        0 0 20px rgba(20, 184, 166, 0.3)         /* Ambient teal aura */
                     `,
                 }}
             >
-                {/* --- LAYER 1: JADE INTERNAL STRUCTURE (Milky Translucency) --- */}
+                {/* --- LAYER 1: FLUID LIGHT (The "Soul" of the Jade) --- */}
+                {/* Removed the fragmented radial gradients that caused splitting */}
                 <div
-                    className="absolute inset-0 pointer-events-none"
+                    className="absolute inset-0 pointer-events-none mix-blend-screen"
                     style={{
                         background: `
-                            radial-gradient(ellipse 80% 60% at 30% 20%, rgba(167,243,208,0.4) 0%, transparent 50%),
-                            radial-gradient(ellipse 60% 50% at 70% 70%, rgba(94,234,212,0.3) 0%, transparent 50%),
-                            radial-gradient(ellipse 100% 80% at 50% 50%, rgba(52,211,153,0.2) 0%, transparent 70%)
+                            radial-gradient(circle at 50% -20%, rgba(94, 234, 212, 0.5), transparent 70%),
+                            radial-gradient(circle at 80% 80%, rgba(45, 212, 191, 0.3), transparent 50%)
                         `,
                     }}
                 />
 
-                {/* --- LAYER 2: SUBTLE INCLUSIONS (Fine Texture) --- */}
+                {/* --- LAYER 2: NOISE TEXTURE (Stone Feel) --- */}
                 <div
-                    className="absolute inset-0 opacity-[0.08] mix-blend-overlay pointer-events-none"
+                    className="absolute inset-0 opacity-[0.15] mix-blend-overlay pointer-events-none"
                     style={{
-                        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
                     }}
                 />
 
-                {/* --- LAYER 3: SURFACE SHEEN (Polished Reflection) --- */}
+                {/* --- LAYER 3: GLASS REFLECTION --- */}
                 <div
                     className="absolute inset-0 pointer-events-none"
                     style={{
                         background: `linear-gradient(
-                            135deg, 
-                            rgba(255,255,255,0.25) 0%, 
-                            rgba(255,255,255,0.1) 20%, 
-                            transparent 40%,
-                            transparent 60%,
-                            rgba(255,255,255,0.05) 80%,
-                            rgba(255,255,255,0.1) 100%
+                            120deg, 
+                            rgba(255,255,255,0.3) 0%, 
+                            rgba(255,255,255,0.05) 30%, 
+                            transparent 100%
                         )`,
                     }}
                 />
 
-                {/* --- LAYER 4: ANIMATED FLUORESCENCE (CSS Animation) --- */}
+                {/* --- LAYER 4: ANIMATED PULSE (Neon Heartbeat) --- */}
                 <div
-                    className="absolute inset-0 pointer-events-none animate-jade-pulse"
+                    className="absolute inset-0 pointer-events-none animate-jade-pulse mix-blend-plus-lighter"
                     style={{
-                        background: `radial-gradient(ellipse 120% 80% at 50% 30%, rgba(167,243,208,0.3) 0%, transparent 60%)`,
+                        background: `radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.15), transparent 60%)`,
                     }}
                 />
 
