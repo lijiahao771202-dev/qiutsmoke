@@ -108,17 +108,9 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                                 duration: floatDuration,
                                 repeat: Infinity,
                                 ease: "easeInOut",
-                                delay: index * 0.5 // Stagger animations
+                                delay: index * 0.5
                             }}
                         >
-                            {/* Darken distant cards - Always rendered, animated opacity */}
-                            <motion.div
-                                className="absolute inset-0 bg-black rounded-[2.5rem] z-50 pointer-events-none"
-                                initial={false}
-                                animate={{ opacity: isActive ? 0 : 0.6 }}
-                                transition={{ duration: 0.3, ease: "easeOut" }}
-                            />
-
                             {child}
                         </motion.div>
                     </motion.div>
