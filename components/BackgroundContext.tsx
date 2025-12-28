@@ -31,7 +31,7 @@ export const WALLPAPERS = [
     { id: 'misty-forest', url: 'https://images.unsplash.com/photo-1511497584788-876760111969?q=80&w=1200&auto=format&fit=crop', name: '迷雾森林' },
     { id: 'flower-meadow', url: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?q=80&w=1200&auto=format&fit=crop', name: '花海草原' },
     { id: 'rock-formation', url: 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?q=80&w=1200&auto=format&fit=crop', name: '奇岩异石' },
-    { id: 'clear-lake', url: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1200&auto=format&fit=crop', name: '清澈湖水' },
+    { id: 'clear-lake', url: '/clear-lake.jpg', name: '清澈湖水' },
     { id: 'starry-night', url: 'https://images.unsplash.com/photo-1507400492013-162706c8c05e?q=80&w=1200&auto=format&fit=crop', name: '星空璀璨' },
 
     { id: 'calm-sea', url: 'https://images.unsplash.com/photo-1478827536114-da961b7f86d2?q=80&w=1200&auto=format&fit=crop', name: '平静海面' },
@@ -72,7 +72,7 @@ interface BackgroundContextType {
 const BackgroundContext = createContext<BackgroundContextType | undefined>(undefined);
 
 export function BackgroundProvider({ children }: { children: ReactNode }) {
-    const [wallpaperId, setWallpaperId] = useState('dark-fluid');
+    const [wallpaperId, setWallpaperId] = useState('clear-lake');
 
     // Load saved preference
     useEffect(() => {
@@ -83,10 +83,10 @@ export function BackgroundProvider({ children }: { children: ReactNode }) {
             if (exists) {
                 setWallpaperId(saved);
             } else {
-                setWallpaperId('dark-fluid');
+                setWallpaperId('clear-lake');
             }
         } else {
-            setWallpaperId('dark-fluid');
+            setWallpaperId('clear-lake');
         }
     }, []);
 
