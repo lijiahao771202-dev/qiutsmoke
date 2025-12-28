@@ -1,5 +1,4 @@
 import React, { useMemo } from "react";
-import { motion } from "framer-motion";
 import Link from "next/link";
 import { ChevronRight, Calendar, Sparkles, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,18 +9,6 @@ interface JourneyCardProps {
     minutes?: number;
     todayMinutes?: number;
 }
-
-// --- VISUAL ENGINE CONFIG ---
-// Theme: "Imperial Jade" (High Translucency, Fluorescence, Emerald/Teal)
-// Using a single smooth gradient to avoid "cutting" effect
-const JADE_STAGE = {
-    min: 0, max: 100000,
-    accent: "text-emerald-50",
-    shadow: "shadow-[0_20px_40px_-12px_rgba(16,185,129,0.25)]",
-    // Softer inner fluorescence
-    glow: "shadow-[inset_0_0_30px_rgba(52,211,153,0.2),0_0_15px_rgba(52,211,153,0.15)]",
-    baseColor: "bg-[#0f2027]/30" // Slightly more translucent
-};
 
 export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0 }: JourneyCardProps) {
     // --- Daily Goal State (Persistent) ---
@@ -35,17 +22,14 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
         }
     }, []);
 
-    // Dynamic Progress Calculation & Color
-    const { progress, progressColor } = useMemo(() => {
-        const p = Math.min(Math.max(todayMinutes / dailyGoal, 0.05), 1);
-
-        // Jade-themed Progress Colors
-        let color = "url(#jadeGradient-base)";
-        if (p > 0.3) color = "url(#jadeGradient-mid)";
-        if (p > 0.7) color = "url(#jadeGradient-full)";
-
-        return { progress: p, progressColor: color };
+    // Dynamic Progress Calculation
+    const progress = useMemo(() => {
+        return Math.min(Math.max(todayMinutes / dailyGoal, 0.05), 1);
     }, [todayMinutes, dailyGoal]);
+
+    // Progress ring circumference
+    const circumference = 2 * Math.PI * 40; // r=40
+    const strokeDashoffset = circumference - (circumference * progress);
 
     // Handle Native Select Change
     const handleNativeGoalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -54,84 +38,85 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
         localStorage.setItem("dailyMeditationGoal", newGoal.toString());
     };
 
-    // Use Jade Theme
-    const stage = JADE_STAGE;
-
     return (
         <div className="relative w-full h-full group isolate">
-            {/* SVG Defs for Jade Gradient */}
-            <svg className="absolute w-0 h-0">
-                <defs>
-                    {/* Level 1: Soft Mint */}
-                    <linearGradient id="jadeGradient-base" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#A7F3D0" /> {/* emerald-200 */}
-                        <stop offset="100%" stopColor="#34D399" /> {/* emerald-400 */}
-                    </linearGradient>
-
-                    {/* Level 2: Bright Teal */}
-                    <linearGradient id="jadeGradient-mid" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#5EEAD4" /> {/* teal-300 */}
-                        <stop offset="100%" stopColor="#2DD4BF" /> {/* teal-400 */}
-                    </linearGradient>
-
-                    {/* Level 3: Fluorescent Cyan/White */}
-                    <linearGradient id="jadeGradient-full" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#ECFEFF" /> {/* cyan-50 */}
-                        <stop offset="50%" stopColor="#FFFFFF" />
-                        <stop offset="100%" stopColor="#67E8F9" /> {/* cyan-300 */}
-                    </linearGradient>
-
-                    {/* Fluorescent Glow Filter */}
-                    <filter id="jadeGlow" x="-50%" y="-50%" width="200%" height="200%">
-                        <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
-                        <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.4  0 1 0 0 0.9  0 0 1 0 0.8  0 0 0 1 0" result="coloredBlur" />
-                        <feMerge>
-                            <feMergeNode in="coloredBlur" />
-                            <feMergeNode in="SourceGraphic" />
-                        </feMerge>
-                    </filter>
-                </defs>
-            </svg>
-
             {/* 
-                THE JADE STONE: Translucent, Glowing, Ethereal
+                ═══════════════════════════════════════════════════════════════════
+                JADE STONE CARD - Pure CSS Implementation (No Framer Motion inside)
+                ═══════════════════════════════════════════════════════════════════
             */}
-            <div className={cn(
-                "relative w-full h-full overflow-hidden rounded-[2.5rem] transition-all duration-700",
-                "border border-white/20", // Polished edge
-                "backdrop-blur-xl", // Glass effect
-                stage.baseColor,
-                stage.shadow,
-                stage.glow // Inner fluorescence
-            )}>
-
-                {/* --- LAYER 1: THE JADE GRADIENT (Smooth Radial) --- */}
+            <div
+                className={cn(
+                    "relative w-full h-full overflow-hidden rounded-[2.5rem]",
+                    "border border-white/30",
+                    "backdrop-blur-2xl", // Maximum blur for glass depth
+                )}
+                style={{
+                    // Multi-layer background for smooth jade effect
+                    background: `
+                        linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%),
+                        linear-gradient(to bottom, rgba(52,211,153,0.25) 0%, rgba(16,185,129,0.15) 100%),
+                        linear-gradient(180deg, 
+                            rgba(110,231,183,0.4) 0%, 
+                            rgba(52,211,153,0.35) 20%, 
+                            rgba(16,185,129,0.3) 40%, 
+                            rgba(20,184,166,0.35) 60%, 
+                            rgba(45,212,191,0.3) 80%, 
+                            rgba(94,234,212,0.25) 100%
+                        )
+                    `,
+                    // Fluorescent glow - inner + outer
+                    boxShadow: `
+                        inset 0 0 60px rgba(110,231,183,0.4),
+                        inset 0 0 100px rgba(52,211,153,0.2),
+                        0 0 40px rgba(52,211,153,0.3),
+                        0 8px 32px rgba(0,0,0,0.15)
+                    `,
+                }}
+            >
+                {/* --- LAYER 1: JADE INTERNAL STRUCTURE (Milky Translucency) --- */}
                 <div
-                    className="absolute inset-0 transition-all duration-700 ease-in-out"
+                    className="absolute inset-0 pointer-events-none"
                     style={{
-                        background: `radial-gradient(ellipse 150% 100% at 50% 0%, rgba(43,192,228,0.6) 0%, rgba(113,178,128,0.5) 35%, rgba(19,78,94,0.7) 70%, rgba(15,32,39,0.8) 100%)`
+                        background: `
+                            radial-gradient(ellipse 80% 60% at 30% 20%, rgba(167,243,208,0.4) 0%, transparent 50%),
+                            radial-gradient(ellipse 60% 50% at 70% 70%, rgba(94,234,212,0.3) 0%, transparent 50%),
+                            radial-gradient(ellipse 100% 80% at 50% 50%, rgba(52,211,153,0.2) 0%, transparent 70%)
+                        `,
                     }}
                 />
 
-                {/* --- LAYER 2: INTERNAL INCLUSIONS (Texture) --- */}
-                {/* Subtle noise to simulate jade structure, not leather */}
-                <div className="absolute inset-0 opacity-[0.15] mix-blend-overlay pointer-events-none"
+                {/* --- LAYER 2: SUBTLE INCLUSIONS (Fine Texture) --- */}
+                <div
+                    className="absolute inset-0 opacity-[0.08] mix-blend-overlay pointer-events-none"
                     style={{
-                        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E")`,
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
                     }}
                 />
 
-                {/* --- LAYER 3: SURFACE REFLECTION (Glassy) --- */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-white/10 via-transparent to-white/20 pointer-events-none mix-blend-soft-light" />
-
-                {/* Moving Sheen - initial={false} prevents flicker on re-mount */}
-                <motion.div
-                    initial={false}
-                    animate={{ opacity: [0.15, 0.3, 0.15] }}
-                    transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-                    className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-white/5 pointer-events-none"
+                {/* --- LAYER 3: SURFACE SHEEN (Polished Reflection) --- */}
+                <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                        background: `linear-gradient(
+                            135deg, 
+                            rgba(255,255,255,0.25) 0%, 
+                            rgba(255,255,255,0.1) 20%, 
+                            transparent 40%,
+                            transparent 60%,
+                            rgba(255,255,255,0.05) 80%,
+                            rgba(255,255,255,0.1) 100%
+                        )`,
+                    }}
                 />
 
+                {/* --- LAYER 4: ANIMATED FLUORESCENCE (CSS Animation) --- */}
+                <div
+                    className="absolute inset-0 pointer-events-none animate-jade-pulse"
+                    style={{
+                        background: `radial-gradient(ellipse 120% 80% at 50% 30%, rgba(167,243,208,0.3) 0%, transparent 60%)`,
+                    }}
+                />
 
                 {/* --- CONTENT LAYER --- */}
                 <div className="relative z-10 flex flex-col h-full p-6 justify-between text-white">
@@ -139,46 +124,51 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                     {/* Header */}
                     <div className="flex items-center justify-between">
                         <div className="flex flex-col">
-                            <h3 className="text-xs font-bold tracking-[0.2em] text-emerald-100/90 uppercase drop-shadow-sm font-sans">Journey</h3>
+                            <h3 className="text-xs font-bold tracking-[0.2em] text-white/90 uppercase drop-shadow-sm font-sans">Journey</h3>
                         </div>
 
                         <div className="flex items-center gap-2">
                             {/* Minutes Capsule */}
-                            <div className="bg-emerald-950/20 backdrop-blur-md pl-2 pr-3 py-1 rounded-full border border-emerald-200/20 shadow-sm flex items-center gap-1.5">
+                            <div className="bg-black/10 backdrop-blur-md pl-2 pr-3 py-1 rounded-full border border-white/20 shadow-sm flex items-center gap-1.5">
                                 <div className="bg-white/20 p-1 rounded-full">
-                                    <Clock className="w-2.5 h-2.5 text-emerald-50" />
+                                    <Clock className="w-2.5 h-2.5 text-white" />
                                 </div>
-                                <span className="text-[10px] font-bold text-emerald-50 tracking-wide">{minutes} <span className="text-emerald-200/70">MIN</span></span>
+                                <span className="text-[10px] font-bold text-white tracking-wide">{minutes} <span className="text-white/60">MIN</span></span>
                             </div>
 
                             {/* Days Capsule */}
-                            <div className="bg-emerald-950/20 backdrop-blur-md pl-2 pr-3 py-1 rounded-full border border-emerald-200/20 shadow-sm flex items-center gap-1.5">
+                            <div className="bg-black/10 backdrop-blur-md pl-2 pr-3 py-1 rounded-full border border-white/20 shadow-sm flex items-center gap-1.5">
                                 <div className="bg-white/20 p-1 rounded-full">
-                                    <Calendar className="w-2.5 h-2.5 text-emerald-50" />
+                                    <Calendar className="w-2.5 h-2.5 text-white" />
                                 </div>
-                                <span className="text-[10px] font-bold text-emerald-50 tracking-wide">Day {days}</span>
+                                <span className="text-[10px] font-bold text-white tracking-wide">Day {days}</span>
                             </div>
                         </div>
                     </div>
 
                     {/* Stats - Balanced Layout */}
                     <div className="flex items-center justify-between mt-4 mb-6">
-                        {/* Big Number - Resized for Balance */}
+                        {/* Big Number */}
                         <div className="flex flex-col justify-center">
-                            <span className="text-7xl font-bold tracking-tighter drop-shadow-lg text-white filter drop-shadow-[0_0_10px_rgba(52,211,153,0.5)] leading-none">
+                            <span
+                                className="text-7xl font-bold tracking-tighter text-white leading-none"
+                                style={{
+                                    textShadow: `0 0 20px rgba(110,231,183,0.6), 0 0 40px rgba(52,211,153,0.4), 0 2px 4px rgba(0,0,0,0.2)`
+                                }}
+                            >
                                 {times}
                             </span>
-                            <span className="text-sm font-medium text-emerald-50/80 tracking-wide mt-1 pl-1">
+                            <span className="text-sm font-medium text-white/70 tracking-wide mt-1 pl-1">
                                 Sessions
                             </span>
                         </div>
 
-                        {/* Progress Ring - Tap to Open Native Picker */}
+                        {/* Progress Ring */}
                         <div
                             className="relative w-24 h-24 flex items-center justify-center z-50 rounded-full overflow-hidden"
                             onPointerDown={(e) => e.stopPropagation()}
                         >
-                            {/* Native Select - Invisible but triggers iOS picker */}
+                            {/* Native Select */}
                             <select
                                 value={dailyGoal}
                                 onChange={handleNativeGoalChange}
@@ -198,81 +188,114 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                                 ))}
                             </select>
 
-                            {/* Glass Base Track */}
-                            <svg className="absolute inset-0 w-full h-full -rotate-90 filter drop-shadow-md pointer-events-none">
+                            {/* SVG Progress Ring - Pure CSS Animation */}
+                            <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none">
+                                {/* Glow Filter */}
+                                <defs>
+                                    <filter id="progressGlow" x="-50%" y="-50%" width="200%" height="200%">
+                                        <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
+                                        <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.4  0 1 0 0 0.85  0 0 1 0 0.7  0 0 0 1 0" />
+                                        <feMerge>
+                                            <feMergeNode />
+                                            <feMergeNode in="SourceGraphic" />
+                                        </feMerge>
+                                    </filter>
+                                    <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" stopColor="#A7F3D0" />
+                                        <stop offset="50%" stopColor="#6EE7B7" />
+                                        <stop offset="100%" stopColor="#5EEAD4" />
+                                    </linearGradient>
+                                </defs>
+
+                                {/* Track */}
                                 <circle
                                     cx="50%" cy="50%" r="40"
                                     stroke="currentColor" strokeWidth="6"
                                     fill="transparent"
                                     className="text-white/10"
                                 />
-                                /* Liquid Fill - Jade Glow */
-                                <motion.circle
+                                {/* Progress - CSS transition instead of framer-motion */}
+                                <circle
                                     cx="50%" cy="50%" r="40"
-                                    stroke={progressColor}
+                                    stroke="url(#progressGradient)"
                                     strokeWidth="6"
                                     fill="transparent"
                                     strokeLinecap="round"
-                                    style={{ filter: "url(#jadeGlow)" }}
-                                    strokeDasharray={251}
-                                    initial={{ strokeDashoffset: 251 }}
-                                    animate={{ strokeDashoffset: 251 - (251 * progress) }}
-                                    transition={{ duration: 1.2, ease: "easeOut" }}
+                                    style={{
+                                        filter: "url(#progressGlow)",
+                                        strokeDasharray: circumference,
+                                        strokeDashoffset: strokeDashoffset,
+                                        transition: "stroke-dashoffset 1s ease-out"
+                                    }}
                                 />
                             </svg>
 
                             {/* Center Metric */}
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                                 <div className="flex items-baseline gap-0.5 translate-y-1">
-                                    <span className="text-2xl font-bold text-white filter drop-shadow-md leading-none tracking-tight">
+                                    <span className="text-2xl font-bold text-white leading-none tracking-tight" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
                                         {Math.round(todayMinutes)}
                                     </span>
-                                    <span className="text-sm font-medium text-emerald-100/60 leading-none">
+                                    <span className="text-sm font-medium text-white/50 leading-none">
                                         / {dailyGoal}
                                     </span>
                                 </div>
-                                <span className="text-[9px] font-bold text-emerald-100/50 uppercase tracking-widest mt-1">Today</span>
+                                <span className="text-[9px] font-bold text-white/50 uppercase tracking-widest mt-1">Today</span>
                             </div>
                         </div>
                     </div>
 
-                    {/* 
-                       THE BUTTON: Translucent Jade
-                    */}
+                    {/* CTA Button - Pure CSS */}
                     <Link href="/practice" className="w-full relative group/btn block isolate">
                         {/* Glow */}
-                        <div className="absolute -inset-0.5 rounded-2xl blur-md opacity-40 group-hover/btn:opacity-100 transition-opacity duration-500 bg-teal-400" />
+                        <div className="absolute -inset-0.5 rounded-2xl blur-md opacity-30 group-hover/btn:opacity-70 transition-opacity duration-500 bg-emerald-400" />
 
                         {/* Glass Body */}
-                        <div className="relative h-16 overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/30 shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] transition-transform duration-200 active:scale-[0.98]">
-                            {/* Shine - initial={false} prevents flicker */}
-                            <motion.div
-                                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-20"
-                                initial={false}
-                                animate={{ x: ["-150%", "150%"] }}
-                                transition={{
-                                    duration: 4,
-                                    repeat: Infinity,
-                                    repeatDelay: 3,
-                                    ease: "easeInOut"
+                        <div
+                            className="relative h-16 overflow-hidden rounded-2xl bg-white/15 backdrop-blur-xl border border-white/30 transition-transform duration-200 active:scale-[0.98]"
+                            style={{ boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.4)' }}
+                        >
+                            {/* Shine - Pure CSS Animation */}
+                            <div
+                                className="absolute inset-0 -skew-x-20 animate-button-shine pointer-events-none"
+                                style={{
+                                    background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%)',
                                 }}
                             />
 
                             <div className="relative h-full flex items-center justify-between px-6 z-10">
                                 <div className="flex flex-col justify-center">
                                     <span className="text-white font-bold text-[15px] tracking-wide drop-shadow-sm flex items-center gap-2 group-hover/btn:translate-x-1 transition-transform">
-                                        <Sparkles className="w-3.5 h-3.5 text-emerald-100 fill-emerald-100" />
+                                        <Sparkles className="w-3.5 h-3.5 text-emerald-200 fill-emerald-200" />
                                         Start Practice
                                     </span>
                                 </div>
-                                <div className="bg-white/10 p-2.5 rounded-full backdrop-blur-md border border-white/20 shadow-sm group-hover/btn:bg-white/20 transition-colors">
-                                    <ChevronRight className="w-5 h-5 text-emerald-50" strokeWidth={3} />
+                                <div className="bg-white/15 p-2.5 rounded-full backdrop-blur-md border border-white/25 shadow-sm group-hover/btn:bg-white/25 transition-colors">
+                                    <ChevronRight className="w-5 h-5 text-white" strokeWidth={3} />
                                 </div>
                             </div>
                         </div>
                     </Link>
                 </div>
             </div>
+
+            {/* CSS Animations */}
+            <style jsx>{`
+                @keyframes jade-pulse {
+                    0%, 100% { opacity: 0.4; }
+                    50% { opacity: 0.7; }
+                }
+                .animate-jade-pulse {
+                    animation: jade-pulse 4s ease-in-out infinite;
+                }
+                @keyframes button-shine {
+                    0% { transform: translateX(-200%) skewX(-20deg); }
+                    100% { transform: translateX(400%) skewX(-20deg); }
+                }
+                .animate-button-shine {
+                    animation: button-shine 6s ease-in-out infinite;
+                }
+            `}</style>
         </div>
     );
 }
