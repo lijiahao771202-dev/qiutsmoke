@@ -13,15 +13,14 @@ interface JourneyCardProps {
 
 // --- VISUAL ENGINE CONFIG ---
 // Theme: "Imperial Jade" (High Translucency, Fluorescence, Emerald/Teal)
+// Using a single smooth gradient to avoid "cutting" effect
 const JADE_STAGE = {
     min: 0, max: 100000,
-    // Deep Emerald to Fluorescent Cyan Gradient
-    bg: "from-[#134E5E]/90 via-[#71B280]/80 to-[#2BC0E4]/90",
     accent: "text-emerald-50",
-    shadow: "shadow-[0_20px_40px_-12px_rgba(16,185,129,0.3)]",
-    // Inner fluorescence + Outer glow
-    glow: "shadow-[inset_0_0_40px_rgba(52,211,153,0.3),0_0_20px_rgba(52,211,153,0.2)]",
-    baseColor: "bg-[#0f2027]/40" // Dark translucent base
+    shadow: "shadow-[0_20px_40px_-12px_rgba(16,185,129,0.25)]",
+    // Softer inner fluorescence
+    glow: "shadow-[inset_0_0_30px_rgba(52,211,153,0.2),0_0_15px_rgba(52,211,153,0.15)]",
+    baseColor: "bg-[#0f2027]/30" // Slightly more translucent
 };
 
 export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0 }: JourneyCardProps) {
@@ -106,11 +105,13 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                 stage.glow // Inner fluorescence
             )}>
 
-                {/* --- LAYER 1: THE JADE GRADIENT (Flowing) --- */}
-                <div className={cn(
-                    "absolute inset-0 bg-gradient-to-br transition-all duration-700 ease-in-out opacity-80",
-                    stage.bg
-                )} />
+                {/* --- LAYER 1: THE JADE GRADIENT (Smooth Radial) --- */}
+                <div
+                    className="absolute inset-0 transition-all duration-700 ease-in-out"
+                    style={{
+                        background: `radial-gradient(ellipse 150% 100% at 50% 0%, rgba(43,192,228,0.6) 0%, rgba(113,178,128,0.5) 35%, rgba(19,78,94,0.7) 70%, rgba(15,32,39,0.8) 100%)`
+                    }}
+                />
 
                 {/* --- LAYER 2: INTERNAL INCLUSIONS (Texture) --- */}
                 {/* Subtle noise to simulate jade structure, not leather */}
@@ -123,11 +124,12 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                 {/* --- LAYER 3: SURFACE REFLECTION (Glassy) --- */}
                 <div className="absolute inset-0 bg-gradient-to-tr from-white/10 via-transparent to-white/20 pointer-events-none mix-blend-soft-light" />
 
-                {/* Moving Sheen */}
+                {/* Moving Sheen - initial={false} prevents flicker on re-mount */}
                 <motion.div
-                    animate={{ opacity: [0.1, 0.4, 0.1], rotate: [0, 5, 0] }}
-                    transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-                    className="absolute -inset-[50%] bg-gradient-to-tr from-transparent via-emerald-300/10 to-transparent pointer-events-none blur-3xl"
+                    initial={false}
+                    animate={{ opacity: [0.15, 0.3, 0.15] }}
+                    transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-white/5 pointer-events-none"
                 />
 
 
@@ -243,15 +245,15 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
 
                         {/* Glass Body */}
                         <div className="relative h-16 overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/30 shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] transition-transform duration-200 active:scale-[0.98]">
-                            {/* Shine */}
+                            {/* Shine - initial={false} prevents flicker */}
                             <motion.div
-                                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -skew-x-20"
-                                initial={{ x: "-150%" }}
-                                animate={{ x: "150%" }}
+                                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-20"
+                                initial={false}
+                                animate={{ x: ["-150%", "150%"] }}
                                 transition={{
-                                    duration: 3,
+                                    duration: 4,
                                     repeat: Infinity,
-                                    repeatDelay: 2,
+                                    repeatDelay: 3,
                                     ease: "easeInOut"
                                 }}
                             />
