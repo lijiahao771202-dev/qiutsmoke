@@ -99,6 +99,7 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                         {/* Zero-G Floating Container */}
                         <motion.div
                             className="w-full h-full relative preserve-3d"
+                            initial={false}
                             animate={{
                                 y: isActive ? [0, -floatY, 0] : [0, -floatY * 0.5, 0],
                                 rotateX: isActive ? [0, 2, 0] : 0,
@@ -110,10 +111,13 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                                 delay: index * 0.5 // Stagger animations
                             }}
                         >
-                            {/* Darken distant cards */}
-                            {!isActive && (
-                                <div className="absolute inset-0 bg-black/60 rounded-[2.5rem] z-50 pointer-events-none transition-all duration-500" />
-                            )}
+                            {/* Darken distant cards - Always rendered, animated opacity */}
+                            <motion.div
+                                className="absolute inset-0 bg-black rounded-[2.5rem] z-50 pointer-events-none"
+                                initial={false}
+                                animate={{ opacity: isActive ? 0 : 0.6 }}
+                                transition={{ duration: 0.3, ease: "easeOut" }}
+                            />
 
                             {child}
                         </motion.div>
