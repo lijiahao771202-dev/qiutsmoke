@@ -45,24 +45,29 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                 JADE STONE CARD - Pure CSS Implementation (No Framer Motion inside)
                 ═══════════════════════════════════════════════════════════════════
             */}
+            {/* SOLID OPAQUE BASE - Prevents seeing through to cards behind */}
+            <div
+                className="absolute inset-0 rounded-[2.5rem]"
+                style={{ backgroundColor: '#0D3B35' }}
+            />
+
             <div
                 className={cn(
                     "relative w-full h-full overflow-hidden rounded-[2.5rem]",
                     "border border-white/30",
-                    "backdrop-blur-2xl", // Maximum blur for glass depth
                 )}
                 style={{
-                    // Multi-layer background for smooth jade effect
+                    // Multi-layer background for smooth jade effect (on top of solid base)
                     background: `
                         linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%),
                         linear-gradient(to bottom, rgba(52,211,153,0.25) 0%, rgba(16,185,129,0.15) 100%),
                         linear-gradient(180deg, 
-                            rgba(110,231,183,0.4) 0%, 
-                            rgba(52,211,153,0.35) 20%, 
-                            rgba(16,185,129,0.3) 40%, 
-                            rgba(20,184,166,0.35) 60%, 
-                            rgba(45,212,191,0.3) 80%, 
-                            rgba(94,234,212,0.25) 100%
+                            rgba(110,231,183,0.5) 0%, 
+                            rgba(52,211,153,0.45) 20%, 
+                            rgba(16,185,129,0.4) 40%, 
+                            rgba(20,184,166,0.45) 60%, 
+                            rgba(45,212,191,0.4) 80%, 
+                            rgba(94,234,212,0.35) 100%
                         )
                     `,
                     // Fluorescent glow - inner + outer
