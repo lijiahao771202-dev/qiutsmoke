@@ -107,10 +107,10 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
     const circumference = 2 * Math.PI * 40; // r=40
     const strokeDashoffset = circumference - (circumference * animatedProgress);
 
-    // 🎯 使用动画计数器（放慢速度，更优雅）
-    const animatedTimes = useAnimatedNumber(times, 1800);
-    const animatedMinutes = useAnimatedNumber(minutes, 2000);
-    const animatedTodayMinutes = useAnimatedNumber(Math.round(todayMinutes), 1500);
+    // 🎯 使用动画计数器（更慢速度，更优雅）
+    const animatedTimes = useAnimatedNumber(times, 2800);
+    const animatedMinutes = useAnimatedNumber(minutes, 3500);
+    const animatedTodayMinutes = useAnimatedNumber(Math.round(todayMinutes), 2500);
 
     // Handle Native Select Change
     const handleNativeGoalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -314,7 +314,7 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                                         filter: "url(#progressGlow)",
                                         strokeDasharray: circumference,
                                         strokeDashoffset: strokeDashoffset,
-                                        transition: "stroke-dashoffset 1.8s cubic-bezier(0.16, 1, 0.3, 1)"
+                                        transition: "stroke-dashoffset 2.8s cubic-bezier(0.16, 1, 0.3, 1)"
                                     }}
                                 />
                             </svg>
