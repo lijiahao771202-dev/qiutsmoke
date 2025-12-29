@@ -427,6 +427,9 @@ const applyFade = (audioBuffer: AudioBuffer, fadeDurationMs: number = 50) => {
 // Component: TTS Card with Audio Logic
 // -----------------------------------------------------------------------------
 
+// 🔒 全局 Set 跟踪正在合成的卡片，防止页面切换后重复合成
+const synthesizingCardsSet = new Set<string>();
+
 function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id: string) => void; onEdit: (card: TTSCard) => void }) {
     // Queue State
     type QueueItem =
@@ -481,6 +484,13 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 }
             } else {
                 // ✨ 没有缓存时自动后台合成
+                // 🔒 检查全局 Set，防止页面切换后重复合成
+                if (synthesizingCardsSet.has(card.id)) {
+                    console.log(`[TTSCard] 卡片 "${card.title || card.id}" 已在合成中，跳过...`);
+                    setIsSynthesizing(true); // 显示合成状态
+                    return;
+                }
+
                 console.log(`[TTSCard] 卡片 "${card.title || card.id}" 无缓存，自动开始合成...`);
                 // 延迟 500ms 开始合成，避免页面加载时同时发起多个请求
                 setTimeout(() => {
@@ -934,6 +944,10 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     // -------------------------------------------------------------------------
     const synthesizeAndDownload = async () => {
         if (isSynthesizing) return;
+        // 🔒 标记全局合成状态
+        if (synthesizingCardsSet.has(card.id)) return;
+        synthesizingCardsSet.add(card.id);
+
         setIsSynthesizing(true);
         setSynthesizeProgress({ current: 0, total: 0 });
 
@@ -1128,6 +1142,8 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             console.error("[Synthesize] Error", err);
             triggerError();
         } finally {
+            // 🔓 移除全局合成状态
+            synthesizingCardsSet.delete(card.id);
             setIsSynthesizing(false);
             setSynthesizeProgress({ current: 0, total: 0 });
             setShowCardMenu(false);
@@ -1755,17 +1771,25 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
                         <button
                             onClick={(e) => { e.stopPropagation(); triggerLight(); togglePlay(); }}
-                            disabled={isBuffering}
+                            disabled={isBuffering || isSynthesizing || !hasCachedAudio}
                             className={cn(
                                 "flex items-center justify-center w-10 h-10 rounded-full transition-all border",
-                                isBuffering
-                                    ? "bg-amber-500/20 border-amber-400/50 text-amber-300 cursor-wait"
-                                    : isPlaying
-                                        ? "bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/30"
-                                        : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20"
+                                isSynthesizing
+                                    ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-300 cursor-wait"
+                                    : !hasCachedAudio
+                                        ? "bg-zinc-500/20 border-zinc-400/30 text-zinc-400 cursor-not-allowed"
+                                        : isBuffering
+                                            ? "bg-amber-500/20 border-amber-400/50 text-amber-300 cursor-wait"
+                                            : isPlaying
+                                                ? "bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/30"
+                                                : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20"
                             )}
                         >
-                            {isBuffering ? (
+                            {isSynthesizing ? (
+                                <span className="animate-spin w-4 h-4 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full" />
+                            ) : !hasCachedAudio ? (
+                                <Music className="w-4 h-4" />
+                            ) : isBuffering ? (
                                 <span className="animate-spin w-4 h-4 border-2 border-amber-300/30 border-t-amber-300 rounded-full" />
                             ) : isLoadingAudio ? (
                                 <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
@@ -1775,6 +1799,14 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                 <Play className="w-4 h-4 fill-current ml-0.5" />
                             )}
                         </button>
+
+                        {/* 🚀 合成进度显示 */}
+                        {isSynthesizing && (
+                            <div className="flex items-center gap-2 text-xs text-emerald-300/80 animate-pulse">
+                                <span className="font-medium">合成中...</span>
+                                <span className="font-mono">{synthesizeProgress.current}/{synthesizeProgress.total}</span>
+                            </div>
+                        )}
 
                         {/* 🚀 缓冲进度显示 */}
                         {isBuffering && (
@@ -1787,22 +1819,13 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                         <div className="flex-1 space-y-1.5">
                             <div className="flex justify-between text-xs text-white/40 font-mono">
                                 {hasCachedAudio ? (
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); setUseCachedPlayback(!useCachedPlayback); }}
-                                        className={cn(
-                                            "px-1.5 py-0.5 rounded transition-colors text-left",
-                                            useCachedPlayback
-                                                ? "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
-                                                : "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
-                                        )}
-                                        title="点击切换播放模式"
-                                    >
-                                        {isPlaying
-                                            ? (useCachedPlayback ? "CACHED ▶" : "STREAM ▶")
-                                            : (useCachedPlayback ? "CACHED" : "STREAM")}
-                                    </button>
+                                    <span className="text-emerald-300">
+                                        {isPlaying ? "CACHED ▶" : "CACHED"}
+                                    </span>
+                                ) : isSynthesizing ? (
+                                    <span className="text-emerald-300">SYNTHESIZING</span>
                                 ) : (
-                                    <span>{isPlaying ? "STREAMING" : "READY"}</span>
+                                    <span className="text-zinc-400">待合成</span>
                                 )}
                                 {/* 时间显示 */}
                                 {playbackProgress.duration > 0 ? (
@@ -1811,7 +1834,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                     </span>
                                 ) : (
                                     <span>
-                                        {audioDuration && hasCachedAudio ? formatTime(audioDuration) : (audioQueue.length > 0 ? `${audioQueue.length} SEGS` : "00:00")}
+                                        {audioDuration && hasCachedAudio ? formatTime(audioDuration) : "--:--"}
                                     </span>
                                 )}
                             </div>
