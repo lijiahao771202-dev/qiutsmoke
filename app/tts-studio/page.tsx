@@ -16,6 +16,16 @@ export type { TTSCard } from "@/lib/hooks/useData";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 
 // -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+import { VOICES } from "@/lib/constants";
+
+const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
+    light: { label: "🍃 轻引导", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/20" },
+    medium: { label: "⚖️ 中引导", color: "bg-blue-500/20 text-blue-300 border-blue-500/20" },
+    heavy: { label: "🧘 多引导", color: "bg-purple-500/20 text-purple-300 border-purple-500/20" }
+};
+
 // -----------------------------------------------------------------------------
 // Animation Constants (Apple Spring Physics)
 // -----------------------------------------------------------------------------
@@ -1812,7 +1822,6 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                                 ? "bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/30"
                                                 : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20"
                             )}
-                        >
                         >
                             <AnimatePresence mode="wait">
                                 {isSynthesizing ? (
