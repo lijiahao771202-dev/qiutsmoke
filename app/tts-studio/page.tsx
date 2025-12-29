@@ -37,10 +37,10 @@ const SPRING_TRANSITION = {
     mass: 1
 } as const;
 
+// 容器动画：不设置 opacity，只负责 stagger 子元素入场
 const CONTAINER_VARIANTS = {
-    hidden: { opacity: 0 },
+    hidden: {}, // 移除 opacity: 0，保持容器始终可见
     show: {
-        opacity: 1,
         transition: {
             staggerChildren: 0.06, // 错峰入场
             delayChildren: 0.1
@@ -48,19 +48,17 @@ const CONTAINER_VARIANTS = {
     }
 };
 
+// 内容入场动画：轻量化，只做透明度和位移
 const ITEM_VARIANTS = {
-    hidden: { opacity: 0, y: 20, scale: 0.98, filter: "blur(4px)" },
+    hidden: { opacity: 0, y: 16 }, // 移除 scale 和 blur，避免闪烁
     show: {
         opacity: 1,
         y: 0,
-        scale: 1,
-        filter: "blur(0px)",
         transition: SPRING_TRANSITION
     },
     exit: {
         opacity: 0,
-        scale: 0.95,
-        filter: "blur(4px)",
+        y: -8,
         transition: { duration: 0.2 }
     }
 };
