@@ -1611,377 +1611,384 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     // So it stops correctly at end of current fetch.
 
     return (
+        // 外层容器：处理布局和退出动画，但不设置 opacity
         <motion.div
             layout="position"
             layoutId={`tts-card-${card.id}`}
-            variants={ITEM_VARIANTS}
-            whileHover={{ scale: 1.02, transition: { type: "spring", stiffness: 400, damping: 25 } }}
-            whileTap={{ scale: 0.98 }}
-            exit="exit"
+            // 使用简化的退出动画（不影响入场透明度）
+            exit={{ scale: 0.95, opacity: 0, transition: { duration: 0.2 } }}
             className="group relative"
         >
             <GlassCard
                 className={cn(
                     "h-full p-6 transition-all bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05]",
-                    "hover:bg-rose-500/10 hover:shadow-rose-500/10 hover:scale-100" // Override CSS scale to let Motion handle it
+                    "hover:bg-rose-500/10 hover:shadow-rose-500/10 hover:scale-105"
                 )}
                 hoverEffect={true}
             >
-                {/* Visualizer Background */}
-                {(isPlaying && !currentAudio?.paused) && (
-                    <div className="absolute inset-0 z-0 opacity-20 pointer-events-none overflow-hidden">
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-32 flex items-center justify-center gap-1">
-                            {[...Array(12)].map((_, i) => (
-                                <motion.div
-                                    key={i}
-                                    className="w-1.5 bg-rose-400 rounded-full"
-                                    animate={{ height: [12, 32, 12] }}
-                                    transition={{
-                                        duration: 0.8,
-                                        repeat: Infinity,
-                                        delay: i * 0.1,
-                                        ease: "easeInOut"
-                                    }}
-                                />
-                            ))}
+                {/* 内部内容动画包裹器：参考统计页面的方案，GlassCard 保持始终可见，只有内容淡入 */}
+                <motion.div
+                    variants={ITEM_VARIANTS}
+                    initial="hidden"
+                    animate="show"
+                    className="relative"
+                >
+                    {/* Visualizer Background */}
+                    {(isPlaying && !currentAudio?.paused) && (
+                        <div className="absolute inset-0 z-0 opacity-20 pointer-events-none overflow-hidden">
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-32 flex items-center justify-center gap-1">
+                                {[...Array(12)].map((_, i) => (
+                                    <motion.div
+                                        key={i}
+                                        className="w-1.5 bg-rose-400 rounded-full"
+                                        animate={{ height: [12, 32, 12] }}
+                                        transition={{
+                                            duration: 0.8,
+                                            repeat: Infinity,
+                                            delay: i * 0.1,
+                                            ease: "easeInOut"
+                                        }}
+                                    />
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                <div className="relative z-10 flex flex-col h-full gap-4">
-                    {/* Header */}
-                    <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                                <h3 className="text-lg font-semibold text-white/90 leading-tight">
-                                    {card.title || "未命名卡片"}
-                                </h3>
-                                {/* Guidance Badge */}
-                                {card.guidance_level && GUIDANCE_BADGES[card.guidance_level] && (
-                                    <span className={cn(
-                                        "px-1.5 py-0.5 rounded border text-[10px]",
-                                        GUIDANCE_BADGES[card.guidance_level].color
-                                    )}>
-                                        {GUIDANCE_BADGES[card.guidance_level].label}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-white/40">
-                                <span className="bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
-                                    {card.voice_id}
-                                </span>
-                                <span>{card.rate || "Default"}</span>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            {/* 已合成标记 */}
-                            {hasCachedAudio && (
-                                <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs">
-                                    <Music className="w-3 h-3" />
-                                    <span>已合成</span>
+                    <div className="relative z-10 flex flex-col h-full gap-4">
+                        {/* Header */}
+                        <div className="flex items-start justify-between">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-lg font-semibold text-white/90 leading-tight">
+                                        {card.title || "未命名卡片"}
+                                    </h3>
+                                    {/* Guidance Badge */}
+                                    {card.guidance_level && GUIDANCE_BADGES[card.guidance_level] && (
+                                        <span className={cn(
+                                            "px-1.5 py-0.5 rounded border text-[10px]",
+                                            GUIDANCE_BADGES[card.guidance_level].color
+                                        )}>
+                                            {GUIDANCE_BADGES[card.guidance_level].label}
+                                        </span>
+                                    )}
                                 </div>
-                            )}
+                                <div className="flex items-center gap-2 text-xs text-white/40">
+                                    <span className="bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
+                                        {card.voice_id}
+                                    </span>
+                                    <span>{card.rate || "Default"}</span>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                {/* 已合成标记 */}
+                                {hasCachedAudio && (
+                                    <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs">
+                                        <Music className="w-3 h-3" />
+                                        <span>已合成</span>
+                                    </div>
+                                )}
 
-                            {/* 菜单按钮 */}
-                            <div className="relative">
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); triggerMedium(); setShowCardMenu(!showCardMenu); }}
-                                    className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors"
-                                >
-                                    <Edit2 className="w-4 h-4" />
-                                </button>
+                                {/* 菜单按钮 */}
+                                <div className="relative">
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); triggerMedium(); setShowCardMenu(!showCardMenu); }}
+                                        className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors"
+                                    >
+                                        <Edit2 className="w-4 h-4" />
+                                    </button>
 
-                                {/* 下拉菜单 */}
-                                <AnimatePresence>
-                                    {showCardMenu && (
-                                        <motion.div
-                                            initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                                            exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                                            className="absolute right-0 top-full mt-1 w-40 py-1 rounded-xl bg-zinc-900/95 border border-white/10 shadow-xl z-50"
-                                        >
-                                            {/* 合成音频 */}
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); triggerLight(); synthesizeAndDownload(); }}
-                                                disabled={isSynthesizing}
-                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                                    {/* 下拉菜单 */}
+                                    <AnimatePresence>
+                                        {showCardMenu && (
+                                            <motion.div
+                                                initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                                                className="absolute right-0 top-full mt-1 w-40 py-1 rounded-xl bg-zinc-900/95 border border-white/10 shadow-xl z-50"
                                             >
-                                                {isSynthesizing ? (
-                                                    <>
-                                                        <span className="animate-spin w-4 h-4 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full" />
-                                                        <span>{synthesizeProgress.current}/{synthesizeProgress.total}</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Music className="w-4 h-4 text-emerald-400" />
-                                                        <span>{hasCachedAudio ? '重新合成' : '合成音频'}</span>
-                                                    </>
+                                                {/* 合成音频 */}
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); triggerLight(); synthesizeAndDownload(); }}
+                                                    disabled={isSynthesizing}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                                                >
+                                                    {isSynthesizing ? (
+                                                        <>
+                                                            <span className="animate-spin w-4 h-4 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full" />
+                                                            <span>{synthesizeProgress.current}/{synthesizeProgress.total}</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Music className="w-4 h-4 text-emerald-400" />
+                                                            <span>{hasCachedAudio ? '重新合成' : '合成音频'}</span>
+                                                        </>
+                                                    )}
+                                                </button>
+
+                                                {/* 删除缓存 */}
+                                                {hasCachedAudio && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setShowCardMenu(false);
+                                                            setDeleteCacheConfirm(true); // 显示确认弹窗
+                                                        }}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-amber-400 hover:bg-white/10 transition-colors"
+                                                    >
+                                                        <RotateCcw className="w-4 h-4" />
+                                                        <span>删除缓存</span>
+                                                    </button>
                                                 )}
-                                            </button>
 
-                                            {/* 删除缓存 */}
-                                            {hasCachedAudio && (
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setShowCardMenu(false);
-                                                        setDeleteCacheConfirm(true); // 显示确认弹窗
-                                                    }}
-                                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-amber-400 hover:bg-white/10 transition-colors"
-                                                >
-                                                    <RotateCcw className="w-4 h-4" />
-                                                    <span>删除缓存</span>
-                                                </button>
-                                            )}
-
-                                            {/* 下载音频 */}
-                                            {hasCachedAudio && (
-                                                <button
-                                                    onClick={async (e) => {
-                                                        e.stopPropagation();
-                                                        setShowCardMenu(false);
-                                                        const blob = await getAudioCache(card.id);
-                                                        if (blob) {
-                                                            const filename = `${card.title || '未命名'}_合成音频.wav`;
-                                                            // 尝试使用 Web Share API (iOS 支持更好)
-                                                            if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'audio/wav' })] })) {
-                                                                try {
-                                                                    const file = new File([blob], filename, { type: 'audio/wav' });
-                                                                    await navigator.share({ files: [file], title: card.title || '冒想音频' });
-                                                                    return;
-                                                                } catch (err: any) {
-                                                                    // 用户取消分享或失败，回退到下载
-                                                                    if (err.name !== 'AbortError') console.warn('分享失败', err);
+                                                {/* 下载音频 */}
+                                                {hasCachedAudio && (
+                                                    <button
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            setShowCardMenu(false);
+                                                            const blob = await getAudioCache(card.id);
+                                                            if (blob) {
+                                                                const filename = `${card.title || '未命名'}_合成音频.wav`;
+                                                                // 尝试使用 Web Share API (iOS 支持更好)
+                                                                if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'audio/wav' })] })) {
+                                                                    try {
+                                                                        const file = new File([blob], filename, { type: 'audio/wav' });
+                                                                        await navigator.share({ files: [file], title: card.title || '冒想音频' });
+                                                                        return;
+                                                                    } catch (err: any) {
+                                                                        // 用户取消分享或失败，回退到下载
+                                                                        if (err.name !== 'AbortError') console.warn('分享失败', err);
+                                                                    }
                                                                 }
+                                                                // 回退: 标准下载 (iOS Safari 可能不工作)
+                                                                const url = URL.createObjectURL(blob);
+                                                                const a = document.createElement('a');
+                                                                a.href = url;
+                                                                a.download = filename;
+                                                                document.body.appendChild(a);
+                                                                a.click();
+                                                                document.body.removeChild(a);
+                                                                setTimeout(() => URL.revokeObjectURL(url), 100);
                                                             }
-                                                            // 回退: 标准下载 (iOS Safari 可能不工作)
-                                                            const url = URL.createObjectURL(blob);
-                                                            const a = document.createElement('a');
-                                                            a.href = url;
-                                                            a.download = filename;
-                                                            document.body.appendChild(a);
-                                                            a.click();
-                                                            document.body.removeChild(a);
-                                                            setTimeout(() => URL.revokeObjectURL(url), 100);
-                                                        }
-                                                    }}
-                                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sky-400 hover:bg-white/10 transition-colors"
+                                                        }}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-sky-400 hover:bg-white/10 transition-colors"
+                                                    >
+                                                        <Download className="w-4 h-4" />
+                                                        <span>下载/分享音频</span>
+                                                    </button>
+                                                )}
+
+                                                <div className="my-1 border-t border-white/10" />
+
+                                                {/* 编辑 */}
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setShowCardMenu(false); onEdit(card); }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
                                                 >
-                                                    <Download className="w-4 h-4" />
-                                                    <span>下载/分享音频</span>
+                                                    <Pencil className="w-4 h-4" />
+                                                    <span>编辑卡片</span>
                                                 </button>
-                                            )}
 
-                                            <div className="my-1 border-t border-white/10" />
+                                                {/* 删除 */}
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); triggerHeavy(); setShowCardMenu(false); onDelete(card.id); }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                    <span>删除卡片</span>
+                                                </button>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+                            </div>
+                        </div>
 
-                                            {/* 编辑 */}
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setShowCardMenu(false); onEdit(card); }}
-                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
-                                            >
-                                                <Pencil className="w-4 h-4" />
-                                                <span>编辑卡片</span>
-                                            </button>
+                        {/* Content Preview */}
+                        <div className="flex-1 min-h-[60px] max-h-[120px] overflow-y-auto custom-scrollbar my-2">
+                            <p className="text-sm text-white/70 leading-relaxed font-light whitespace-pre-wrap">
+                                {card.content}
+                            </p>
+                        </div>
 
-                                            {/* 删除 */}
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); triggerHeavy(); setShowCardMenu(false); onDelete(card.id); }}
-                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                                <span>删除卡片</span>
-                                            </button>
+                        {/* Control Bar */}
+                        <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); triggerLight(); togglePlay(); }}
+                                disabled={isBuffering || isSynthesizing || !hasCachedAudio}
+                                className={cn(
+                                    "flex items-center justify-center w-10 h-10 rounded-full transition-all border",
+                                    isSynthesizing
+                                        ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-300 cursor-wait"
+                                        : !hasCachedAudio
+                                            ? "bg-zinc-500/20 border-zinc-400/30 text-zinc-400 cursor-not-allowed"
+                                            : isBuffering
+                                                ? "bg-amber-500/20 border-amber-400/50 text-amber-300 cursor-wait"
+                                                : isPlaying
+                                                    ? "bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/30"
+                                                    : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20"
+                                )}
+                            >
+                                <AnimatePresence mode="wait">
+                                    {isSynthesizing ? (
+                                        <motion.div
+                                            key="synthesizing"
+                                            initial={{ opacity: 0, scale: 0.5 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.5 }}
+                                            className="flex gap-0.5 items-center justify-center"
+                                        >
+                                            {[0, 1, 2].map((i) => (
+                                                <motion.div
+                                                    key={i}
+                                                    className="w-1 bg-emerald-400 rounded-full"
+                                                    initial={{ height: 4 }}
+                                                    animate={{ height: [4, 12, 4] }}
+                                                    transition={{
+                                                        duration: 0.8,
+                                                        repeat: Infinity,
+                                                        delay: i * 0.15,
+                                                        ease: "easeInOut"
+                                                    }}
+                                                />
+                                            ))}
+                                        </motion.div>
+                                    ) : !hasCachedAudio ? (
+                                        <motion.div key="music" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
+                                            <Music className="w-4 h-4" />
+                                        </motion.div>
+                                    ) : isBuffering ? (
+                                        <motion.span
+                                            key="buffering"
+                                            className="animate-spin w-4 h-4 border-2 border-amber-300/30 border-t-amber-300 rounded-full"
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                        />
+                                    ) : isLoadingAudio ? (
+                                        <motion.span
+                                            key="loading"
+                                            className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                        />
+                                    ) : isPlaying ? (
+                                        <motion.div
+                                            key="pause"
+                                            initial={{ opacity: 0, scale: 0.5, rotate: -90 }}
+                                            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                                            exit={{ opacity: 0, scale: 0.5, rotate: 90 }}
+                                            transition={{ duration: 0.2 }}
+                                        >
+                                            <Pause className="w-4 h-4 fill-current" />
+                                        </motion.div>
+                                    ) : (
+                                        <motion.div
+                                            key="play"
+                                            initial={{ opacity: 0, scale: 0.5, rotate: 90 }}
+                                            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                                            exit={{ opacity: 0, scale: 0.5, rotate: -90 }}
+                                            transition={{ duration: 0.2 }}
+                                        >
+                                            <Play className="w-4 h-4 fill-current ml-0.5" />
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
-                            </div>
-                        </div>
-                    </div>
+                            </button>
 
-                    {/* Content Preview */}
-                    <div className="flex-1 min-h-[60px] max-h-[120px] overflow-y-auto custom-scrollbar my-2">
-                        <p className="text-sm text-white/70 leading-relaxed font-light whitespace-pre-wrap">
-                            {card.content}
-                        </p>
-                    </div>
-
-                    {/* Control Bar */}
-                    <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
-                        <button
-                            onClick={(e) => { e.stopPropagation(); triggerLight(); togglePlay(); }}
-                            disabled={isBuffering || isSynthesizing || !hasCachedAudio}
-                            className={cn(
-                                "flex items-center justify-center w-10 h-10 rounded-full transition-all border",
-                                isSynthesizing
-                                    ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-300 cursor-wait"
-                                    : !hasCachedAudio
-                                        ? "bg-zinc-500/20 border-zinc-400/30 text-zinc-400 cursor-not-allowed"
-                                        : isBuffering
-                                            ? "bg-amber-500/20 border-amber-400/50 text-amber-300 cursor-wait"
-                                            : isPlaying
-                                                ? "bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/30"
-                                                : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20"
+                            {/* 🚀 合成进度显示 */}
+                            {isSynthesizing && (
+                                <div className="flex items-center gap-2 text-xs text-emerald-300/80 animate-pulse">
+                                    <span className="font-medium">合成中...</span>
+                                    <span className="font-mono">{synthesizeProgress.current}/{synthesizeProgress.total}</span>
+                                </div>
                             )}
-                        >
-                            <AnimatePresence mode="wait">
-                                {isSynthesizing ? (
-                                    <motion.div
-                                        key="synthesizing"
-                                        initial={{ opacity: 0, scale: 0.5 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        exit={{ opacity: 0, scale: 0.5 }}
-                                        className="flex gap-0.5 items-center justify-center"
-                                    >
-                                        {[0, 1, 2].map((i) => (
-                                            <motion.div
-                                                key={i}
-                                                className="w-1 bg-emerald-400 rounded-full"
-                                                initial={{ height: 4 }}
-                                                animate={{ height: [4, 12, 4] }}
-                                                transition={{
-                                                    duration: 0.8,
-                                                    repeat: Infinity,
-                                                    delay: i * 0.15,
-                                                    ease: "easeInOut"
-                                                }}
-                                            />
-                                        ))}
-                                    </motion.div>
-                                ) : !hasCachedAudio ? (
-                                    <motion.div key="music" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
-                                        <Music className="w-4 h-4" />
-                                    </motion.div>
-                                ) : isBuffering ? (
-                                    <motion.span
-                                        key="buffering"
-                                        className="animate-spin w-4 h-4 border-2 border-amber-300/30 border-t-amber-300 rounded-full"
-                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                    />
-                                ) : isLoadingAudio ? (
-                                    <motion.span
-                                        key="loading"
-                                        className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
-                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                    />
-                                ) : isPlaying ? (
-                                    <motion.div
-                                        key="pause"
-                                        initial={{ opacity: 0, scale: 0.5, rotate: -90 }}
-                                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                                        exit={{ opacity: 0, scale: 0.5, rotate: 90 }}
-                                        transition={{ duration: 0.2 }}
-                                    >
-                                        <Pause className="w-4 h-4 fill-current" />
-                                    </motion.div>
-                                ) : (
-                                    <motion.div
-                                        key="play"
-                                        initial={{ opacity: 0, scale: 0.5, rotate: 90 }}
-                                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                                        exit={{ opacity: 0, scale: 0.5, rotate: -90 }}
-                                        transition={{ duration: 0.2 }}
-                                    >
-                                        <Play className="w-4 h-4 fill-current ml-0.5" />
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </button>
 
-                        {/* 🚀 合成进度显示 */}
-                        {isSynthesizing && (
-                            <div className="flex items-center gap-2 text-xs text-emerald-300/80 animate-pulse">
-                                <span className="font-medium">合成中...</span>
-                                <span className="font-mono">{synthesizeProgress.current}/{synthesizeProgress.total}</span>
-                            </div>
-                        )}
+                            {/* 🚀 缓冲进度显示 */}
+                            {isBuffering && (
+                                <div className="flex items-center gap-2 text-xs text-amber-300/80 animate-pulse">
+                                    <span className="font-medium">准备中...</span>
+                                    <span className="font-mono">{bufferProgress.loaded}/{bufferProgress.total}</span>
+                                </div>
+                            )}
 
-                        {/* 🚀 缓冲进度显示 */}
-                        {isBuffering && (
-                            <div className="flex items-center gap-2 text-xs text-amber-300/80 animate-pulse">
-                                <span className="font-medium">准备中...</span>
-                                <span className="font-mono">{bufferProgress.loaded}/{bufferProgress.total}</span>
-                            </div>
-                        )}
-
-                        <div className="flex-1 space-y-1.5">
-                            <div className="flex justify-between text-xs text-white/40 font-mono">
-                                {hasCachedAudio ? (
-                                    <span className="text-emerald-300">
-                                        {isPlaying ? "CACHED ▶" : "CACHED"}
-                                    </span>
-                                ) : isSynthesizing ? (
-                                    <span className="text-emerald-300">SYNTHESIZING</span>
-                                ) : (
-                                    <span className="text-zinc-400">待合成</span>
-                                )}
-                                {/* 时间显示 */}
+                            <div className="flex-1 space-y-1.5">
+                                <div className="flex justify-between text-xs text-white/40 font-mono">
+                                    {hasCachedAudio ? (
+                                        <span className="text-emerald-300">
+                                            {isPlaying ? "CACHED ▶" : "CACHED"}
+                                        </span>
+                                    ) : isSynthesizing ? (
+                                        <span className="text-emerald-300">SYNTHESIZING</span>
+                                    ) : (
+                                        <span className="text-zinc-400">待合成</span>
+                                    )}
+                                    {/* 时间显示 */}
+                                    {playbackProgress.duration > 0 ? (
+                                        <span>
+                                            {formatTime(playbackProgress.currentTime)} / {formatTime(playbackProgress.duration)}
+                                        </span>
+                                    ) : (
+                                        <span>
+                                            {audioDuration && hasCachedAudio ? formatTime(audioDuration) : "--:--"}
+                                        </span>
+                                    )}
+                                </div>
+                                {/* Progress Bar - 可拖动 */}
                                 {playbackProgress.duration > 0 ? (
-                                    <span>
-                                        {formatTime(playbackProgress.currentTime)} / {formatTime(playbackProgress.duration)}
-                                    </span>
+                                    <div className="relative h-6 flex items-center group">
+                                        {/* 背景轨道 */}
+                                        <div className="absolute left-0 right-0 h-1.5 bg-white/10 rounded-full" />
+                                        {/* 已播放部分 */}
+                                        <div
+                                            className="absolute left-0 h-1.5 bg-gradient-to-r from-rose-500 to-amber-500 rounded-full pointer-events-none"
+                                            style={{ width: `${(playbackProgress.currentTime / playbackProgress.duration) * 100}%` }}
+                                        />
+                                        {/* 拖动滑块 */}
+                                        <input
+                                            type="range"
+                                            min={0}
+                                            max={playbackProgress.duration}
+                                            step={0.1}
+                                            value={playbackProgress.currentTime}
+                                            onChange={(e) => {
+                                                e.stopPropagation();
+                                                const time = parseFloat(e.target.value);
+                                                seekTo(time);
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="absolute left-0 right-0 h-6 opacity-0 cursor-pointer z-10"
+                                            title="拖动调整播放位置"
+                                        />
+                                        {/* 拖动手柄 */}
+                                        <div
+                                            className="absolute w-3 h-3 bg-white rounded-full shadow-lg transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                                            style={{ left: `${(playbackProgress.currentTime / playbackProgress.duration) * 100}%` }}
+                                        />
+                                    </div>
                                 ) : (
-                                    <span>
-                                        {audioDuration && hasCachedAudio ? formatTime(audioDuration) : "--:--"}
-                                    </span>
+                                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                        <motion.div
+                                            className="h-full bg-gradient-to-r from-rose-500 to-amber-500"
+                                            layout
+                                            transition={{ duration: 0.1 }}
+                                            style={{ width: `${audioQueue.length > 0 ? 100 : 0}%` }}
+                                        />
+                                    </div>
                                 )}
                             </div>
-                            {/* Progress Bar - 可拖动 */}
-                            {playbackProgress.duration > 0 ? (
-                                <div className="relative h-6 flex items-center group">
-                                    {/* 背景轨道 */}
-                                    <div className="absolute left-0 right-0 h-1.5 bg-white/10 rounded-full" />
-                                    {/* 已播放部分 */}
-                                    <div
-                                        className="absolute left-0 h-1.5 bg-gradient-to-r from-rose-500 to-amber-500 rounded-full pointer-events-none"
-                                        style={{ width: `${(playbackProgress.currentTime / playbackProgress.duration) * 100}%` }}
-                                    />
-                                    {/* 拖动滑块 */}
-                                    <input
-                                        type="range"
-                                        min={0}
-                                        max={playbackProgress.duration}
-                                        step={0.1}
-                                        value={playbackProgress.currentTime}
-                                        onChange={(e) => {
-                                            e.stopPropagation();
-                                            const time = parseFloat(e.target.value);
-                                            seekTo(time);
-                                        }}
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="absolute left-0 right-0 h-6 opacity-0 cursor-pointer z-10"
-                                        title="拖动调整播放位置"
-                                    />
-                                    {/* 拖动手柄 */}
-                                    <div
-                                        className="absolute w-3 h-3 bg-white rounded-full shadow-lg transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                                        style={{ left: `${(playbackProgress.currentTime / playbackProgress.duration) * 100}%` }}
-                                    />
-                                </div>
-                            ) : (
-                                <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                                    <motion.div
-                                        className="h-full bg-gradient-to-r from-rose-500 to-amber-500"
-                                        layout
-                                        transition={{ duration: 0.1 }}
-                                        style={{ width: `${audioQueue.length > 0 ? 100 : 0}%` }}
-                                    />
-                                </div>
-                            )}
-                        </div>
 
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setIsPlaying(false);
-                                if (currentAudio) currentAudio.pause();
-                                setAudioQueue([]);
-                            }}
-                            className="p-2 hover:bg-white/10 rounded-full text-white/40 hover:text-white transition-colors"
-                        >
-                            <RotateCw className="w-4 h-4" />
-                        </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsPlaying(false);
+                                    if (currentAudio) currentAudio.pause();
+                                    setAudioQueue([]);
+                                }}
+                                className="p-2 hover:bg-white/10 rounded-full text-white/40 hover:text-white transition-colors"
+                            >
+                                <RotateCw className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
-                </div>
+                </motion.div>
             </GlassCard>
 
             {/* 删除缓存确认弹窗 (iOS兼容) */}
