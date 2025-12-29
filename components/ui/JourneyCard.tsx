@@ -1,7 +1,38 @@
 import React, { useMemo } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import { ChevronRight, Calendar, Sparkles, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// 🍎 苹果风格弹簧动画
+const SPRING_BOUNCY = {
+    type: "spring",
+    stiffness: 300,
+    damping: 20,
+    mass: 1
+} as const;
+
+// 内容入场动画容器
+const CONTENT_CONTAINER = {
+    hidden: {},
+    show: {
+        transition: {
+            staggerChildren: 0.1,
+            delayChildren: 0.2
+        }
+    }
+};
+
+// 单个元素入场动画
+const CONTENT_ITEM = {
+    hidden: { opacity: 0, y: 20, scale: 0.95 },
+    show: {
+        opacity: 1,
+        y: 0,
+        scale: 1,
+        transition: SPRING_BOUNCY
+    }
+};
 
 interface JourneyCardProps {
     days: number;
@@ -121,11 +152,16 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                     }}
                 />
 
-                {/* --- CONTENT LAYER --- */}
-                <div className="relative z-10 flex flex-col h-full p-6 justify-between text-white">
+                {/* --- CONTENT LAYER with Stagger Animation --- */}
+                <motion.div
+                    variants={CONTENT_CONTAINER}
+                    initial="hidden"
+                    animate="show"
+                    className="relative z-10 flex flex-col h-full p-6 justify-between text-white"
+                >
 
                     {/* Header */}
-                    <div className="flex items-center justify-between">
+                    <motion.div variants={CONTENT_ITEM} className="flex items-center justify-between">
                         <div className="flex flex-col">
                             <h3 className="text-xs font-bold tracking-[0.2em] text-white/90 uppercase drop-shadow-sm font-sans">Journey</h3>
                         </div>
@@ -147,10 +183,10 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                                 <span className="text-[10px] font-bold text-white tracking-wide">Day {days}</span>
                             </div>
                         </div>
-                    </div>
+                    </motion.div>
 
                     {/* Stats - Balanced Layout */}
-                    <div className="flex items-center justify-between mt-4 mb-6">
+                    <motion.div variants={CONTENT_ITEM} className="flex items-center justify-between mt-4 mb-6">
                         {/* Big Number */}
                         <div className="flex flex-col justify-center">
                             <span
@@ -246,40 +282,42 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                                 <span className="text-[9px] font-bold text-white/50 uppercase tracking-widest mt-1">Today</span>
                             </div>
                         </div>
-                    </div>
+                    </motion.div>
 
-                    {/* CTA Button - Pure CSS */}
-                    <Link href="/practice" className="w-full relative group/btn block isolate">
-                        {/* Glow */}
-                        <div className="absolute -inset-0.5 rounded-2xl blur-md opacity-30 group-hover/btn:opacity-70 transition-opacity duration-500 bg-emerald-400" />
+                    {/* CTA Button - With Animation */}
+                    <motion.div variants={CONTENT_ITEM}>
+                        <Link href="/practice" className="w-full relative group/btn block isolate">
+                            {/* Glow */}
+                            <div className="absolute -inset-0.5 rounded-2xl blur-md opacity-30 group-hover/btn:opacity-70 transition-opacity duration-500 bg-emerald-400" />
 
-                        {/* Glass Body */}
-                        <div
-                            className="relative h-16 overflow-hidden rounded-2xl bg-white/15 backdrop-blur-xl border border-white/30 transition-transform duration-200 active:scale-[0.98]"
-                            style={{ boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.4)' }}
-                        >
-                            {/* Shine - Pure CSS Animation */}
+                            {/* Glass Body */}
                             <div
-                                className="absolute inset-0 -skew-x-20 animate-button-shine pointer-events-none"
-                                style={{
-                                    background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%)',
-                                }}
-                            />
+                                className="relative h-16 overflow-hidden rounded-2xl bg-white/15 backdrop-blur-xl border border-white/30 transition-transform duration-200 active:scale-[0.98]"
+                                style={{ boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.4)' }}
+                            >
+                                {/* Shine - Pure CSS Animation */}
+                                <div
+                                    className="absolute inset-0 -skew-x-20 animate-button-shine pointer-events-none"
+                                    style={{
+                                        background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%)',
+                                    }}
+                                />
 
-                            <div className="relative h-full flex items-center justify-between px-6 z-10">
-                                <div className="flex flex-col justify-center">
-                                    <span className="text-white font-bold text-[15px] tracking-wide drop-shadow-sm flex items-center gap-2 group-hover/btn:translate-x-1 transition-transform">
-                                        <Sparkles className="w-3.5 h-3.5 text-emerald-200 fill-emerald-200" />
-                                        Start Practice
-                                    </span>
-                                </div>
-                                <div className="bg-white/15 p-2.5 rounded-full backdrop-blur-md border border-white/25 shadow-sm group-hover/btn:bg-white/25 transition-colors">
-                                    <ChevronRight className="w-5 h-5 text-white" strokeWidth={3} />
+                                <div className="relative h-full flex items-center justify-between px-6 z-10">
+                                    <div className="flex flex-col justify-center">
+                                        <span className="text-white font-bold text-[15px] tracking-wide drop-shadow-sm flex items-center gap-2 group-hover/btn:translate-x-1 transition-transform">
+                                            <Sparkles className="w-3.5 h-3.5 text-emerald-200 fill-emerald-200" />
+                                            Start Practice
+                                        </span>
+                                    </div>
+                                    <div className="bg-white/15 p-2.5 rounded-full backdrop-blur-md border border-white/25 shadow-sm group-hover/btn:bg-white/25 transition-colors">
+                                        <ChevronRight className="w-5 h-5 text-white" strokeWidth={3} />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </Link>
-                </div>
+                        </Link>
+                    </motion.div>
+                </motion.div>
             </div>
 
             {/* CSS Animations */}
@@ -299,6 +337,6 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                     animation: button-shine 6s ease-in-out infinite;
                 }
             `}</style>
-        </div>
+        </div >
     );
 }
