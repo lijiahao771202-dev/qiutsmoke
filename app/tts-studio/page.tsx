@@ -27,34 +27,87 @@ const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
 };
 
 // -----------------------------------------------------------------------------
-// Animation Constants (Apple Spring Physics)
+// Animation Constants (Apple Spring Physics - Premium Edition)
 // -----------------------------------------------------------------------------
 
-const SPRING_TRANSITION = {
+// 🍎 苹果经典弹簧：高刚度 + 适中阻尼 = 灵敏而不弹跳
+const SPRING_SNAPPY = {
     type: "spring",
-    stiffness: 400,
-    damping: 30, // 苹果经典的阻尼感
+    stiffness: 500,
+    damping: 35,
+    mass: 0.8
+} as const;
+
+// 🍎 柔和弹簧：低刚度 = 优雅缓慢
+const SPRING_GENTLE = {
+    type: "spring",
+    stiffness: 200,
+    damping: 25,
     mass: 1
 } as const;
 
-// 容器动画：不设置 opacity，只负责 stagger 子元素入场
+// 🍎 弹性弹簧：有明显弹跳感
+const SPRING_BOUNCY = {
+    type: "spring",
+    stiffness: 300,
+    damping: 20,
+    mass: 1
+} as const;
+
+// 页面整体入场：从下方轻微滑入
+const PAGE_VARIANTS = {
+    hidden: { y: 20 },
+    show: {
+        y: 0,
+        transition: {
+            ...SPRING_GENTLE,
+            staggerChildren: 0.08,
+            delayChildren: 0.15
+        }
+    }
+};
+
+// 容器动画：保持始终可见，只负责 stagger 子元素
 const CONTAINER_VARIANTS = {
-    hidden: {}, // 移除 opacity: 0，保持容器始终可见
+    hidden: {},
     show: {
         transition: {
-            staggerChildren: 0.06, // 错峰入场
+            staggerChildren: 0.08,
             delayChildren: 0.1
         }
     }
 };
 
-// 内容入场动画：轻量化，只做透明度和位移
-const ITEM_VARIANTS = {
-    hidden: { opacity: 0, y: 16 }, // 移除 scale 和 blur，避免闪烁
+// 🌟 卡片内容入场动画：弹性 + 渐显 + 微模糊（应用在内容层，不影响卡片背景）
+const CARD_CONTENT_VARIANTS = {
+    hidden: {
+        opacity: 0,
+        y: 24,
+        scale: 0.96,
+        filter: "blur(8px)"
+    },
     show: {
         opacity: 1,
         y: 0,
-        transition: SPRING_TRANSITION
+        scale: 1,
+        filter: "blur(0px)",
+        transition: SPRING_BOUNCY
+    },
+    exit: {
+        opacity: 0,
+        y: -12,
+        scale: 0.98,
+        transition: { duration: 0.25, ease: "easeOut" }
+    }
+};
+
+// 🎯 简化版内容动画（用于已经有复杂内部动画的组件）
+const ITEM_VARIANTS = {
+    hidden: { opacity: 0, y: 16 },
+    show: {
+        opacity: 1,
+        y: 0,
+        transition: SPRING_SNAPPY
     },
     exit: {
         opacity: 0,
@@ -242,7 +295,7 @@ ${densityRule}
                         </h2>
                         <motion.div
                             animate={{ rotate: isCollapsed ? 0 : 180 }}
-                            transition={SPRING_TRANSITION}
+                            transition={SPRING_SNAPPY}
                             className="text-rose-300/60 hover:text-rose-300/90 transition-colors"
                         >
                             <ChevronDown className="w-5 h-5" />
@@ -270,7 +323,7 @@ ${densityRule}
                                 initial={{ opacity: 0, height: 0 }}
                                 animate={{ opacity: 1, height: "auto" }}
                                 exit={{ opacity: 0, height: 0 }}
-                                transition={{ ...SPRING_TRANSITION, opacity: { duration: 0.2 } }}
+                                transition={{ ...SPRING_GENTLE, opacity: { duration: 0.2 } }}
                                 className="overflow-hidden"
                             >
                                 <div className="space-y-4 pt-4">
@@ -1606,24 +1659,30 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     // So it stops correctly at end of current fetch.
 
     return (
-        // 外层容器：处理布局和退出动画，但不设置 opacity
+        // 外层容器：处理布局、hover 交互和退出动画
         <motion.div
             layout="position"
             layoutId={`tts-card-${card.id}`}
-            // 使用简化的退出动画（不影响入场透明度）
-            exit={{ scale: 0.95, opacity: 0, transition: { duration: 0.2 } }}
+            // 🍎 高级 hover 交互：轻微缩放 + 弹性过渡
+            whileHover={{
+                scale: 1.02,
+                transition: SPRING_SNAPPY
+            }}
+            whileTap={{ scale: 0.98 }}
+            // 退出动画
+            exit={{ scale: 0.95, opacity: 0, transition: { duration: 0.25, ease: "easeOut" } }}
             className="group relative"
         >
             <GlassCard
                 className={cn(
                     "h-full p-6 transition-all bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05]",
-                    "hover:bg-rose-500/10 hover:shadow-rose-500/10 hover:scale-105"
+                    "hover:bg-rose-500/10 hover:shadow-lg hover:shadow-rose-500/10"
                 )}
                 hoverEffect={true}
             >
-                {/* 内部内容动画包裹器：参考统计页面的方案，GlassCard 保持始终可见，只有内容淡入 */}
+                {/* 🌟 内部内容动画包裹器：使用高级弹性动画，GlassCard 背景始终可见 */}
                 <motion.div
-                    variants={ITEM_VARIANTS}
+                    variants={CARD_CONTENT_VARIANTS}
                     initial="hidden"
                     animate="show"
                     className="relative"
