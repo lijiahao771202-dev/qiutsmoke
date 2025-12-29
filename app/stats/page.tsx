@@ -44,9 +44,8 @@ export default function StatsPage() {
     const { sessions, isLoading: loading } = useMeditationSessions(monthStr);
 
     const containerVariants = {
-        hidden: { opacity: 0 },
+        hidden: {},
         visible: {
-            opacity: 1,
             transition: {
                 staggerChildren: 0.1
             }
@@ -103,8 +102,8 @@ export default function StatsPage() {
             {/* Background handled by global layout */}
 
             <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+                initial={{ y: 20 }}
+                animate={{ y: 0 }}
                 transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
                 className="max-w-4xl mx-auto space-y-8 relative z-10"
             >
@@ -136,153 +135,153 @@ export default function StatsPage() {
                 {/* Calendar Section */}
                 <div className="grid md:grid-cols-3 gap-8">
                     {/* Calendar */}
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.6, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                        layout
-                        className="md:col-span-2"
-                    >
+                    <div className="md:col-span-2">
                         <GlassCard className="h-full p-6 relative overflow-hidden bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02]">
-                            {/* Shine effect handled by GlassCard */}
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.98 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ duration: 0.6, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                            >
+                                {/* Shine effect handled by GlassCard */}
 
-                            <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-xl font-light text-white/80">
-                                    {currentDate.getFullYear()}年 {MONTH_NAMES[currentDate.getMonth()]}
-                                </h2>
-                                <div className="flex gap-2">
-                                    <button onClick={prevMonth} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/60 hover:text-white">
-                                        <ChevronLeft className="w-5 h-5" />
-                                    </button>
-                                    <button onClick={nextMonth} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/60 hover:text-white">
-                                        <ChevronRight className="w-5 h-5" />
-                                    </button>
+                                <div className="flex items-center justify-between mb-6">
+                                    <h2 className="text-xl font-light text-white/80">
+                                        {currentDate.getFullYear()}年 {MONTH_NAMES[currentDate.getMonth()]}
+                                    </h2>
+                                    <div className="flex gap-2">
+                                        <button onClick={prevMonth} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/60 hover:text-white">
+                                            <ChevronLeft className="w-5 h-5" />
+                                        </button>
+                                        <button onClick={nextMonth} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/60 hover:text-white">
+                                            <ChevronRight className="w-5 h-5" />
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                                {["日", "一", "二", "三", "四", "五", "六"].map(d => (
-                                    <div key={d} className="text-xs text-white/30 py-2">{d}</div>
-                                ))}
-                            </div>
+                                <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                                    {["日", "一", "二", "三", "四", "五", "六"].map(d => (
+                                        <div key={d} className="text-xs text-white/30 py-2">{d}</div>
+                                    ))}
+                                </div>
 
-                            <div className="grid grid-cols-7 gap-2">
-                                {/* Empty slots for start of month */}
-                                {Array.from({ length: firstDay }).map((_, i) => (
-                                    <div key={`empty-${i}`} />
-                                ))}
+                                <div className="grid grid-cols-7 gap-2">
+                                    {/* Empty slots for start of month */}
+                                    {Array.from({ length: firstDay }).map((_, i) => (
+                                        <div key={`empty-${i}`} />
+                                    ))}
 
-                                {/* Days */}
-                                {Array.from({ length: daysInMonth }).map((_, i) => {
-                                    const day = i + 1;
-                                    const sessionCount = sessionsByDay[day]?.length || 0;
-                                    const isSelected = isSelectedInView && selectedDate.getDate() === day;
-                                    const isToday = new Date().getDate() === day && new Date().getMonth() === currentDate.getMonth() && new Date().getFullYear() === currentDate.getFullYear();
+                                    {/* Days */}
+                                    {Array.from({ length: daysInMonth }).map((_, i) => {
+                                        const day = i + 1;
+                                        const sessionCount = sessionsByDay[day]?.length || 0;
+                                        const isSelected = isSelectedInView && selectedDate.getDate() === day;
+                                        const isToday = new Date().getDate() === day && new Date().getMonth() === currentDate.getMonth() && new Date().getFullYear() === currentDate.getFullYear();
 
-                                    return (
-                                        <motion.button
-                                            key={day}
-                                            initial={{ opacity: 0, scale: 0.8 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            transition={{ delay: 0.6 + (i * 0.01), duration: 0.3 }}
-                                            whileHover={{ scale: 1.1, zIndex: 10 }}
-                                            whileTap={{ scale: 0.95 }}
-                                            onClick={() => {
-                                                const newDate = new Date(currentDate);
-                                                newDate.setDate(day);
-                                                setSelectedDate(newDate);
-                                            }}
-                                            className={cn(
-                                                "aspect-square rounded-[1rem] flex flex-col items-center justify-center relative transition-all duration-300",
-                                                isSelected
-                                                    ? "bg-rose-500/20 shadow-[inset_0_0_0_1px_rgba(251,113,133,0.4),0_0_20px_rgba(244,63,94,0.3)] backdrop-blur-md"
-                                                    : "hover:bg-white/10 hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)]",
-                                                isToday && !isSelected && "bg-white/5 ring-1 ring-white/10"
-                                            )}
-                                        >
-                                            <span className={cn(
-                                                "text-sm z-10 transition-colors",
-                                                isSelected ? "text-white font-medium drop-shadow-md" : "text-white/60 font-light"
-                                            )}>{day}</span>
+                                        return (
+                                            <motion.button
+                                                key={day}
+                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                transition={{ delay: 0.6 + (i * 0.01), duration: 0.3 }}
+                                                whileHover={{ scale: 1.1, zIndex: 10 }}
+                                                whileTap={{ scale: 0.95 }}
+                                                onClick={() => {
+                                                    const newDate = new Date(currentDate);
+                                                    newDate.setDate(day);
+                                                    setSelectedDate(newDate);
+                                                }}
+                                                className={cn(
+                                                    "aspect-square rounded-[1rem] flex flex-col items-center justify-center relative transition-all duration-300",
+                                                    isSelected
+                                                        ? "bg-rose-500/20 shadow-[inset_0_0_0_1px_rgba(251,113,133,0.4),0_0_20px_rgba(244,63,94,0.3)] backdrop-blur-md"
+                                                        : "hover:bg-white/10 hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)]",
+                                                    isToday && !isSelected && "bg-white/5 ring-1 ring-white/10"
+                                                )}
+                                            >
+                                                <span className={cn(
+                                                    "text-sm z-10 transition-colors",
+                                                    isSelected ? "text-white font-medium drop-shadow-md" : "text-white/60 font-light"
+                                                )}>{day}</span>
 
-                                            {sessionCount > 0 && (
-                                                <div className="mt-1 flex gap-0.5">
-                                                    <div className={cn("w-1 h-1 rounded-full transition-all", isSelected ? 'bg-rose-300 shadow-[0_0_8px_rgba(253,164,175,0.8)]' : 'bg-rose-500/70')} />
-                                                    {sessionCount > 1 && <div className={cn("w-1 h-1 rounded-full transition-all", isSelected ? 'bg-rose-300 shadow-[0_0_8px_rgba(253,164,175,0.8)]' : 'bg-rose-500/70')} />}
-                                                </div>
-                                            )}
-                                        </motion.button>
-                                    );
-                                })}
-                            </div>
+                                                {sessionCount > 0 && (
+                                                    <div className="mt-1 flex gap-0.5">
+                                                        <div className={cn("w-1 h-1 rounded-full transition-all", isSelected ? 'bg-rose-300 shadow-[0_0_8px_rgba(253,164,175,0.8)]' : 'bg-rose-500/70')} />
+                                                        {sessionCount > 1 && <div className={cn("w-1 h-1 rounded-full transition-all", isSelected ? 'bg-rose-300 shadow-[0_0_8px_rgba(253,164,175,0.8)]' : 'bg-rose-500/70')} />}
+                                                    </div>
+                                                )}
+                                            </motion.button>
+                                        );
+                                    })}
+                                </div>
+                            </motion.div>
                         </GlassCard>
-                    </motion.div>
+                    </div>
 
                     {/* Daily List */}
-                    <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.6, delay: 0.7, ease: [0.22, 1, 0.36, 1] }}
-                        layout
-                        className="md:h-full min-h-[300px]"
-                    >
+                    <div className="md:h-full min-h-[300px]">
                         <GlassCard className="h-full p-6 relative bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02]">
-                            <h3 className="text-lg font-light text-white/80 mb-4 flex items-center gap-2">
-                                <CalendarIcon className="w-4 h-4 text-rose-400" />
-                                {selectedDate.getMonth() + 1}月{selectedDate.getDate()}日
-                            </h3>
+                            <motion.div
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ duration: 0.6, delay: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                            >
+                                <h3 className="text-lg font-light text-white/80 mb-4 flex items-center gap-2">
+                                    <CalendarIcon className="w-4 h-4 text-rose-400" />
+                                    {selectedDate.getMonth() + 1}月{selectedDate.getDate()}日
+                                </h3>
 
-                            <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-                                <AnimatePresence mode="wait">
-                                    {isSelectedInView && selectedDaySessions.length === 0 ? (
-                                        <motion.div
-                                            key="empty"
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            exit={{ opacity: 0 }}
-                                            className="text-white/20 text-center py-12 text-sm"
-                                        >
-                                            今日未冥想
-                                        </motion.div>
-                                    ) : (!isSelectedInView ? (
-                                        <motion.div
-                                            key="unselected"
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            exit={{ opacity: 0 }}
-                                            className="text-white/20 text-center py-12 text-sm"
-                                        >
-                                            请选择日期
-                                        </motion.div>
-                                    ) : (
-                                        <motion.div
-                                            key="list"
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            exit={{ opacity: 0 }}
-                                            className="space-y-3"
-                                        >
-                                            {selectedDaySessions.map(session => (
-                                                <motion.div
-                                                    key={session.id}
-                                                    layout
-                                                    initial={{ opacity: 0, y: 10 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    className="bg-white/5 rounded-2xl p-4 border border-white/5"
-                                                >
-                                                    <div className="text-white/90 font-medium mb-1">{session.topic_name || "自由冥想"}</div>
-                                                    <div className="flex justify-between text-xs text-white/40">
-                                                        <span>{new Date(session.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                        <span>{session.duration_seconds ? `${Math.round(session.duration_seconds / 60)} 分钟` : '未完成'}</span>
-                                                    </div>
-                                                </motion.div>
-                                            ))}
-                                        </motion.div>
-                                    ))}
-                                </AnimatePresence>
-                            </div>
+                                <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                                    <AnimatePresence mode="wait">
+                                        {isSelectedInView && selectedDaySessions.length === 0 ? (
+                                            <motion.div
+                                                key="empty"
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                exit={{ opacity: 0 }}
+                                                className="text-white/20 text-center py-12 text-sm"
+                                            >
+                                                今日未冥想
+                                            </motion.div>
+                                        ) : (!isSelectedInView ? (
+                                            <motion.div
+                                                key="unselected"
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                exit={{ opacity: 0 }}
+                                                className="text-white/20 text-center py-12 text-sm"
+                                            >
+                                                请选择日期
+                                            </motion.div>
+                                        ) : (
+                                            <motion.div
+                                                key="list"
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                exit={{ opacity: 0 }}
+                                                className="space-y-3"
+                                            >
+                                                {selectedDaySessions.map(session => (
+                                                    <motion.div
+                                                        key={session.id}
+                                                        layout
+                                                        initial={{ opacity: 0, y: 10 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        className="bg-white/5 rounded-2xl p-4 border border-white/5"
+                                                    >
+                                                        <div className="text-white/90 font-medium mb-1">{session.topic_name || "自由冥想"}</div>
+                                                        <div className="flex justify-between text-xs text-white/40">
+                                                            <span>{new Date(session.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                            <span>{session.duration_seconds ? `${Math.round(session.duration_seconds / 60)} 分钟` : '未完成'}</span>
+                                                        </div>
+                                                    </motion.div>
+                                                ))}
+                                            </motion.div>
+                                        ))}
+                                    </AnimatePresence>
+                                </div>
+                            </motion.div>
                         </GlassCard>
-                    </motion.div>
+                    </div>
                 </div>
             </motion.div>
         </div>
