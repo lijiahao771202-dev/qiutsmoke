@@ -69,7 +69,7 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                         style={{
                             transformStyle: "preserve-3d",
                             zIndex: 100 - Math.abs(offset), // Center item on top
-                            pointerEvents: isVisible ? (isActive ? "auto" : "none") : "none", // Only active card is clickable
+                            pointerEvents: isVisible ? "auto" : "none", // Allow interaction on all visible cards
                         }}
                         initial={false}
                         animate={{
@@ -80,20 +80,24 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                             rotateZ: rotateZ,
                             scale: scale,
                             opacity: opacity,
-                            // blur removed for performance
                         }}
+                        whileHover={isActive ? { scale: 1.02 } : { scale: scale * 1.03, y: yOffset - 10 }}
+                        whileTap={{ scale: 0.98 }}
                         transition={{
                             type: "spring",
-                            stiffness: 120, // Softer spring for "floaty" feel
-                            damping: 20,
-                            mass: 1.2
+                            stiffness: 400,
+                            damping: 30,
+                            mass: 1
                         }}
                         drag={isActive ? "x" : false}
                         dragConstraints={{ left: 0, right: 0 }}
-                        dragElastic={0.05} // Stiffer drag resistance
+                        dragElastic={0.1}
                         onDragEnd={onDragEnd}
                         onClick={() => {
-                            if (!isActive && isVisible) setCurrentIndex(index);
+                            if (!isActive && isVisible) {
+                                triggerLight();
+                                setCurrentIndex(index);
+                            }
                         }}
                     >
                         {/* Zero-G Floating Container */}

@@ -1,7 +1,7 @@
 "use client";
 
 import { CardStack } from "../components/ui/CardStack";
-
+import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 
@@ -13,6 +13,35 @@ import PulseCard from "@/components/ui/PulseCard";
 
 
 // MILESTONES removed (moved to JourneyCard)
+// Animation Constants (Apple Spring Physics)
+const SPRING_TRANSITION = {
+  type: "spring",
+  stiffness: 400,
+  damping: 30,
+  mass: 1
+} as const;
+
+const CONTAINER_VARIANTS = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.2
+    }
+  }
+};
+
+const ITEM_VARIANTS = {
+  hidden: { opacity: 0, y: 30, scale: 0.95, filter: "blur(10px)" },
+  show: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    filter: "blur(0px)",
+    transition: SPRING_TRANSITION
+  }
+};
 
 export default function Home() {
   const [days, setDays] = useState(0);
@@ -73,10 +102,21 @@ export default function Home() {
       {!isSessionsLoading && lotusRecords.length > 0 && <LotusGarden records={lotusRecords} streakDays={Math.min(7, lotusRecords.length)} />}
 
       {/* Main Content Container */}
-      <main className="relative z-10 flex flex-col px-6 pt-10 pb-24 mx-auto w-full max-w-md h-full justify-around gap-2">
+      <motion.main
+        variants={CONTAINER_VARIANTS}
+        initial="hidden"
+        animate="show"
+        className="relative z-10 flex flex-col px-6 pt-10 pb-24 mx-auto w-full max-w-md h-full justify-around gap-2"
+      >
 
         {/* --- Block 1: Header & Status --- */}
-        <div className="flex flex-col items-center justify-center relative shrink-0">
+        <motion.div
+          variants={ITEM_VARIANTS}
+          className="flex flex-col items-center justify-center relative shrink-0"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          transition={SPRING_TRANSITION}
+        >
 
           {/* Days Counter Block */}
           <div className="relative text-center z-10 group cursor-pointer" onClick={() => triggerMedium()}>
@@ -95,13 +135,13 @@ export default function Home() {
               <span className="text-xl font-medium text-white/80 tracking-[0.2em] uppercase">Check-in Days</span>
             </div>
           </div>
-        </div>
+        </motion.div>
 
 
 
 
         {/* --- Card Queue: Swipeable Stack --- */}
-        <div className="w-full h-[18rem] relative z-20">
+        <motion.div variants={ITEM_VARIANTS} className="w-full h-[18rem] relative z-20">
           <CardStack>
             {/* Card 1: Main Dashboard (Command Center) */}
             <div className="w-full h-full">
@@ -120,9 +160,9 @@ export default function Home() {
 
 
           </CardStack>
-        </div>
+        </motion.div>
 
-      </main>
+      </motion.main>
     </div>
   );
 }
