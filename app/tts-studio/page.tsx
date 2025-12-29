@@ -72,32 +72,38 @@ const CONTAINER_VARIANTS = {
     hidden: {},
     show: {
         transition: {
-            staggerChildren: 0.08,
+            staggerChildren: 0.15, // 🌟 增加延迟，让逐个出现更明显
             delayChildren: 0.1
         }
     }
 };
 
-// 🌟 卡片内容入场动画：弹性 + 渐显 + 微模糊（应用在内容层，不影响卡片背景）
-const CARD_CONTENT_VARIANTS = {
-    hidden: {
-        opacity: 0,
-        y: 24,
-        scale: 0.96,
-        filter: "blur(8px)"
-    },
+// 🎯 卡片外层动画：只控制位置，不影响透明度（保持 GlassCard 背景完整）
+const CARD_WRAPPER_VARIANTS = {
+    hidden: { y: 30 },
     show: {
-        opacity: 1,
         y: 0,
-        scale: 1,
-        filter: "blur(0px)",
         transition: SPRING_BOUNCY
     },
     exit: {
+        y: -20,
         opacity: 0,
-        y: -12,
-        scale: 0.98,
         transition: { duration: 0.25, ease: "easeOut" }
+    }
+};
+
+// 🌟 卡片内容入场动画：弹性 + 渐显 + 微模糊（只应用在内容层，保持卡片背景完整）
+const CARD_CONTENT_VARIANTS = {
+    hidden: {
+        opacity: 0,
+        scale: 0.98,
+        filter: "blur(6px)"
+    },
+    show: {
+        opacity: 1,
+        scale: 1,
+        filter: "blur(0px)",
+        transition: { ...SPRING_BOUNCY, delay: 0.1 } // 内容稍微延迟，先显示卡片背景
     }
 };
 
@@ -1663,8 +1669,8 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         <motion.div
             layout="position"
             layoutId={`tts-card-${card.id}`}
-            // 🌟 继承父容器的 variants 用于 stagger 效果
-            variants={CARD_CONTENT_VARIANTS}
+            // 🎯 只控制 y 位置的 stagger 动画，不影响透明度
+            variants={CARD_WRAPPER_VARIANTS}
             // 🍎 高级 hover 交互：轻微缩放 + 弹性过渡
             whileHover={{
                 scale: 1.02,
@@ -1672,7 +1678,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             }}
             whileTap={{ scale: 0.98 }}
             // 退出动画
-            exit={{ scale: 0.95, opacity: 0, transition: { duration: 0.25, ease: "easeOut" } }}
+            exit={{ y: -20, opacity: 0, transition: { duration: 0.25, ease: "easeOut" } }}
             className="group relative"
         >
             <GlassCard
@@ -1682,8 +1688,13 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 )}
                 hoverEffect={true}
             >
-                {/* 内容层：不需要独立动画，跟随外层 stagger */}
-                <div className="relative">
+                {/* 🌟 内容层动画：淡入 + 微模糊，卡片背景先完整显示 */}
+                <motion.div
+                    variants={CARD_CONTENT_VARIANTS}
+                    initial="hidden"
+                    animate="show"
+                    className="relative"
+                >
                     {/* Visualizer Background */}
                     {(isPlaying && !currentAudio?.paused) && (
                         <div className="absolute inset-0 z-0 opacity-20 pointer-events-none overflow-hidden">
@@ -2039,7 +2050,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                             </button>
                         </div>
                     </div>
-                </div>
+                </motion.div>
             </GlassCard>
 
             {/* 删除缓存确认弹窗 (iOS兼容) */}
