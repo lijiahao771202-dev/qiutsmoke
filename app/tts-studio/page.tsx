@@ -521,6 +521,51 @@ const applyFadeIn = (audioBuffer: AudioBuffer, fadeDurationMs: number = 30) => {
 // 🔒 全局 Set 跟踪正在合成的卡片，防止页面切换后重复合成
 const synthesizingCardsSet = new Set<string>();
 
+// 🌟 全局进度存储 - 支持后台合成和页面切换恢复
+type SynthesisProgress = { current: number; total: number };
+const synthesizingProgressMap = new Map<string, SynthesisProgress>();
+const synthesizingSubscribers = new Map<string, Set<(progress: SynthesisProgress) => void>>();
+
+// 更新进度并通知所有订阅者
+function updateSynthesisProgress(cardId: string, progress: SynthesisProgress) {
+    synthesizingProgressMap.set(cardId, progress);
+    const subscribers = synthesizingSubscribers.get(cardId);
+    if (subscribers) {
+        subscribers.forEach(callback => callback(progress));
+    }
+}
+
+// 订阅进度更新
+function subscribeSynthesisProgress(cardId: string, callback: (progress: SynthesisProgress) => void) {
+    if (!synthesizingSubscribers.has(cardId)) {
+        synthesizingSubscribers.set(cardId, new Set());
+    }
+    synthesizingSubscribers.get(cardId)!.add(callback);
+
+    // 立即返回当前进度（如果有）
+    const currentProgress = synthesizingProgressMap.get(cardId);
+    if (currentProgress) {
+        callback(currentProgress);
+    }
+}
+
+// 取消订阅
+function unsubscribeSynthesisProgress(cardId: string, callback: (progress: SynthesisProgress) => void) {
+    const subscribers = synthesizingSubscribers.get(cardId);
+    if (subscribers) {
+        subscribers.delete(callback);
+        if (subscribers.size === 0) {
+            synthesizingSubscribers.delete(cardId);
+        }
+    }
+}
+
+// 清理完成的合成
+function clearSynthesisProgress(cardId: string) {
+    synthesizingProgressMap.delete(cardId);
+    synthesizingSubscribers.delete(cardId);
+}
+
 function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id: string) => void; onEdit: (card: TTSCard) => void }) {
     // Queue State
     type QueueItem =
@@ -533,9 +578,25 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess, triggerError } = useHaptics();
 
-    // 合成状态
-    const [isSynthesizing, setIsSynthesizing] = useState(false);
-    const [synthesizeProgress, setSynthesizeProgress] = useState({ current: 0, total: 0 });
+    // 合成状态 - 从全局状态初始化
+    const [isSynthesizing, setIsSynthesizing] = useState(() => synthesizingCardsSet.has(card.id));
+    const [synthesizeProgress, setSynthesizeProgress] = useState(() =>
+        synthesizingProgressMap.get(card.id) || { current: 0, total: 0 }
+    );
+
+    // 🌟 订阅全局合成进度更新 - 支持后台合成和页面切换恢复
+    useEffect(() => {
+        const handleProgressUpdate = (progress: SynthesisProgress) => {
+            setSynthesizeProgress(progress);
+            setIsSynthesizing(true);
+        };
+
+        subscribeSynthesisProgress(card.id, handleProgressUpdate);
+
+        return () => {
+            unsubscribeSynthesisProgress(card.id, handleProgressUpdate);
+        };
+    }, [card.id]);
 
     // 缓存状态
     const [hasCachedAudio, setHasCachedAudio] = useState(false);
@@ -1040,7 +1101,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         synthesizingCardsSet.add(card.id);
 
         setIsSynthesizing(true);
-        setSynthesizeProgress({ current: 0, total: 0 });
+        updateSynthesisProgress(card.id, { current: 0, total: 0 });
 
         try {
             // 1. 解析内容为片段
@@ -1071,7 +1132,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             }
 
             const textSegments = segments.filter(s => s.type === 'text');
-            setSynthesizeProgress({ current: 0, total: textSegments.length });
+            updateSynthesisProgress(card.id, { current: 0, total: textSegments.length });
 
             // 2. 创建 AudioContext
             const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -1113,7 +1174,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                         console.error("[Synthesize] TTS fetch failed", e);
                     }
                     textIndex++;
-                    setSynthesizeProgress({ current: textIndex, total: textSegments.length });
+                    updateSynthesisProgress(card.id, { current: textIndex, total: textSegments.length });
                 }
             }
 
@@ -1245,6 +1306,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         } finally {
             // 🔓 移除全局合成状态
             synthesizingCardsSet.delete(card.id);
+            clearSynthesisProgress(card.id);
             setIsSynthesizing(false);
             setSynthesizeProgress({ current: 0, total: 0 });
             setShowCardMenu(false);
