@@ -302,11 +302,11 @@ ${densityRule}
                         </motion.div>
                     </motion.div>
 
-                    {/* 折叠时的简要提示 */}
+                    {/* 折叠时的简要提示 - 无入场动画，直接显示 */}
                     <AnimatePresence>
                         {isCollapsed && (
                             <motion.p
-                                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                                initial={false}
                                 animate={{ opacity: 1, height: "auto", marginTop: 8 }}
                                 exit={{ opacity: 0, height: 0, marginTop: 0 }}
                                 className="text-rose-200/40 text-xs overflow-hidden"
