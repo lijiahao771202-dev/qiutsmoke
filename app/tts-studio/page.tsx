@@ -1040,9 +1040,19 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
             for (const buf of audioBuffers) {
                 if ((buf as any).type === 'pause') {
-                    // 生成与实际采样率和声道数匹配的静音
+                    // 生成与实际采样率和声道数匹配的静音（带微小抖动，避免完全静音不自然）
                     const samples = Math.floor(actualSampleRate * (buf as any).duration);
                     const silenceBuffer = ctx.createBuffer(numberOfChannels, samples, actualSampleRate);
+
+                    // 🎵 添加极微小的抖动噪声，让过渡更自然
+                    for (let channel = 0; channel < numberOfChannels; channel++) {
+                        const data = silenceBuffer.getChannelData(channel);
+                        for (let i = 0; i < data.length; i++) {
+                            // 极微小的随机噪声（-0.0001 到 0.0001），几乎听不到但能保持连续性
+                            data[i] = (Math.random() - 0.5) * 0.0002;
+                        }
+                    }
+
                     finalBuffers.push(silenceBuffer);
                 } else {
                     finalBuffers.push(buf);
@@ -1517,33 +1527,21 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     await audioContextRef.current.resume();
                 }
 
-                // 1. Resume current audio if paused
-                if (currentAudio && currentAudio.paused) {
-                    // Check if it's our target audio (cached or streaming)
-                    if (useCachedPlayback || audioQueue.length > 0) {
+                // ✅ 简化逻辑：优先播放缓存音频
+                if (hasCachedAudio) {
+                    // 如果有 currentAudio 且在暂停状态，恢复播放
+                    if (currentAudio && currentAudio.paused && currentAudio.src) {
                         try {
                             await currentAudio.play();
                             setIsPlaying(true);
                             isPlayingRef.current = true;
+                            return;
                         } catch (e) {
-                            console.error("[Play] Resume failed", e);
+                            console.error("[Play] Resume failed, starting fresh", e);
                         }
-                        return;
                     }
-                }
-
-                // 2. Synthesized cached playback (Initial start)
-                if (hasCachedAudio && useCachedPlayback) {
+                    // 否则从头开始播放缓存
                     await playCachedAudio();
-                    return;
-                }
-
-                // 3. Streaming playback (Initial start or Resume queue)
-                if (audioQueue.length > 0) {
-                    setIsPlaying(true);
-                    isPlayingRef.current = true;
-                } else {
-                    await startNewPlayback();
                 }
             }
         } finally {
