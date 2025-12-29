@@ -1659,10 +1659,12 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     // So it stops correctly at end of current fetch.
 
     return (
-        // 外层容器：处理布局、hover 交互和退出动画
+        // 外层容器：继承父容器的 stagger 调度 + 处理布局和退出动画
         <motion.div
             layout="position"
             layoutId={`tts-card-${card.id}`}
+            // 🌟 继承父容器的 variants 用于 stagger 效果
+            variants={CARD_CONTENT_VARIANTS}
             // 🍎 高级 hover 交互：轻微缩放 + 弹性过渡
             whileHover={{
                 scale: 1.02,
@@ -1680,13 +1682,8 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 )}
                 hoverEffect={true}
             >
-                {/* 🌟 内部内容动画包裹器：使用高级弹性动画，GlassCard 背景始终可见 */}
-                <motion.div
-                    variants={CARD_CONTENT_VARIANTS}
-                    initial="hidden"
-                    animate="show"
-                    className="relative"
-                >
+                {/* 内容层：不需要独立动画，跟随外层 stagger */}
+                <div className="relative">
                     {/* Visualizer Background */}
                     {(isPlaying && !currentAudio?.paused) && (
                         <div className="absolute inset-0 z-0 opacity-20 pointer-events-none overflow-hidden">
@@ -2042,7 +2039,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                             </button>
                         </div>
                     </div>
-                </motion.div>
+                </div>
             </GlassCard>
 
             {/* 删除缓存确认弹窗 (iOS兼容) */}
