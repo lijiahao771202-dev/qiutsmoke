@@ -71,7 +71,14 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                             zIndex: 100 - Math.abs(offset), // Center item on top
                             pointerEvents: isVisible ? "auto" : "none", // Allow interaction on all visible cards
                         }}
-                        initial={false}
+                        initial={{
+                            x: 0,
+                            y: 40,
+                            opacity: 0,
+                            scale: 0.8,
+                            rotateX: 0,
+                            rotateY: 0
+                        }}
                         animate={{
                             x: xOffset,
                             y: yOffset,
@@ -81,7 +88,7 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                             scale: scale,
                             opacity: opacity,
                         }}
-                        whileHover={isActive ? { scale: 1.02 } : { scale: scale * 1.03, y: yOffset - 10 }}
+                        whileHover={isActive ? { scale: 1.02, y: yOffset - 5 } : { scale: scale * 1.03, y: yOffset - 15 }}
                         whileTap={{ scale: 0.98 }}
                         transition={{
                             type: "spring",
@@ -100,19 +107,20 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                             }
                         }}
                     >
-                        {/* Zero-G Floating Container */}
+                        {/* Zero-G Floating Container - "Breathing" Effect */}
                         <motion.div
                             className="w-full h-full relative preserve-3d"
-                            initial={false}
+                            initial={{ y: 0, rotateX: 0, rotateZ: 0 }}
                             animate={{
-                                y: isActive ? [0, -floatY, 0] : [0, -floatY * 0.5, 0],
-                                rotateX: isActive ? [0, 2, 0] : 0,
+                                y: isActive ? [0, -floatY, 0] : [0, -floatY * 0.6, 0],
+                                rotateX: isActive ? [0, 1.5, 0] : 0,
+                                rotateZ: isActive ? [0, 0.5, 0] : 0,
                             }}
                             transition={{
                                 duration: floatDuration,
                                 repeat: Infinity,
                                 ease: "easeInOut",
-                                delay: index * 0.5
+                                delay: index * 0.4 // Offset start times
                             }}
                         >
                             {child}
