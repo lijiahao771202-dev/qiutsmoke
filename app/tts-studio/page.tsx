@@ -16,14 +16,43 @@ export type { TTSCard } from "@/lib/hooks/useData";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 
 // -----------------------------------------------------------------------------
-// Constants
 // -----------------------------------------------------------------------------
-import { VOICES } from "@/lib/constants";
+// Animation Constants (Apple Spring Physics)
+// -----------------------------------------------------------------------------
 
-const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
-    light: { label: "🍃 轻引导", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/20" },
-    medium: { label: "⚖️ 中引导", color: "bg-blue-500/20 text-blue-300 border-blue-500/20" },
-    heavy: { label: "🧘 多引导", color: "bg-purple-500/20 text-purple-300 border-purple-500/20" }
+const SPRING_TRANSITION = {
+    type: "spring",
+    stiffness: 400,
+    damping: 30, // 苹果经典的阻尼感
+    mass: 1
+} as const;
+
+const CONTAINER_VARIANTS = {
+    hidden: { opacity: 0 },
+    show: {
+        opacity: 1,
+        transition: {
+            staggerChildren: 0.06, // 错峰入场
+            delayChildren: 0.1
+        }
+    }
+};
+
+const ITEM_VARIANTS = {
+    hidden: { opacity: 0, y: 20, scale: 0.98, filter: "blur(4px)" },
+    show: {
+        opacity: 1,
+        y: 0,
+        scale: 1,
+        filter: "blur(0px)",
+        transition: SPRING_TRANSITION
+    },
+    exit: {
+        opacity: 0,
+        scale: 0.95,
+        filter: "blur(4px)",
+        transition: { duration: 0.2 }
+    }
 };
 
 // -----------------------------------------------------------------------------
@@ -55,7 +84,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                 title: title.trim() || undefined,
                 content: text,
                 voice_id: voiceId,
-                rate: "0%",
+                rate: "10%",
                 guidance_level: guidanceLevel
             } as any);
 
@@ -188,8 +217,9 @@ ${densityRule}
 
     return (
         <motion.div
-            layout
-            className="relative w-full max-w-2xl mx-auto mb-8"
+            layout="position"
+            className="relative w-full max-w-2xl mx-auto mb-8 z-20"
+            transition={SPRING_TRANSITION}
         >
             <GlassCard className="p-1 rounded-[2rem] bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02] border-rose-200/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
                 <div className="relative z-10 p-6">
@@ -207,7 +237,7 @@ ${densityRule}
                         </h2>
                         <motion.div
                             animate={{ rotate: isCollapsed ? 0 : 180 }}
-                            transition={{ duration: 0.2 }}
+                            transition={SPRING_TRANSITION}
                             className="text-rose-300/60 hover:text-rose-300/90 transition-colors"
                         >
                             <ChevronDown className="w-5 h-5" />
@@ -218,10 +248,10 @@ ${densityRule}
                     <AnimatePresence>
                         {isCollapsed && (
                             <motion.p
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: "auto" }}
-                                exit={{ opacity: 0, height: 0 }}
-                                className="text-rose-200/40 text-xs mt-2 overflow-hidden"
+                                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                                animate={{ opacity: 1, height: "auto", marginTop: 8 }}
+                                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                                className="text-rose-200/40 text-xs overflow-hidden"
                             >
                                 点击展开以创建新的语料卡片
                             </motion.p>
@@ -235,7 +265,7 @@ ${densityRule}
                                 initial={{ opacity: 0, height: 0 }}
                                 animate={{ opacity: 1, height: "auto" }}
                                 exit={{ opacity: 0, height: 0 }}
-                                transition={{ duration: 0.3, ease: "easeInOut" }}
+                                transition={{ ...SPRING_TRANSITION, opacity: { duration: 0.2 } }}
                                 className="overflow-hidden"
                             >
                                 <div className="space-y-4 pt-4">
@@ -243,7 +273,7 @@ ${densityRule}
                                         value={title}
                                         onChange={(e) => setTitle(e.target.value)}
                                         placeholder="给卡片起个标题..."
-                                        className="w-full bg-transparent text-xl font-bold text-white placeholder:text-white/40 mb-2 focus:outline-none"
+                                        className="w-full bg-transparent text-xl font-bold text-white placeholder:text-white/40 mb-2 focus:outline-none focus:text-rose-100 transition-colors"
                                     />
 
                                     {/* AI 生成区域 */}
@@ -284,10 +314,12 @@ ${densityRule}
                                                 <option value={15} className="bg-zinc-800">15分钟</option>
                                                 <option value={20} className="bg-zinc-800">20分钟</option>
                                             </select>
-                                            <button
+                                            <motion.button
+                                                whileHover={{ scale: 1.02 }}
+                                                whileTap={{ scale: 0.95 }}
                                                 onClick={handleAIGenerate}
                                                 disabled={!aiPrompt.trim() || aiGenerating}
-                                                className="px-5 py-2.5 bg-gradient-to-r from-rose-500 to-pink-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-rose-500/20 hover:shadow-rose-500/40 hover:scale-[1.02] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
+                                                className="px-5 py-2.5 bg-gradient-to-r from-rose-500 to-pink-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-rose-500/20 hover:shadow-rose-500/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
                                             >
                                                 {aiGenerating ? (
                                                     <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
@@ -295,7 +327,7 @@ ${densityRule}
                                                     <Sparkles className="w-4 h-4" />
                                                 )}
                                                 <span>{aiGenerating ? "生成中" : "生成"}</span>
-                                            </button>
+                                            </motion.button>
                                         </div>
                                     </div>
 
@@ -305,7 +337,7 @@ ${densityRule}
                                         onChange={(e) => setText(e.target.value)}
                                         placeholder="输入您想朗读的文本... (支持 [pause 1s] 和 [rate -10%])"
                                         aria-label="输入文本"
-                                        className="w-full h-32 bg-transparent text-rose-50/90 text-lg placeholder:text-rose-200/30 focus:outline-none resize-none leading-relaxed"
+                                        className="w-full h-32 bg-transparent text-rose-50/90 text-lg placeholder:text-rose-200/30 focus:outline-none resize-none leading-relaxed scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
                                     />
 
                                     <div className="flex items-center justify-between pt-4 border-t border-rose-200/10">
@@ -322,7 +354,7 @@ ${densityRule}
 
                                         <motion.button
                                             whileHover={{ scale: 1.02 }}
-                                            whileTap={{ scale: 0.98 }}
+                                            whileTap={{ scale: 0.9 }}
                                             onClick={handleSubmit}
                                             disabled={!text.trim() || isLoading}
                                             className={cn(
@@ -1570,15 +1602,18 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
     return (
         <motion.div
-            layout
+            layout="position"
             layoutId={`tts-card-${card.id}`}
-            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            variants={ITEM_VARIANTS}
+            whileHover={{ scale: 1.02, transition: { type: "spring", stiffness: 400, damping: 25 } }}
+            whileTap={{ scale: 0.98 }}
+            exit="exit"
             className="group relative"
         >
             <GlassCard
                 className={cn(
                     "h-full p-6 transition-all bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05]",
-                    "hover:bg-rose-500/10 hover:shadow-rose-500/10"
+                    "hover:bg-rose-500/10 hover:shadow-rose-500/10 hover:scale-100" // Override CSS scale to let Motion handle it
                 )}
                 hoverEffect={true}
             >
@@ -1778,19 +1813,69 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                                 : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20"
                             )}
                         >
-                            {isSynthesizing ? (
-                                <span className="animate-spin w-4 h-4 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full" />
-                            ) : !hasCachedAudio ? (
-                                <Music className="w-4 h-4" />
-                            ) : isBuffering ? (
-                                <span className="animate-spin w-4 h-4 border-2 border-amber-300/30 border-t-amber-300 rounded-full" />
-                            ) : isLoadingAudio ? (
-                                <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
-                            ) : isPlaying ? (
-                                <Pause className="w-4 h-4 fill-current" />
-                            ) : (
-                                <Play className="w-4 h-4 fill-current ml-0.5" />
-                            )}
+                        >
+                            <AnimatePresence mode="wait">
+                                {isSynthesizing ? (
+                                    <motion.div
+                                        key="synthesizing"
+                                        initial={{ opacity: 0, scale: 0.5 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.5 }}
+                                        className="flex gap-0.5 items-center justify-center"
+                                    >
+                                        {[0, 1, 2].map((i) => (
+                                            <motion.div
+                                                key={i}
+                                                className="w-1 bg-emerald-400 rounded-full"
+                                                initial={{ height: 4 }}
+                                                animate={{ height: [4, 12, 4] }}
+                                                transition={{
+                                                    duration: 0.8,
+                                                    repeat: Infinity,
+                                                    delay: i * 0.15,
+                                                    ease: "easeInOut"
+                                                }}
+                                            />
+                                        ))}
+                                    </motion.div>
+                                ) : !hasCachedAudio ? (
+                                    <motion.div key="music" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
+                                        <Music className="w-4 h-4" />
+                                    </motion.div>
+                                ) : isBuffering ? (
+                                    <motion.span
+                                        key="buffering"
+                                        className="animate-spin w-4 h-4 border-2 border-amber-300/30 border-t-amber-300 rounded-full"
+                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                    />
+                                ) : isLoadingAudio ? (
+                                    <motion.span
+                                        key="loading"
+                                        className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
+                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                    />
+                                ) : isPlaying ? (
+                                    <motion.div
+                                        key="pause"
+                                        initial={{ opacity: 0, scale: 0.5, rotate: -90 }}
+                                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                                        exit={{ opacity: 0, scale: 0.5, rotate: 90 }}
+                                        transition={{ duration: 0.2 }}
+                                    >
+                                        <Pause className="w-4 h-4 fill-current" />
+                                    </motion.div>
+                                ) : (
+                                    <motion.div
+                                        key="play"
+                                        initial={{ opacity: 0, scale: 0.5, rotate: 90 }}
+                                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                                        exit={{ opacity: 0, scale: 0.5, rotate: -90 }}
+                                        transition={{ duration: 0.2 }}
+                                    >
+                                        <Play className="w-4 h-4 fill-current ml-0.5" />
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </button>
 
                         {/* 🚀 合成进度显示 */}
@@ -2130,26 +2215,40 @@ export default function TTSStudioPage() {
                     <GlassInput onAddCard={apiAddCard} />
 
                     <div className="mt-8">
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            <AnimatePresence>
+                        <motion.div
+                            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                            variants={CONTAINER_VARIANTS}
+                            initial="hidden"
+                            animate="show"
+                        >
+                            <AnimatePresence mode="popLayout">
                                 {isLoadingCards ? (
-                                    <div className="col-span-full flex flex-col items-center justify-center py-20 text-white/20">
+                                    <motion.div
+                                        key="loading"
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        className="col-span-full flex flex-col items-center justify-center py-20 text-white/20"
+                                    >
                                         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mb-4" />
                                         <p className="text-sm font-light">正在加载语料库...</p>
-                                    </div>
+                                    </motion.div>
                                 ) : ttsCards.length === 0 ? (
-                                    <div className="col-span-full text-center py-20 text-white/20 border border-dashed border-rose-200/10 rounded-3xl">
+                                    <motion.div
+                                        key="empty"
+                                        variants={ITEM_VARIANTS}
+                                        className="col-span-full text-center py-20 text-white/20 border border-dashed border-rose-200/10 rounded-3xl"
+                                    >
                                         <Volume2 className="w-12 h-12 mx-auto mb-4 opacity-10" />
                                         <p className="text-sm font-light">这里空空如也，试着创建一个新的语音卡片吧。</p>
-                                    </div>
+                                    </motion.div>
                                 ) : (
                                     ttsCards.map((card: TTSCard) => (
                                         <TTSCardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} />
                                     ))
                                 )}
                             </AnimatePresence>
-                        </div>
+                        </motion.div>
                     </div>
                 </div>
 
