@@ -55,8 +55,8 @@ function useAnimatedNumber(value: number, duration: number = 1000) {
                 const elapsed = Date.now() - startTime;
                 const progress = Math.min(elapsed / duration, 1);
 
-                // easeOutExpo 缓动函数
-                const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+                // easeOutQuart 缓动函数（更柔和优雅）
+                const eased = 1 - Math.pow(1 - progress, 4);
                 const current = Math.round(startValue + (value - startValue) * eased);
 
                 setDisplayValue(current);
@@ -107,10 +107,10 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
     const circumference = 2 * Math.PI * 40; // r=40
     const strokeDashoffset = circumference - (circumference * animatedProgress);
 
-    // 🎯 使用动画计数器
-    const animatedTimes = useAnimatedNumber(times, 800);
-    const animatedMinutes = useAnimatedNumber(minutes, 1000);
-    const animatedTodayMinutes = useAnimatedNumber(Math.round(todayMinutes), 800);
+    // 🎯 使用动画计数器（放慢速度，更优雅）
+    const animatedTimes = useAnimatedNumber(times, 1800);
+    const animatedMinutes = useAnimatedNumber(minutes, 2000);
+    const animatedTodayMinutes = useAnimatedNumber(Math.round(todayMinutes), 1500);
 
     // Handle Native Select Change
     const handleNativeGoalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -314,7 +314,7 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                                         filter: "url(#progressGlow)",
                                         strokeDasharray: circumference,
                                         strokeDashoffset: strokeDashoffset,
-                                        transition: "stroke-dashoffset 1s ease-out"
+                                        transition: "stroke-dashoffset 1.8s cubic-bezier(0.16, 1, 0.3, 1)"
                                     }}
                                 />
                             </svg>
