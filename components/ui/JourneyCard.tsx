@@ -41,9 +41,46 @@ interface JourneyCardProps {
     todayMinutes?: number;
 }
 
+// 🎯 动画计数器 Hook
+function useAnimatedNumber(value: number, duration: number = 1000) {
+    const [displayValue, setDisplayValue] = React.useState(0);
+
+    React.useEffect(() => {
+        // 延迟启动动画，配合卡片入场
+        const startDelay = setTimeout(() => {
+            const startTime = Date.now();
+            const startValue = 0;
+
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                // easeOutExpo 缓动函数
+                const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+                const current = Math.round(startValue + (value - startValue) * eased);
+
+                setDisplayValue(current);
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                }
+            };
+
+            requestAnimationFrame(animate);
+        }, 400); // 等待卡片入场后再开始数字动画
+
+        return () => clearTimeout(startDelay);
+    }, [value, duration]);
+
+    return displayValue;
+}
+
 export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0 }: JourneyCardProps) {
     // --- Daily Goal State (Persistent) ---
     const [dailyGoal, setDailyGoal] = React.useState(20);
+
+    // 🌟 动画状态：进度环从 0 开始填充
+    const [animatedProgress, setAnimatedProgress] = React.useState(0);
 
     // Load from local storage on mount
     React.useEffect(() => {
@@ -58,9 +95,22 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
         return Math.min(Math.max(todayMinutes / dailyGoal, 0.05), 1);
     }, [todayMinutes, dailyGoal]);
 
+    // 🌟 进度环入场动画：延迟后从 0 填充到目标值
+    React.useEffect(() => {
+        const timer = setTimeout(() => {
+            setAnimatedProgress(progress);
+        }, 500); // 等待卡片入场
+        return () => clearTimeout(timer);
+    }, [progress]);
+
     // Progress ring circumference
     const circumference = 2 * Math.PI * 40; // r=40
-    const strokeDashoffset = circumference - (circumference * progress);
+    const strokeDashoffset = circumference - (circumference * animatedProgress);
+
+    // 🎯 使用动画计数器
+    const animatedTimes = useAnimatedNumber(times, 800);
+    const animatedMinutes = useAnimatedNumber(minutes, 1000);
+    const animatedTodayMinutes = useAnimatedNumber(Math.round(todayMinutes), 800);
 
     // Handle Native Select Change
     const handleNativeGoalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -172,7 +222,7 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                                 <div className="bg-white/20 p-1 rounded-full">
                                     <Clock className="w-2.5 h-2.5 text-white" />
                                 </div>
-                                <span className="text-[10px] font-bold text-white tracking-wide">{minutes} <span className="text-white/60">MIN</span></span>
+                                <span className="text-[10px] font-bold text-white tracking-wide">{animatedMinutes} <span className="text-white/60">MIN</span></span>
                             </div>
 
                             {/* Days Capsule */}
@@ -195,7 +245,7 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                                     textShadow: `0 0 20px rgba(110,231,183,0.6), 0 0 40px rgba(52,211,153,0.4), 0 2px 4px rgba(0,0,0,0.2)`
                                 }}
                             >
-                                {times}
+                                {animatedTimes}
                             </span>
                             <span className="text-sm font-medium text-white/70 tracking-wide mt-1 pl-1">
                                 Sessions
@@ -273,7 +323,7 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                                 <div className="flex items-baseline gap-0.5 translate-y-1">
                                     <span className="text-2xl font-bold text-white leading-none tracking-tight" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
-                                        {Math.round(todayMinutes)}
+                                        {animatedTodayMinutes}
                                     </span>
                                     <span className="text-sm font-medium text-white/50 leading-none">
                                         / {dailyGoal}
