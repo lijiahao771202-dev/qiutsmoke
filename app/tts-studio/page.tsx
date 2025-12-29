@@ -404,6 +404,25 @@ const getBlobDuration = async (blob: Blob): Promise<number> => {
     });
 };
 
+// Helper: 对 AudioBuffer 应用淡入淡出，避免 TTS 片段拼接时的顿挫感
+const applyFade = (audioBuffer: AudioBuffer, fadeDurationMs: number = 50) => {
+    const sampleRate = audioBuffer.sampleRate;
+    const fadeSamples = Math.floor(sampleRate * fadeDurationMs / 1000);
+
+    for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+        const data = audioBuffer.getChannelData(channel);
+        // 淡入（开头）
+        for (let i = 0; i < fadeSamples && i < data.length; i++) {
+            data[i] *= i / fadeSamples;
+        }
+        // 淡出（结尾）
+        for (let i = 0; i < fadeSamples && i < data.length; i++) {
+            const idx = data.length - 1 - i;
+            data[idx] *= i / fadeSamples;
+        }
+    }
+};
+
 // -----------------------------------------------------------------------------
 // Component: TTS Card with Audio Logic
 // -----------------------------------------------------------------------------
@@ -441,8 +460,13 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     const INITIAL_BUFFER_COUNT = 3; // 初始缓冲数量
     const MIN_BUFFER_COUNT = 2; // 最小安全缓冲
 
-    // 检查缓存状态
+    // 检查缓存状态 - 如果没有缓存则自动后台合成
+    const hasCheckedCacheRef = useRef(false);
     useEffect(() => {
+        // 防止重复检测
+        if (hasCheckedCacheRef.current) return;
+        hasCheckedCacheRef.current = true;
+
         hasAudioCache(card.id).then(async (exists) => {
             setHasCachedAudio(exists);
             if (exists) {
@@ -455,6 +479,13 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 } catch (e) {
                     console.error("Failed to get audio duration via cache", e);
                 }
+            } else {
+                // ✨ 没有缓存时自动后台合成
+                console.log(`[TTSCard] 卡片 "${card.title || card.id}" 无缓存，自动开始合成...`);
+                // 延迟 500ms 开始合成，避免页面加载时同时发起多个请求
+                setTimeout(() => {
+                    synthesizeAndDownload();
+                }, 500);
             }
         });
     }, [card.id]);
@@ -969,6 +1000,8 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                 actualSampleRate = decoded.sampleRate;
                                 console.log("[Synthesize] 实际采样率:", actualSampleRate);
                             }
+                            // 🎵 应用 50ms 淡入淡出，避免拼接顿挫感
+                            applyFade(decoded, 50);
                             audioBuffers.push(decoded);
                         }
                     } catch (e) {
@@ -1002,9 +1035,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 }
             }
 
-            // 🔥 [Safety Margin] Add 1s silence at the end to prevent cutoff
-            const safetySilence = ctx.createBuffer(numberOfChannels, actualSampleRate * 1.0, actualSampleRate); // 1.0s
-            finalBuffers.push(safetySilence);
+            // ✅ 移除结尾静音 - 使用 crossfade 代替
 
             const totalLength = finalBuffers.reduce((sum, buf) => sum + buf.length, 0);
             const mergedBuffer = ctx.createBuffer(numberOfChannels, totalLength, actualSampleRate);
