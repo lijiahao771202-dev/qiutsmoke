@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, Clock, Calendar as CalendarIcon, Trophy, Activity, Flame } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -42,6 +42,16 @@ export default function StatsPage() {
     }, [currentDate]);
 
     const { sessions, isLoading: loading } = useMeditationSessions(monthStr);
+
+    const containerVariants = {
+        hidden: { opacity: 0 },
+        visible: {
+            opacity: 1,
+            transition: {
+                staggerChildren: 0.1
+            }
+        }
+    };
 
     // Calendar Logic
     const getDaysInMonth = (date: Date) => {
@@ -92,24 +102,44 @@ export default function StatsPage() {
             {/* Background */}
             {/* Background handled by global layout */}
 
-            <div className="max-w-4xl mx-auto space-y-8 relative z-10">
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                className="max-w-4xl mx-auto space-y-8 relative z-10"
+            >
                 <header className="mb-8">
                     <h1 className="text-3xl font-thin text-white/90">冥想统计</h1>
-                    <p className="text-white/40 mt-2 font-light">回顾你的正念旅程</p>
+                    <motion.p
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.2, duration: 1 }}
+                        className="text-white/40 mt-2 font-light"
+                    >
+                        回顾你的正念旅程
+                    </motion.p>
                 </header>
 
                 {/* Stats Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard icon={Activity} label="总次数" value={stats?.totalSessions || 0} unit="次" delay={0.1} />
-                    <StatCard icon={Clock} label="总时长" value={stats?.totalDurationMinutes || 0} unit="分钟" delay={0.2} />
-                    <StatCard icon={Flame} label="当前连续" value={stats?.currentStreak || 0} unit="天" delay={0.3} color="text-orange-400" />
-                    <StatCard icon={Trophy} label="最长连续" value={stats?.longestStreak || 0} unit="天" delay={0.4} color="text-yellow-400" />
-                </div>
+                <motion.div
+                    variants={containerVariants}
+                    initial="hidden"
+                    animate="visible"
+                    className="grid grid-cols-2 md:grid-cols-4 gap-4"
+                >
+                    <StatCard icon={Activity} label="总次数" value={stats?.totalSessions || 0} unit="次" index={0} />
+                    <StatCard icon={Clock} label="总时长" value={stats?.totalDurationMinutes || 0} unit="分钟" index={1} />
+                    <StatCard icon={Flame} label="当前连续" value={stats?.currentStreak || 0} unit="天" index={2} color="text-orange-400" />
+                    <StatCard icon={Trophy} label="最长连续" value={stats?.longestStreak || 0} unit="天" index={3} color="text-yellow-400" />
+                </motion.div>
 
                 {/* Calendar Section */}
                 <div className="grid md:grid-cols-3 gap-8">
                     {/* Calendar */}
                     <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.6, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
                         layout
                         className="md:col-span-2"
                     >
@@ -152,6 +182,9 @@ export default function StatsPage() {
                                     return (
                                         <motion.button
                                             key={day}
+                                            initial={{ opacity: 0, scale: 0.8 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            transition={{ delay: 0.6 + (i * 0.01), duration: 0.3 }}
                                             whileHover={{ scale: 1.1, zIndex: 10 }}
                                             whileTap={{ scale: 0.95 }}
                                             onClick={() => {
@@ -187,6 +220,9 @@ export default function StatsPage() {
 
                     {/* Daily List */}
                     <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.6, delay: 0.7, ease: [0.22, 1, 0.36, 1] }}
                         layout
                         className="md:h-full min-h-[300px]"
                     >
@@ -197,52 +233,135 @@ export default function StatsPage() {
                             </h3>
 
                             <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-                                {isSelectedInView && selectedDaySessions.length === 0 ? (
-                                    <div className="text-white/20 text-center py-12 text-sm">
-                                        今日未冥想
-                                    </div>
-                                ) : (!isSelectedInView ? (
-                                    <div className="text-white/20 text-center py-12 text-sm">
-                                        请选择日期
-                                    </div>
-                                ) : (
-                                    selectedDaySessions.map(session => (
-                                        <div key={session.id} className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                                            <div className="text-white/90 font-medium mb-1">{session.topic_name || "自由冥想"}</div>
-                                            <div className="flex justify-between text-xs text-white/40">
-                                                <span>{new Date(session.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                <span>{session.duration_seconds ? `${Math.round(session.duration_seconds / 60)} 分钟` : '未完成'}</span>
-                                            </div>
-                                        </div>
-                                    ))
-                                ))}
+                                <AnimatePresence mode="wait">
+                                    {isSelectedInView && selectedDaySessions.length === 0 ? (
+                                        <motion.div
+                                            key="empty"
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className="text-white/20 text-center py-12 text-sm"
+                                        >
+                                            今日未冥想
+                                        </motion.div>
+                                    ) : (!isSelectedInView ? (
+                                        <motion.div
+                                            key="unselected"
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className="text-white/20 text-center py-12 text-sm"
+                                        >
+                                            请选择日期
+                                        </motion.div>
+                                    ) : (
+                                        <motion.div
+                                            key="list"
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className="space-y-3"
+                                        >
+                                            {selectedDaySessions.map(session => (
+                                                <motion.div
+                                                    key={session.id}
+                                                    layout
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    className="bg-white/5 rounded-2xl p-4 border border-white/5"
+                                                >
+                                                    <div className="text-white/90 font-medium mb-1">{session.topic_name || "自由冥想"}</div>
+                                                    <div className="flex justify-between text-xs text-white/40">
+                                                        <span>{new Date(session.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                        <span>{session.duration_seconds ? `${Math.round(session.duration_seconds / 60)} 分钟` : '未完成'}</span>
+                                                    </div>
+                                                </motion.div>
+                                            ))}
+                                        </motion.div>
+                                    ))}
+                                </AnimatePresence>
                             </div>
                         </GlassCard>
                     </motion.div>
                 </div>
-
-            </div>
+            </motion.div>
         </div>
     );
 }
 
-function StatCard({ icon: Icon, label, value, unit, delay, color = "text-rose-400" }: any) {
+function StatCard({ icon: Icon, label, value, unit, index, color = "text-rose-400" }: any) {
+    const itemVariants = {
+        hidden: { opacity: 0, y: 20 },
+        visible: {
+            opacity: 1,
+            y: 0,
+            transition: {
+                type: "spring",
+                stiffness: 100,
+                damping: 15,
+                delay: index * 0.1
+            }
+        }
+    };
+
     return (
         <div className="group">
             <GlassCard
                 className="relative overflow-hidden p-5 bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02]"
                 hoverEffect={true}
             >
-                <div className={`absolute top-4 right-4 p-2 rounded-full bg-white/5 ${color} opacity-80 group-hover:scale-110 transition-transform duration-500`}>
-                    <Icon className="w-5 h-5" />
-                </div>
-                <div className="mt-8">
-                    <div className="text-3xl font-light text-white tracking-tight">
-                        {value} <span className="text-xs text-white/30 font-normal ml-1">{unit}</span>
+                {/* 内部内容动画，避免卡片背景本身从0透明度加载 */}
+                <motion.div
+                    variants={itemVariants}
+                    initial="hidden"
+                    animate="visible"
+                >
+                    <div className={`absolute top-4 right-4 p-2 rounded-full bg-white/5 ${color} opacity-80 group-hover:scale-110 transition-transform duration-500`}>
+                        <Icon className="w-5 h-5" />
                     </div>
-                    <div className="text-xs text-white/40 mt-1 uppercase tracking-wider">{label}</div>
-                </div>
+                    <div className="mt-8">
+                        <div className="text-3xl font-light text-white tracking-tight">
+                            <CountUp value={value} /> <span className="text-xs text-white/30 font-normal ml-1">{unit}</span>
+                        </div>
+                        <div className="text-xs text-white/40 mt-1 uppercase tracking-wider">{label}</div>
+                    </div>
+                </motion.div>
             </GlassCard>
         </div>
     );
+}
+
+function CountUp({ value }: { value: number }) {
+    const [displayValue, setDisplayValue] = useState(0);
+
+
+    useEffect(() => {
+        const start = 0;
+        const end = value;
+        const duration = 1500; // 动画持续时间
+        const startTime = Date.now();
+
+        let taskId: number;
+
+        const update = () => {
+            const now = Date.now();
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+
+            // 使用简易的 easeOutExpo
+            const easeValue = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+
+            const current = Math.floor(start + (end - start) * easeValue);
+            setDisplayValue(current);
+
+            if (progress < 1) {
+                taskId = requestAnimationFrame(update);
+            }
+        };
+
+        taskId = requestAnimationFrame(update);
+        return () => cancelAnimationFrame(taskId);
+    }, [value]);
+
+    return <span>{displayValue}</span>;
 }
