@@ -224,11 +224,8 @@ ${densityRule}
     };
 
     return (
-        <motion.div
-            layout="position"
-            className="relative w-full max-w-2xl mx-auto mb-8 z-20"
-            transition={SPRING_TRANSITION}
-        >
+        // 移除 layout 动画，避免展开/折叠时的弹跳效果
+        <div className="relative w-full max-w-2xl mx-auto mb-8 z-20">
             <GlassCard className="p-1 rounded-[2rem] bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02] border-rose-200/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
                 <div className="relative z-10 p-6">
                     {/* 可折叠的标题区域 */}
@@ -385,7 +382,7 @@ ${densityRule}
                     </AnimatePresence>
                 </div>
             </GlassCard>
-        </motion.div>
+        </div>
     );
 }
 
