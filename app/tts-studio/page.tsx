@@ -404,21 +404,16 @@ const getBlobDuration = async (blob: Blob): Promise<number> => {
     });
 };
 
-// Helper: 对 AudioBuffer 应用淡入淡出，避免 TTS 片段拼接时的顿挫感
-const applyFade = (audioBuffer: AudioBuffer, fadeDurationMs: number = 50) => {
+// Helper: 对 AudioBuffer 应用淡入（开头），让 TTS 自然结束（不淡出）
+const applyFadeIn = (audioBuffer: AudioBuffer, fadeDurationMs: number = 30) => {
     const sampleRate = audioBuffer.sampleRate;
     const fadeSamples = Math.floor(sampleRate * fadeDurationMs / 1000);
 
     for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
         const data = audioBuffer.getChannelData(channel);
-        // 淡入（开头）
+        // 只淡入（开头），不淡出
         for (let i = 0; i < fadeSamples && i < data.length; i++) {
             data[i] *= i / fadeSamples;
-        }
-        // 淡出（结尾）
-        for (let i = 0; i < fadeSamples && i < data.length; i++) {
-            const idx = data.length - 1 - i;
-            data[idx] *= i / fadeSamples;
         }
     }
 };
@@ -1015,7 +1010,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                                 console.log("[Synthesize] 实际采样率:", actualSampleRate);
                             }
                             // 🎵 应用 50ms 淡入淡出，避免拼接顿挫感
-                            applyFade(decoded, 50);
+                            applyFadeIn(decoded, 30);
                             audioBuffers.push(decoded);
                         }
                     } catch (e) {
