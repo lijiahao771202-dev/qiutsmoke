@@ -165,9 +165,9 @@ export default function AIRecommendationCard() {
                         {status === "playing" && (
                             <motion.div
                                 key="playing"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
+                                initial={{ scale: 0.95, filter: "blur(4px)" }}
+                                animate={{ scale: 1, filter: "blur(0px)" }}
+                                exit={{ scale: 0.95, filter: "blur(4px)" }}
                                 className="relative w-48 h-48 flex items-center justify-center"
                             >
                                 {/* Audio Visualizer Rings */}

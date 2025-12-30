@@ -25,7 +25,7 @@ const CONTENT_CONTAINER = {
 
 // 单个元素入场动画
 const CONTENT_ITEM = {
-    hidden: { opacity: 0, y: 20, scale: 0.95 },
+    hidden: { y: 20, scale: 0.95 }, // 🔥 Removed opacity: 0
     show: {
         opacity: 1,
         y: 0,

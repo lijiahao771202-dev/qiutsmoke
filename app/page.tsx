@@ -33,9 +33,8 @@ const CONTAINER_VARIANTS = {
 };
 
 const ITEM_VARIANTS = {
-  hidden: { opacity: 0, y: 20, filter: "blur(5px)" },
+  hidden: { y: 20, filter: "blur(5px)" }, // 🔥 Removed opacity: 0
   show: {
-    opacity: 1,
     y: 0,
     filter: "blur(0px)",
     transition: {

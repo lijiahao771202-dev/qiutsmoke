@@ -74,7 +74,6 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                         initial={{
                             x: 0,
                             y: 120, // 🚀 Deeper start for dramatic silky entrance
-                            opacity: 0,
                             scale: 0.9,
                             rotateX: 0,
                             rotateY: 0
