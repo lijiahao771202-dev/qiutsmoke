@@ -73,6 +73,7 @@ const CONTAINER_VARIANTS = {
     show: {
         transition: {
             staggerChildren: 0.08,
+            delayChildren: 0.1
         }
     }
 };
@@ -2406,40 +2407,43 @@ export default function TTSStudioPage() {
                     </motion.div>
 
                     <div className="mt-8">
-                        <motion.div
-                            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-                            variants={CONTAINER_VARIANTS}
-                            initial="hidden"
-                            animate="show"
-                        >
-                            <AnimatePresence mode="popLayout">
-                                {isLoadingCards ? (
-                                    <motion.div
-                                        key="loading"
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        className="col-span-full flex flex-col items-center justify-center py-20 text-white/20"
-                                    >
-                                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mb-4" />
-                                        <p className="text-sm font-light">正在加载语料库...</p>
-                                    </motion.div>
-                                ) : ttsCards.length === 0 ? (
-                                    <motion.div
-                                        key="empty"
-                                        variants={ITEM_VARIANTS}
-                                        className="col-span-full text-center py-20 text-white/20 border border-dashed border-rose-200/10 rounded-3xl"
-                                    >
-                                        <Volume2 className="w-12 h-12 mx-auto mb-4 opacity-10" />
-                                        <p className="text-sm font-light">这里空空如也，试着创建一个新的语音卡片吧。</p>
-                                    </motion.div>
-                                ) : (
-                                    ttsCards.map((card: TTSCard) => (
+                        <AnimatePresence mode="wait">
+                            {isLoadingCards ? (
+                                <motion.div
+                                    key="loading"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="flex flex-col items-center justify-center py-20 text-white/20"
+                                >
+                                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mb-4" />
+                                    <p className="text-sm font-light">正在加载语料库...</p>
+                                </motion.div>
+                            ) : ttsCards.length === 0 ? (
+                                <motion.div
+                                    key="empty"
+                                    variants={ITEM_VARIANTS}
+                                    initial="hidden"
+                                    animate="show"
+                                    className="text-center py-20 text-white/20 border border-dashed border-rose-200/10 rounded-3xl"
+                                >
+                                    <Volume2 className="w-12 h-12 mx-auto mb-4 opacity-10" />
+                                    <p className="text-sm font-light">这里空空如也，试着创建一个新的语音卡片吧。</p>
+                                </motion.div>
+                            ) : (
+                                <motion.div
+                                    key="grid"
+                                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                                    variants={CONTAINER_VARIANTS}
+                                    initial="hidden"
+                                    animate="show"
+                                >
+                                    {ttsCards.map((card: TTSCard) => (
                                         <TTSCardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} />
-                                    ))
-                                )}
-                            </AnimatePresence>
-                        </motion.div>
+                                    ))}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </div>
                 </motion.div>
 
