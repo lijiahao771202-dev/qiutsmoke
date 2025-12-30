@@ -46,78 +46,78 @@ const SPRING_GENTLE = {
     mass: 1
 } as const;
 
-// 🍎 弹性弹簧：有明显弹跳感
-const SPRING_BOUNCY = {
+// 🍎 流体弹簧：高阻尼 = 如液态般丝滑，无多余回弹
+const SPRING_FLUID = {
     type: "spring",
-    stiffness: 300,
-    damping: 20,
+    stiffness: 400,
+    damping: 30, // 增加阻尼，减少回弹
     mass: 1
 } as const;
 
-// 页面整体入场：从下方轻微滑入
+// 页面整体入场：从下方轻微滑入，统一编排
 const PAGE_VARIANTS = {
-    hidden: { y: 20 },
+    hidden: { opacity: 0 },
     show: {
-        y: 0,
+        opacity: 1,
         transition: {
-            ...SPRING_GENTLE,
-            staggerChildren: 0.08,
-            delayChildren: 0.15
+            staggerChildren: 0.08, // 🌟 紧凑的节奏
+            delayChildren: 0.05,
+            when: "beforeChildren"
         }
     }
 };
 
-// 容器动画：保持始终可见，只负责 stagger 子元素
+// 容器动画：保持始终可见
 const CONTAINER_VARIANTS = {
     hidden: {},
     show: {
         transition: {
-            staggerChildren: 0.15, // 🌟 增加延迟，让逐个出现更明显
-            delayChildren: 0.1
+            staggerChildren: 0.08,
         }
     }
 };
 
-// 🎯 卡片外层动画：只控制位置，不影响透明度（保持 GlassCard 背景完整）
+// 🎯 卡片外层动画：位移减小，更稳重
 const CARD_WRAPPER_VARIANTS = {
-    hidden: { y: 30 },
+    hidden: { y: 20, opacity: 0 }, // y: 30 -> 20
     show: {
         y: 0,
-        transition: SPRING_BOUNCY
+        opacity: 1,
+        transition: SPRING_FLUID // 使用流体弹簧
     },
     exit: {
-        y: -20,
+        y: -10,
         opacity: 0,
-        transition: { duration: 0.25, ease: "easeOut" }
+        transition: { duration: 0.2, ease: "easeOut" }
     }
 };
 
-// 🌟 卡片内容入场动画：弹性 + 渐显 + 微模糊（只应用在内容层，保持卡片背景完整）
+// 🌟 卡片内容入场动画
 const CARD_CONTENT_VARIANTS = {
     hidden: {
         opacity: 0,
-        scale: 0.98,
-        filter: "blur(6px)"
+        scale: 0.96, // 0.98 -> 0.96 稍微多一点缩放感
+        filter: "blur(4px)" // 6px -> 4px 减少模糊开销
     },
     show: {
         opacity: 1,
         scale: 1,
         filter: "blur(0px)",
-        transition: { ...SPRING_BOUNCY, delay: 0.1 } // 内容稍微延迟，先显示卡片背景
+        transition: { ...SPRING_FLUID, delay: 0.05 }
     }
 };
 
-// 🎯 简化版内容动画（用于已经有复杂内部动画的组件）
+// 🎯 通用列表项动画 (Header, Input 等)
 const ITEM_VARIANTS = {
-    hidden: { opacity: 0, y: 16 },
+    hidden: { opacity: 0, y: 15 },
     show: {
         opacity: 1,
         y: 0,
-        transition: SPRING_SNAPPY
+        transition: SPRING_FLUID
     },
     exit: {
         opacity: 0,
-        y: -8,
+        y: -10,
         transition: { duration: 0.2 }
     }
 };
@@ -1736,7 +1736,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             // 🍎 高级 hover 交互：轻微缩放 + 弹性过渡
             whileHover={{
                 scale: 1.02,
-                transition: SPRING_SNAPPY
+                transition: SPRING_FLUID
             }}
             whileTap={{ scale: 0.98 }}
             // 退出动画
@@ -2347,12 +2347,20 @@ export default function TTSStudioPage() {
     return (
         <AuthGuard>
             <div className="min-h-screen text-white">
-                <div className="relative z-10 max-w-6xl mx-auto px-6 py-12 pt-24 pb-32 min-h-screen">
-                    <header className="mb-8">
+                <motion.div
+                    className="relative z-10 max-w-6xl mx-auto px-6 py-12 pt-24 pb-32 min-h-screen"
+                    initial="hidden"
+                    animate="show"
+                    variants={PAGE_VARIANTS}
+                >
+                    <motion.header className="mb-8" variants={ITEM_VARIANTS}>
                         <h1 className="text-3xl font-thin text-white/90">声波工坊</h1>
                         <p className="text-white/40 mt-2 font-light">Text to Speech Studio</p>
-                    </header>
-                    <GlassInput onAddCard={apiAddCard} />
+                    </motion.header>
+
+                    <motion.div variants={ITEM_VARIANTS}>
+                        <GlassInput onAddCard={apiAddCard} />
+                    </motion.div>
 
                     <div className="mt-8">
                         <motion.div
@@ -2390,7 +2398,7 @@ export default function TTSStudioPage() {
                             </AnimatePresence>
                         </motion.div>
                     </div>
-                </div>
+                </motion.div>
 
                 {/* Edit Modal */}
                 <AnimatePresence>
