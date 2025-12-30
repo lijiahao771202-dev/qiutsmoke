@@ -1781,21 +1781,9 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     // So it stops correctly at end of current fetch.
 
     return (
-        // 外层容器：继承父容器的 stagger 调度 + 处理布局和退出动画
-        <motion.div
-            layout="position"
-            layoutId={`tts-card-${card.id}`}
-            // 🎯 只控制 y 位置的 stagger 动画，不影响透明度
-            variants={CARD_WRAPPER_VARIANTS}
-            // 🍎 高级 hover 交互：轻微缩放 + 弹性过渡
-            whileHover={{
-                scale: 1.02,
-                transition: SPRING_FLUID
-            }}
-            whileTap={{ scale: 0.98 }}
-            // 退出动画
-            exit={{ y: -20, opacity: 0, transition: { duration: 0.25, ease: "easeOut" } }}
-            className="group relative"
+        // 🔥 外层容器：静态 div，不做任何透明度动画，GlassCard 立即可见
+        <div
+            className="group relative transition-transform duration-300 hover:scale-[1.02] active:scale-[0.98]"
         >
             <GlassCard
                 className={cn(
@@ -1806,9 +1794,9 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             >
                 {/* 🌟 内容层动画：淡入 + 微模糊，卡片背景先完整显示 */}
                 <motion.div
-                    variants={CARD_CONTENT_VARIANTS}
-                    initial="hidden"
-                    animate="show"
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
                     className="relative"
                 >
                     {/* Visualizer Background */}
@@ -2215,7 +2203,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     </motion.div>
                 )}
             </AnimatePresence>
-        </motion.div>
+        </div>
     );
 }
 
