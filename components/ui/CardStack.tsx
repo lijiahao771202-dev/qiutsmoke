@@ -59,8 +59,8 @@ export function CardStack({ children, className = "" }: CardStackProps) {
 
                 // 3. Floating Animation for Zero-G Effect
                 // Randomized float parameters based on index to desynchronize
-                const floatDuration = 4 + (index % 3);
-                const floatY = 10 + (index % 5);
+                const floatDuration = 6 + (index % 4); // Slower, heavier float (6-9s)
+                const floatY = 12 + (index % 6); // Slightly deeper float range
 
                 return (
                     <motion.div
@@ -73,9 +73,9 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                         }}
                         initial={{
                             x: 0,
-                            y: 40,
+                            y: 120, // 🚀 Deeper start for dramatic silky entrance
                             opacity: 0,
-                            scale: 0.8,
+                            scale: 0.9,
                             rotateX: 0,
                             rotateY: 0
                         }}
@@ -91,10 +91,14 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                         whileHover={isActive ? { scale: 1.02, y: yOffset - 5 } : { scale: scale * 1.03, y: yOffset - 15 }}
                         whileTap={{ scale: 0.98 }}
                         transition={{
-                            type: "spring",
-                            stiffness: 400,
-                            damping: 30,
-                            mass: 1
+                            // 🍎 Silky Non-Linear Physics
+                            // Custom Bezier: Starts fast, lands extremely soft (like silk)
+                            duration: 0.8,
+                            ease: [0.23, 1, 0.32, 1], // Cubic Bezier (Apple-like easeOut)
+                            // Separate opacity for quicker feedback
+                            opacity: { duration: 0.5, ease: "linear" },
+                            // Staggered delay logic could be here, but framer handles prop updates well.
+                            // We let natural React updates handle swipe delays.
                         }}
                         drag={isActive ? "x" : false}
                         dragConstraints={{ left: 0, right: 0 }}
@@ -119,8 +123,8 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                             transition={{
                                 duration: floatDuration,
                                 repeat: Infinity,
-                                ease: "easeInOut",
-                                delay: index * 0.4 // Offset start times
+                                ease: "easeInOut", // Sine wave float
+                                delay: 1.2 + (index * 0.2) // Wait for entrance to finish before floating
                             }}
                         >
                             {child}

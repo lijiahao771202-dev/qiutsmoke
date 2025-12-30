@@ -18,7 +18,7 @@ const CONTENT_CONTAINER = {
     show: {
         transition: {
             staggerChildren: 0.1,
-            delayChildren: 0.2
+            delayChildren: 1.0 // ⏳ Wait 1.0s for the card to slide in first
         }
     }
 };
@@ -67,7 +67,7 @@ function useAnimatedNumber(value: number, duration: number = 1000) {
             };
 
             requestAnimationFrame(animate);
-        }, 400); // 等待卡片入场后再开始数字动画
+        }, 1200); // ⏳ Wait 1.2s for card entrance to complete
 
         return () => clearTimeout(startDelay);
     }, [value, duration]);
@@ -99,7 +99,7 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
     React.useEffect(() => {
         const timer = setTimeout(() => {
             setAnimatedProgress(progress);
-        }, 500); // 等待卡片入场
+        }, 1300); // ⏳ Wait 1.3s for card entrance to complete
         return () => clearTimeout(timer);
     }, [progress]);
 

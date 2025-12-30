@@ -79,21 +79,20 @@ const CONTAINER_VARIANTS = {
     }
 };
 
-// 🎯 卡片外层动画：仅位移动画，不改变透明度（防止 FOUC 闪烁）
+// 🎯 卡片外层动画：丝滑入场，无透明度变化（防止闪烁）
 const CARD_WRAPPER_VARIANTS = {
     hidden: {
-        y: 30,   // 从下方滑入
-        scale: 0.98 // 微小缩放
-        // 🔥 不设置 opacity: 0，防止透明闪烁
+        y: 50,    // 从下方滑入
+        scale: 0.96
+        // 🔥 完全不设置 opacity，卡片始终完全不透明
     },
     show: {
         y: 0,
         scale: 1,
         transition: {
-            type: "spring",
-            stiffness: 150, // 稍硬一点让运动更快到位
-            damping: 22,
-            mass: 1
+            // 🍎 丝滑非线性贝塞尔曲线
+            duration: 0.7,
+            ease: [0.23, 1, 0.32, 1]
         }
     },
     exit: {
@@ -1781,9 +1780,12 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     // So it stops correctly at end of current fetch.
 
     return (
-        // 🔥 外层容器：静态 div，不做任何透明度动画，GlassCard 立即可见
-        <div
-            className="group relative transition-transform duration-300 hover:scale-[1.02] active:scale-[0.98]"
+        // 🔥 外层容器：使用 motion.div + variants 实现逐个入场，无透明度动画
+        <motion.div
+            variants={CARD_WRAPPER_VARIANTS}
+            className="group relative"
+            whileHover={{ scale: 1.02, transition: { duration: 0.3, ease: [0.25, 1, 0.5, 1] } }}
+            whileTap={{ scale: 0.98 }}
         >
             <GlassCard
                 className={cn(
@@ -1796,7 +1798,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 <motion.div
                     initial={{ opacity: 0, scale: 0.98 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: 0.5, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
                     className="relative"
                 >
                     {/* Visualizer Background */}
@@ -2203,7 +2205,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+        </motion.div>
     );
 }
 
