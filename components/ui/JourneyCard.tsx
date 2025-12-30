@@ -23,14 +23,23 @@ const CONTENT_CONTAINER = {
     }
 };
 
-// 单个元素入场动画
+// 单个元素入场动画：Motion Blur Slide Up
 const CONTENT_ITEM = {
-    hidden: { y: 20, scale: 0.95 }, // 🔥 Removed opacity: 0
+    hidden: {
+        opacity: 0,
+        y: 20,
+        filter: "blur(10px)",
+        scale: 0.95
+    },
     show: {
         opacity: 1,
         y: 0,
+        filter: "blur(0px)",
         scale: 1,
-        transition: SPRING_BOUNCY
+        transition: {
+            duration: 0.8,
+            ease: [0.2, 0.8, 0.2, 1] // Premium soft ease
+        }
     }
 };
 
@@ -42,7 +51,7 @@ interface JourneyCardProps {
 }
 
 // 🎯 动画计数器 Hook
-function useAnimatedNumber(value: number, duration: number = 1000) {
+function useAnimatedNumber(value: number, duration: number = 2000) {
     const [displayValue, setDisplayValue] = React.useState(0);
 
     React.useEffect(() => {
@@ -55,8 +64,8 @@ function useAnimatedNumber(value: number, duration: number = 1000) {
                 const elapsed = Date.now() - startTime;
                 const progress = Math.min(elapsed / duration, 1);
 
-                // easeOutCubic 缓动函数（比 Quart 更柔和，比 Linear 更自然）
-                const eased = 1 - Math.pow(1 - progress, 3);
+                // easeOutExpo 
+                const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
                 const current = Math.round(startValue + (value - startValue) * eased);
 
                 setDisplayValue(current);
@@ -67,7 +76,7 @@ function useAnimatedNumber(value: number, duration: number = 1000) {
             };
 
             requestAnimationFrame(animate);
-        }, 1200); // ⏳ Wait 1.2s for card entrance to complete
+        }, 800); // Wait for card
 
         return () => clearTimeout(startDelay);
     }, [value, duration]);
@@ -80,7 +89,7 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
     const [dailyGoal, setDailyGoal] = React.useState(20);
 
     // 🌟 动画状态：进度环从 0 开始填充
-    const [animatedProgress, setAnimatedProgress] = React.useState(0);
+    const [animatedPercentage, setAnimatedPercentage] = React.useState(0);
 
     // Load from local storage on mount
     React.useEffect(() => {
@@ -90,27 +99,29 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
         }
     }, []);
 
-    // Dynamic Progress Calculation
-    const progress = useMemo(() => {
+    // Target Percentage
+    const targetPercentage = useMemo(() => {
         return Math.min(Math.max(todayMinutes / dailyGoal, 0.05), 1);
     }, [todayMinutes, dailyGoal]);
 
     // 🌟 进度环入场动画：延迟后从 0 填充到目标值
     React.useEffect(() => {
+        setAnimatedPercentage(0); // Reset on mount
         const timer = setTimeout(() => {
-            setAnimatedProgress(progress);
-        }, 1300); // ⏳ Wait 1.3s for card entrance to complete
+            setAnimatedPercentage(targetPercentage);
+        }, 800); // ⏳ Sync with text animation
+
         return () => clearTimeout(timer);
-    }, [progress]);
+    }, [targetPercentage]);
 
     // Progress ring circumference
     const circumference = 2 * Math.PI * 40; // r=40
-    const strokeDashoffset = circumference - (circumference * animatedProgress);
+    const strokeDashoffset = circumference - (circumference * animatedPercentage);
 
     // 🎯 使用动画计数器（更慢速度，更优雅 - 配合 4s 的圆环动画）
-    const animatedTimes = useAnimatedNumber(times, 3500);
-    const animatedMinutes = useAnimatedNumber(minutes, 4000);
-    const animatedTodayMinutes = useAnimatedNumber(Math.round(todayMinutes), 3500);
+    const animatedTimes = useAnimatedNumber(times, 2000);
+    const animatedMinutes = useAnimatedNumber(minutes, 2500);
+    const animatedTodayMinutes = useAnimatedNumber(Math.round(todayMinutes), 2000);
 
     // Handle Native Select Change
     const handleNativeGoalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {

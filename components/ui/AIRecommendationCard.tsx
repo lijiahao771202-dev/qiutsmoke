@@ -19,45 +19,19 @@ export default function AIRecommendationCard() {
     }, []);
 
     const config = useMemo(() => {
-        switch (timeOfDay) {
-            case "morning":
-                return {
-                    label: "MORNING RITUAL",
-                    title: "First Light",
-                    subtitle: "Awaken & Energize",
-                    prompt: "创建一个3分钟的清晨唤醒冥想。引导用户感受阳光，唤醒身体能量，设定积极的一天意图。语速适中偏快，充满希望。",
-                    // 晨曦：温暖的橙金渐变
-                    bgClass: "bg-gradient-to-input from-[#FF9A9E] to-[#FECFEF]", // Peach/Pink
-                    orbClass: "from-yellow-300 via-orange-400 to-red-400",
-                    accent: "text-orange-100",
-                    icon: Sun
-                };
-            case "afternoon":
-                return {
-                    label: "MIDDAY RESET",
-                    title: "Flow State",
-                    subtitle: "Recharge & Focus",
-                    prompt: "创建一个3分钟的午间放松冥想。引导用户释放上午的压力，进行几次深呼吸，快速扫描身体放松肩颈，恢复专注力。",
-                    // 午后：清新的蓝绿渐变
-                    bgClass: "bg-gradient-to-tr from-[#84fab0] to-[#8fd3f4]", // Mint/Blue
-                    orbClass: "from-cyan-300 via-emerald-400 to-teal-500",
-                    accent: "text-cyan-100",
-                    icon: Wind
-                };
-            case "evening":
-                return {
-                    label: "NIGHT SCAPE",
-                    title: "Deep Drift",
-                    subtitle: "Release & Sleep",
-                    prompt: "创建一个5分钟的助眠冥想。引导用户放下白天的烦恼，进行深度身体扫描，感受床铺的支持，慢慢进入梦乡。语速非常缓慢，温柔。",
-                    // 深夜：深邃的紫蓝渐变
-                    bgClass: "bg-gradient-to-br from-[#24243e] via-[#302b63] to-[#0f0c29]", // Deep Purple/Black
-                    orbClass: "from-indigo-400 via-purple-500 to-pink-500",
-                    accent: "text-indigo-200",
-                    icon: Moon
-                };
-        }
-    }, [timeOfDay]);
+        return {
+            label: "AI RECOMMENDATION",
+            title: "Daily Insight",
+            subtitle: "Personalized for You",
+            prompt: "创建一个3分钟的每日冥想。引导用户感受当下，通过深呼吸释放压力，寻找内心的平静与力量。语速温柔，背景音轻柔。",
+            // 🍊 Orange Frosted Glass Theme (Vibrant & Warm)
+            bgClass: "bg-gradient-to-br from-[#FF9A9E] via-[#FECFEF] to-[#FFD1FF]", // Peach/Pink/Soft Purple
+            // Override with a stronger orange base in the JSX
+            orbClass: "from-orange-400 via-amber-500 to-yellow-400",
+            accent: "text-orange-100",
+            icon: Sparkles
+        };
+    }, []);
 
     const handlePlay = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -75,8 +49,8 @@ export default function AIRecommendationCard() {
             onMouseLeave={() => setIsHovered(false)}
             onClick={handlePlay}
         >
-            {/* 1. Dynamic Atmopsheric Background */}
-            <div className={cn("absolute inset-0 transition-opacity duration-1000", config.bgClass)} />
+            {/* 1. Orange Frosted Glass Background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-orange-400/80 via-rose-400/60 to-amber-300/50 backdrop-blur-2xl transition-all duration-1000" />
 
             {/* Noise Overlay for Texture */}
             <div className="absolute inset-0 opacity-20 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
