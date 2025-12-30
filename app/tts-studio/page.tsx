@@ -71,20 +71,31 @@ const PAGE_VARIANTS = {
 const CONTAINER_VARIANTS = {
     hidden: {},
     show: {
+        opacity: 1,
         transition: {
-            staggerChildren: 0.08,
-            delayChildren: 0.1
+            staggerChildren: 0.15, // Slower stagger (was 0.08)
+            delayChildren: 0.2     // Longer delay before start
         }
     }
 };
 
 // 🎯 卡片外层动画：位移减小，更稳重
 const CARD_WRAPPER_VARIANTS = {
-    hidden: { y: 20, opacity: 0 }, // y: 30 -> 20
+    hidden: {
+        y: 40,   // Increased distance for more dramatic entry
+        opacity: 0,
+        scale: 0.95 // Start slightly smaller
+    },
     show: {
         y: 0,
         opacity: 1,
-        transition: SPRING_FLUID // 使用流体弹簧
+        scale: 1,
+        transition: {
+            type: "spring",
+            stiffness: 100, // Much softer spring (was 400)
+            damping: 20,    // Lower damping for gentle settling
+            mass: 1.2       // Heavier mass for "premium" feel
+        }
     },
     exit: {
         y: -10,
