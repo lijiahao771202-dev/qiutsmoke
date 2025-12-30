@@ -79,22 +79,21 @@ const CONTAINER_VARIANTS = {
     }
 };
 
-// 🎯 卡片外层动画：位移减小，更稳重
+// 🎯 卡片外层动画：仅位移动画，不改变透明度（防止 FOUC 闪烁）
 const CARD_WRAPPER_VARIANTS = {
     hidden: {
-        y: 40,   // Increased distance for more dramatic entry
-        opacity: 0,
-        scale: 0.95 // Start slightly smaller
+        y: 30,   // 从下方滑入
+        scale: 0.98 // 微小缩放
+        // 🔥 不设置 opacity: 0，防止透明闪烁
     },
     show: {
         y: 0,
-        opacity: 1,
         scale: 1,
         transition: {
             type: "spring",
-            stiffness: 100, // Much softer spring (was 400)
-            damping: 20,    // Lower damping for gentle settling
-            mass: 1.2       // Heavier mass for "premium" feel
+            stiffness: 150, // 稍硬一点让运动更快到位
+            damping: 22,
+            mass: 1
         }
     },
     exit: {

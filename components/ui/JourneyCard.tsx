@@ -55,8 +55,8 @@ function useAnimatedNumber(value: number, duration: number = 1000) {
                 const elapsed = Date.now() - startTime;
                 const progress = Math.min(elapsed / duration, 1);
 
-                // easeOutQuart 缓动函数（更柔和优雅）
-                const eased = 1 - Math.pow(1 - progress, 4);
+                // easeOutCubic 缓动函数（比 Quart 更柔和，比 Linear 更自然）
+                const eased = 1 - Math.pow(1 - progress, 3);
                 const current = Math.round(startValue + (value - startValue) * eased);
 
                 setDisplayValue(current);
@@ -107,10 +107,10 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
     const circumference = 2 * Math.PI * 40; // r=40
     const strokeDashoffset = circumference - (circumference * animatedProgress);
 
-    // 🎯 使用动画计数器（更慢速度，更优雅）
-    const animatedTimes = useAnimatedNumber(times, 2800);
-    const animatedMinutes = useAnimatedNumber(minutes, 3500);
-    const animatedTodayMinutes = useAnimatedNumber(Math.round(todayMinutes), 2500);
+    // 🎯 使用动画计数器（更慢速度，更优雅 - 配合 4s 的圆环动画）
+    const animatedTimes = useAnimatedNumber(times, 3500);
+    const animatedMinutes = useAnimatedNumber(minutes, 4000);
+    const animatedTodayMinutes = useAnimatedNumber(Math.round(todayMinutes), 3500);
 
     // Handle Native Select Change
     const handleNativeGoalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -314,7 +314,7 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                                         filter: "url(#progressGlow)",
                                         strokeDasharray: circumference,
                                         strokeDashoffset: strokeDashoffset,
-                                        transition: "stroke-dashoffset 2.8s cubic-bezier(0.16, 1, 0.3, 1)"
+                                        transition: "stroke-dashoffset 4s cubic-bezier(0.22, 0.61, 0.36, 1)" // Apple-like smooth ease-out, 4s duration
                                     }}
                                 />
                             </svg>
