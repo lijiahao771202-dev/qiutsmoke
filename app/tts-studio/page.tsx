@@ -609,6 +609,9 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     // 播放进度状态 (用于缓存音频)
     const [playbackProgress, setPlaybackProgress] = useState({ currentTime: 0, duration: 0 });
 
+    // 📊 统计记录: 当前播放的 session ID
+    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
     // 🚀 流式优化：初始缓冲状态
     const [isBuffering, setIsBuffering] = useState(false);
     const [bufferProgress, setBufferProgress] = useState({ loaded: 0, total: 0 });
@@ -1590,6 +1593,29 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 }));
             };
 
+            // 📊 统计记录: 创建新的 session
+            const sessionIdRef = { current: null as string | null };
+            try {
+                const res = await fetch(getApiUrl('/api/meditation/sessions'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        topicId: `tts-${card.id}`,
+                        topicName: `声波工坊 - ${card.title || '未命名'}`
+                    })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data?.id) {
+                        sessionIdRef.current = data.id;
+                        setCurrentSessionId(data.id);
+                        console.log('[TTS] Session 开始:', data.id);
+                    }
+                }
+            } catch (e) {
+                console.error('[TTS] 创建 session 失败', e);
+            }
+
             const cleanup = () => {
                 console.log("[Play] 缓存播放结束");
                 setIsPlaying(false);
@@ -1605,6 +1631,23 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 setTimeout(() => {
                     cleanup();
                     setPlaybackProgress(prev => ({ ...prev, currentTime: prev.duration }));
+
+                    // 📊 统计记录: 更新 session 时长
+                    const sessionId = sessionIdRef.current;
+                    if (sessionId && audio.duration) {
+                        const durationSeconds = Math.round(audio.duration);
+                        fetch(getApiUrl('/api/meditation/sessions'), {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                id: sessionId,
+                                durationSeconds
+                            })
+                        }).then(() => {
+                            console.log('[TTS] Session 结束:', sessionId, `, ${durationSeconds}秒`);
+                            setCurrentSessionId(null);
+                        }).catch(e => console.error('[TTS] 更新 session 失败', e));
+                    }
                 }, 1000);
             };
 
