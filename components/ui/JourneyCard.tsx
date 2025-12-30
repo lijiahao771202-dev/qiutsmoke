@@ -351,16 +351,23 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                             {/* Glow */}
                             <div className="absolute -inset-0.5 rounded-2xl blur-md opacity-30 group-hover/btn:opacity-70 transition-opacity duration-500 bg-emerald-400" />
 
-                            {/* Glass Body */}
+                            {/* 3D Frosted Glass Body */}
                             <div
-                                className="relative h-16 overflow-hidden rounded-2xl bg-white/15 backdrop-blur-xl border border-white/30 transition-transform duration-200 active:scale-[0.98]"
-                                style={{ boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.4)' }}
+                                className="relative h-16 overflow-hidden rounded-2xl bg-gradient-to-b from-white/20 to-white/5 backdrop-blur-2xl border-t border-l border-r border-white/40 border-b border-white/10 transition-all duration-300 group-hover/btn:scale-[1.02] active:scale-[0.98]"
+                                style={{
+                                    boxShadow: `
+                                        0 8px 20px -4px rgba(0, 0, 0, 0.15),
+                                        inset 0 1px 0 rgba(255, 255, 255, 0.6),
+                                        inset 0 -2px 0 rgba(0, 0, 0, 0.05),
+                                        inset 0 20px 20px -10px rgba(255, 255, 255, 0.1)
+                                    `
+                                }}
                             >
                                 {/* Shine - Pure CSS Animation */}
                                 <div
-                                    className="absolute inset-0 -skew-x-20 animate-button-shine pointer-events-none"
+                                    className="absolute inset-0 -skew-x-20 animate-button-shine pointer-events-none opacity-50"
                                     style={{
-                                        background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%)',
+                                        background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)',
                                     }}
                                 />
 
