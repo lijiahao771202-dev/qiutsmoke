@@ -54,27 +54,25 @@ const SPRING_FLUID = {
     mass: 1
 } as const;
 
-// 页面整体入场：从下方轻微滑入，统一编排
+// 页面整体入场：无透明度变化
 const PAGE_VARIANTS = {
-    hidden: { opacity: 0 },
+    hidden: {},
     show: {
-        opacity: 1,
         transition: {
-            staggerChildren: 0.08, // 🌟 紧凑的节奏
-            delayChildren: 0.05,
+            staggerChildren: 0.1,
+            delayChildren: 0.1,
             when: "beforeChildren"
         }
     }
 };
 
-// 容器动画：保持始终可见
+// 容器动画：卡片网格逐个入场（大stagger）
 const CONTAINER_VARIANTS = {
     hidden: {},
     show: {
-        opacity: 1,
         transition: {
-            staggerChildren: 0.15, // Slower stagger (was 0.08)
-            delayChildren: 0.2     // Longer delay before start
+            staggerChildren: 0.25, // 🐌 更慢的stagger让逐个入场更明显
+            delayChildren: 0.3     // 入场前等待
         }
     }
 };
@@ -102,15 +100,14 @@ const CARD_WRAPPER_VARIANTS = {
     }
 };
 
-// 🌟 卡片内容入场动画
+// 🌟 卡片内容入场动画 - 无任何透明度变化
 const CARD_CONTENT_VARIANTS = {
     hidden: {
-        opacity: 0,
-        scale: 0.96, // 0.98 -> 0.96 稍微多一点缩放感
-        filter: "blur(4px)" // 6px -> 4px 减少模糊开销
+        scale: 0.96,
+        filter: "blur(4px)"
+        // 🔥 完全移除 opacity，防止透明闪烁
     },
     show: {
-        opacity: 1,
         scale: 1,
         filter: "blur(0px)",
         transition: { ...SPRING_FLUID, delay: 0.05 }
@@ -1794,11 +1791,11 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 )}
                 hoverEffect={true}
             >
-                {/* 🌟 内容层动画：淡入 + 微模糊，卡片背景先完整显示 */}
+                {/* 🌟 内容层动画：仅缩放+模糊，无透明度变化 */}
                 <motion.div
-                    initial={{ opacity: 0, scale: 0.98 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.5, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    initial={{ scale: 0.98, filter: "blur(3px)" }}
+                    animate={{ scale: 1, filter: "blur(0px)" }}
+                    transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
                     className="relative"
                 >
                     {/* Visualizer Background */}
