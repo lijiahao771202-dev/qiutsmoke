@@ -54,7 +54,7 @@ export function CardStack({ children, className = "" }: CardStackProps) {
 
                 // 2. Scale & Opacity
                 const scale = isActive ? 1 : Math.max(0.8, 1 - Math.abs(offset) * 0.15);
-                const opacity = isActive ? 1 : Math.max(0, 1 - Math.abs(offset) * 0.3);
+                const opacity = isActive ? 1 : Math.max(0.5, 1 - Math.abs(offset) * 0.1);
                 const blur = isActive ? 0 : Math.abs(offset) * 2; // Blur distant cards
 
                 // 3. Floating Animation for Zero-G Effect
