@@ -168,7 +168,11 @@ ${userGuidance}`.trim();
       } catch (e) {
         console.error("Stream processing error:", e);
       } finally {
-        await writer.close();
+        try {
+          await writer.close();
+        } catch {
+          // Writer already closed (client disconnected)
+        }
       }
     })();
 

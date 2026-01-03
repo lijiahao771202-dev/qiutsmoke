@@ -13,6 +13,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { useMeditationTopics } from "@/lib/hooks/useData";
 import { useBackgroundAudio } from "@/hooks/useBackgroundAudio";
 import { getApiUrl } from "@/lib/config";
+import ImmersiveMeditationPlayer from "@/components/meditation/ImmersiveMeditationPlayer";
 
 // 🚀 引导模式常量
 
@@ -113,6 +114,9 @@ export default function MeditatePage() {
     const [globalSystemPrompt, setGlobalSystemPrompt] = useState("");
     const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
     const [draftPrompt, setDraftPrompt] = useState("");
+
+    // 🚀 State Tracking for Isolation
+    const currentGenerationIdRef = useRef<number>(0);
 
     // 🚀 冥想时长控制（分钟）
     const [meditationDuration, setMeditationDuration] = useState(10);
@@ -256,7 +260,13 @@ export default function MeditatePage() {
     const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
     const [showAudioHint, setShowAudioHint] = useState(false);
     const [text, setText] = useState("");
+    const [currentSpokenText, setCurrentSpokenText] = useState(""); // 💬 当前正在朗读的句子
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+    // ⏱️ 队列进度追踪
+    const [playedCount, setPlayedCount] = useState(0); // 已播放的段落数
+    const [totalSegments, setTotalSegments] = useState(0); // 总段落数
+    const [elapsedSeconds, setElapsedSeconds] = useState(0); // 已播放时间（秒）
+    const elapsedTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     // Refs for processing
     const currentRate = useRef("0%");
@@ -661,16 +671,15 @@ export default function MeditatePage() {
                 currentSourceRef.current = null;
             }
             isPlayingNextRef.current = false;
-            hasStartedRef.current = false;
             setIsBuffering(false);
             isProcessingRef.current = false; // 重置
-            currentItemIdRef.current = null; // 重置
+            // currentItemIdRef 保持不变以支持断点续传
             return;
         }
 
         // 队列为空时停止
         if (audioQueue.length === 0) {
-            if (isPlaying) {
+            if (isPlaying && !isGenerating) {
                 console.log("[Meditate] ✅ Session Complete");
                 triggerSuccess();
                 setIsPlaying(false);
@@ -691,8 +700,20 @@ export default function MeditatePage() {
         if (audioQueue.length > 0) {
             const item = audioQueue[0];
 
-            // 🔥 防止重复处理同一个项目（避免跳读）
-            if (currentItemIdRef.current === item.id) return;
+            // 🔥 Resume Logic: 如果 ID 匹配，说明是暂停后继续，恢复播放而不重新开始
+            if (currentItemIdRef.current === item.id) {
+                const audio = sharedAudioRef.current || currentAudio;
+                if (audio && audio.paused) {
+                    audio.play().catch(() => { });
+                    // 恢复计时器
+                    if (!elapsedTimerRef.current) {
+                        elapsedTimerRef.current = setInterval(() => {
+                            setElapsedSeconds(prev => prev + 1);
+                        }, 1000);
+                    }
+                }
+                return;
+            }
 
             // 🔥 设置锁，防止并发处理
             isProcessingRef.current = true;
@@ -764,6 +785,21 @@ export default function MeditatePage() {
 
                 audio.volume = 1;
                 audio.src = item.url;
+
+                // 💬 设置当前正在朗读的句子
+                if (item.text) {
+                    setCurrentSpokenText(item.text);
+                }
+
+                // ⏱️ 更新已播放段落计数
+                setPlayedCount(prev => prev + 1);
+
+                // ⏱️ 启动计时器（如果尚未启动）
+                if (!elapsedTimerRef.current) {
+                    elapsedTimerRef.current = setInterval(() => {
+                        setElapsedSeconds(prev => prev + 1);
+                    }, 1000);
+                }
 
                 // 设置 Media Session
                 try {
@@ -848,7 +884,7 @@ export default function MeditatePage() {
                 isProcessingRef.current = false;
             }
         }
-    }, [isPlaying, audioQueue, currentAudio]);
+    }, [isPlaying, audioQueue, currentAudio, isGenerating]);
 
     // Handle Stop / Reset
     // 🎵 后台音频 Hook
@@ -876,12 +912,16 @@ export default function MeditatePage() {
 
         // 🎵 停用后台音频
         await backgroundAudio.deactivate();
+
+        // Invalidate any running generation
+        currentGenerationIdRef.current++;
     };
 
 
 
     const wakeLockRef = useRef<any>(null);
     const wakeLockActiveRef = useRef(false);
+
 
     const requestWakeLock = async () => {
         try {
@@ -968,6 +1008,9 @@ export default function MeditatePage() {
     }, [isPlaying]);
 
     const generateMeditation = async (prompt: string) => {
+        // 1. Start new generation session
+        const generationId = ++currentGenerationIdRef.current;
+
         setIsGenerating(true);
         setText("");
         setAudioQueue([]);
@@ -997,17 +1040,20 @@ export default function MeditatePage() {
 
             if (typeof window !== 'undefined' && (window as any).electron) {
                 (window as any).electron.onMeditationChunk(async (chunk: string) => {
+                    if (currentGenerationIdRef.current !== generationId) return; // 🛑 Stale check
                     setText((prev) => prev + chunk);
                     processingBuffer.current += chunk;
                     await processBuffer();
                 });
 
                 (window as any).electron.onMeditationError((error: any) => {
+                    if (currentGenerationIdRef.current !== generationId) return; // 🛑 Stale check
                     console.error("Generation error:", error);
                     setIsGenerating(false);
                 });
 
                 (window as any).electron.onMeditationDone(async () => {
+                    if (currentGenerationIdRef.current !== generationId) return; // 🛑 Stale check
                     // Process any remaining text in buffer - FLUSH all remaining
                     await processBuffer(true);
                     setIsGenerating(false);
@@ -1052,18 +1098,38 @@ export default function MeditatePage() {
                     setIsGenerating(false);
                 } else {
                     const decoder = new TextDecoder();
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-                        const chunk = decoder.decode(value);
-                        setText((prev) => prev + chunk);
-                        processingBuffer.current += chunk;
-                        await processBuffer();
+                    try {
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            if (currentGenerationIdRef.current !== generationId) {
+                                console.log("🛑 Generation abandoned (stale session)");
+                                reader.cancel();
+                                return;
+                            }
+                            const chunk = decoder.decode(value, { stream: true });
+                            setText((prev) => prev + chunk);
+                            processingBuffer.current += chunk;
+                            await processBuffer();
+                        }
+                    } catch (readError) {
+                        console.warn("Stream reading interrupted:", readError);
+                    } finally {
+                        // Check if we are still the active session before finalizing
+                        if (currentGenerationIdRef.current === generationId) {
+                            // 🛑 确保 stream 结束或出错时，强制刷新剩余缓冲区
+                            if (processingBuffer.current.trim().length > 0) {
+                                console.log("Flushing remaining buffer...", processingBuffer.current.length);
+                                try {
+                                    await processBuffer(true);
+                                } catch (e) {
+                                    console.error("Final flush failed:", e);
+                                }
+                            }
+                            setIsGenerating(false);
+                            triggerSuccess();
+                        }
                     }
-                    // Stream ended - flush ALL remaining text
-                    await processBuffer(true);
-                    setIsGenerating(false);
-                    triggerSuccess(); // AI Generation Complete
                 }
             }
 
@@ -1122,10 +1188,11 @@ export default function MeditatePage() {
 
     // === 简化版 processBuffer：按 pause 分段 === //
     const hasStartedSpeakingRef = useRef(false);
+    const isParsingRef = useRef(false); // 🔥 独立的解析锁，避免与播放锁冲突
 
     const processBuffer = async (flushRemaining = false) => {
-        if (isProcessingRef.current) return;
-        isProcessingRef.current = true;
+        if (isParsingRef.current) return;
+        isParsingRef.current = true;
 
         try {
             // 匹配 [pause Xs] 或 [rate ±N%] 标签
@@ -1156,6 +1223,7 @@ export default function MeditatePage() {
                                 status: 'loading',
                                 text: cleanedText
                             }]);
+                            setTotalSegments(prev => prev + 1); // ➕ 更新总段落数
                             generateAudioWithRetry(cleanedText, itemId);
                             hasStartedSpeakingRef.current = true;
                         }
@@ -1196,6 +1264,7 @@ export default function MeditatePage() {
                             status: 'loading',
                             text: cleanedText
                         }]);
+                        setTotalSegments(prev => prev + 1); // ➕ 更新总段落数
                         generateAudioWithRetry(cleanedText, itemId);
                         hasStartedSpeakingRef.current = true;
                     }
@@ -1208,7 +1277,7 @@ export default function MeditatePage() {
                 }
             }
         } finally {
-            isProcessingRef.current = false;
+            isParsingRef.current = false;
         }
     };
 
@@ -1813,76 +1882,40 @@ export default function MeditatePage() {
                     )}
                 </AnimatePresence>
 
-                {/* Active Meditation View */}
-                <AnimatePresence>
-                    {activeCard && (
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-hidden"
-                            onClick={() => {
-                                // Click backdrop to close
-                                stopAudio();
-                                setActiveCard(null);
-                                hasStartedSpeakingRef.current = false;
-                            }}
-                        >
-                            <motion.div
-                                layoutId={`card-${activeCard}`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="relative w-full max-w-2xl bg-white/10 backdrop-blur-2xl border border-white/20 rounded-[2.5rem] p-8 md:p-12 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] flex flex-col h-[65vh]"
-                                style={{
-                                    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px 0 0 rgba(255,255,255,0.5), 0 8px 32px rgba(0,0,0,0.37)"
-                                }}
-                            >
-                                <button
-                                    onClick={() => {
-                                        stopAudio();
-                                        setActiveCard(null);
-                                        hasStartedSpeakingRef.current = false; // Reset First Packet logic
-                                    }}
-                                    className="absolute top-6 right-6 p-3 hover:bg-white/10 rounded-full transition-colors z-20"
-                                    aria-label="关闭冥想"
-                                >
-                                    <X className="w-6 h-6 text-white/50 hover:text-white" />
-                                </button>
-
-                                <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar relative pr-2">
-                                    {text ? (
-                                        <p className="text-xl md:text-2xl leading-relaxed text-slate-100 font-light tracking-wide whitespace-pre-wrap drop-shadow-sm">{text}</p>
-                                    ) : (
-                                        <div className="flex items-center justify-center h-full min-h-[300px]">
-                                            <div className="flex flex-col items-center gap-4 animate-pulse">
-                                                <div className="w-12 h-12 rounded-full border-2 border-white/20 border-t-white/80 animate-spin" />
-                                                <div className="text-white/40 font-light">
-                                                    {isBuffering ? '正在缓冲音频...' : '正在生成冥想引导...'}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="mt-8 flex justify-center pt-6 border-t border-white/5">
-                                    <button
-                                        onClick={async () => {
-                                            await ensureAudioContext();
-                                            primeAudio();
-                                            if (!isPlaying && audioContextRef.current?.state === 'suspended') {
-                                                await audioContextRef.current.resume();
-                                            }
-                                            setIsPlaying(!isPlaying);
-                                        }}
-                                        className="p-5 pl-6 bg-white text-slate-900 rounded-full hover:scale-105 hover:bg-slate-100 hover:shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-all active:scale-95"
-                                        aria-label={isPlaying ? "暂停" : "播放"}
-                                    >
-                                        {isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current" />}
-                                    </button>
-                                </div>
-                            </motion.div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                {/* 🧘 全屏沉浸式冥想播放器 */}
+                <ImmersiveMeditationPlayer
+                    isOpen={!!activeCard}
+                    title={activeCard ? (DEFAULT_TOPICS.find(t => t.id === activeCard)?.title || customTopics.find(t => t.id === activeCard)?.title || '冥想') : ''}
+                    text={currentSpokenText}
+                    fullText={text}
+                    isPlaying={isPlaying}
+                    isBuffering={isBuffering}
+                    queueCurrent={playedCount}
+                    queueTotal={totalSegments}
+                    elapsedSeconds={elapsedSeconds}
+                    onPlayPause={async () => {
+                        await ensureAudioContext();
+                        primeAudio();
+                        if (!isPlaying && audioContextRef.current?.state === 'suspended') {
+                            await audioContextRef.current.resume();
+                        }
+                        setIsPlaying(!isPlaying);
+                    }}
+                    onClose={() => {
+                        stopAudio();
+                        setActiveCard(null);
+                        setCurrentSpokenText("");
+                        setPlayedCount(0);
+                        setTotalSegments(0);
+                        setElapsedSeconds(0);
+                        if (elapsedTimerRef.current) {
+                            clearInterval(elapsedTimerRef.current);
+                            elapsedTimerRef.current = null;
+                        }
+                        hasStartedSpeakingRef.current = false;
+                    }}
+                    cardId={activeCard || undefined}
+                />
                 <div className="fixed bottom-1 left-0 right-0 text-center pointer-events-none opacity-20 text-[10px] text-white z-50">
                     v0.1.2 (Release)
                 </div>

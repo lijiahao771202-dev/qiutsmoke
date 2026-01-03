@@ -10,8 +10,16 @@ const STATIC_ASSETS = [
   '/tts-studio',
 ];
 
-// 安装时预缓存核心页面
+// 🔥 开发模式检测：localhost 或 127.0.0.1 下禁用缓存
+const isDev = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1';
+
+// 安装时预缓存核心页面（开发模式跳过）
 self.addEventListener('install', (event) => {
+  if (isDev) {
+    console.log('[SW] 开发模式：跳过缓存安装');
+    self.skipWaiting();
+    return;
+  }
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS);
@@ -36,6 +44,11 @@ self.addEventListener('activate', (event) => {
 
 // 拦截请求
 self.addEventListener('fetch', (event) => {
+  // 🔥 开发模式：所有请求直接走网络，不缓存
+  if (isDev) {
+    return;
+  }
+
   const url = new URL(event.request.url);
 
   // API 请求不缓存，直接走网络

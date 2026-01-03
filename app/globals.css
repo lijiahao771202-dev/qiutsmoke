@@ -190,3 +190,94 @@ body {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* =============================================================================
+   🧘 沉浸式冥想播放器动画
+   ============================================================================= */
+
+/* 慢速脉冲动画 - 用于发光球体 */
+@keyframes pulse-slow {
+
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.5;
+    transform: scale(1.1);
+  }
+}
+
+/* 浮动动画 - 让背景元素缓慢移动 */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+
+  33% {
+    transform: translate(30px, -20px) rotate(2deg);
+  }
+
+  66% {
+    transform: translate(-20px, 15px) rotate(-1deg);
+  }
+}
+
+/* 呼吸动画 - 同步冥想节奏 */
+@keyframes breathe {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+
+  50% {
+    transform: scale(1.08);
+    opacity: 0.9;
+  }
+}
+
+/* 文字淡入动画 */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 8s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 12s ease-in-out infinite;
+}
+
+.animate-breathe {
+  animation: breathe 6s ease-in-out infinite;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out forwards;
+}
+
+/* 尊重用户的动画偏好设置 */
+@media (prefers-reduced-motion: reduce) {
+
+  .animate-pulse-slow,
+  .animate-float,
+  .animate-breathe,
+  .animate-fade-in-up {
+    animation: none;
+  }
+}
