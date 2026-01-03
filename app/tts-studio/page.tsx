@@ -2015,42 +2015,19 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                         {/* Content Preview */}
                         {/* Content Preview - Click to View */}
                         {/* Content Stats Preview */}
+                        {/* Content Script Preview */}
                         <motion.div
                             whileHover={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.08)" }}
                             whileTap={{ scale: 0.98 }}
                             onClick={(e) => { e.stopPropagation(); onView(card); triggerLight(); }}
-                            className="flex-1 my-2 rounded-xl bg-white/5 border border-white/5 cursor-pointer relative group/stats min-h-[80px] flex flex-col justify-center px-4 py-3 gap-2"
+                            className="flex-1 my-2 overflow-hidden rounded-xl bg-white/5 border border-white/5 cursor-pointer relative group/text min-h-[80px]"
                         >
-                            <div className="flex items-center justify-between text-xs text-white/40">
-                                <span>文案统计</span>
-                                <ArrowRight className="w-3 h-3 opacity-0 group-hover/stats:opacity-100 transition-opacity -translate-x-2 group-hover/stats:translate-x-0 duration-300" />
+                            <div className="px-3 py-2 text-sm font-light leading-relaxed whitespace-pre-wrap text-white/50 h-[80px] overflow-hidden select-none">
+                                {card.content || "暂无文案..."}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2 mb-2">
-                                {/* Character Count */}
-                                <div className="flex flex-col">
-                                    <span className="text-lg font-medium text-white/90 tabular-nums">
-                                        {card.content?.length || 0}
-                                    </span>
-                                    <span className="text-[10px] text-white/30 tracking-wider">字符总数</span>
-                                </div>
-
-                                {/* Speech Rate */}
-                                <div className="flex flex-col">
-                                    <span className="text-lg font-medium text-white/90 tabular-nums">
-                                        {card.rate || "0%"}
-                                    </span>
-                                    <span className="text-[10px] text-white/30 tracking-wider">语速设置</span>
-                                </div>
-                            </div>
-
-                            {/* Creation Date & Arrow */}
-                            <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                                <span className="text-[10px] text-white/30 font-mono">
-                                    {card.created_at ? new Date(card.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '-') : '--'}
-                                </span>
-                                <ArrowRight className="w-3 h-3 text-white/20 group-hover/stats:text-white/60 transition-colors" />
-                            </div>
+                            {/* Read More Fade */}
+                            <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
                         </motion.div>
 
                         {/* Control Bar */}
