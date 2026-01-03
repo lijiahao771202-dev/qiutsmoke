@@ -2393,14 +2393,21 @@ export default function TTSStudioPage() {
             <div className="min-h-screen text-white">
                 <motion.div
                     className="relative z-10 max-w-6xl mx-auto px-6 py-12 pt-24 pb-32 min-h-screen"
-                    initial="hidden"
-                    animate="show"
-                    variants={PAGE_VARIANTS}
+                    initial={{ y: 20 }}
+                    animate={{ y: 0 }}
+                    transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
                 >
-                    <motion.header className="mb-8" variants={ITEM_VARIANTS}>
+                    <header className="mb-8">
                         <h1 className="text-3xl font-thin text-white/90">声波工坊</h1>
-                        <p className="text-white/40 mt-2 font-light">Text to Speech Studio</p>
-                    </motion.header>
+                        <motion.p
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.2, duration: 1 }}
+                            className="text-white/40 mt-2 font-light"
+                        >
+                            Text to Speech Studio
+                        </motion.p>
+                    </header>
 
                     {/* 🔥 新建卡片 - 无入场动画 */}
                     <div>
