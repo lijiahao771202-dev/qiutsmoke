@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Play, Trash2, Clock, Volume2, Sparkles, ChevronRight, ChevronDown, Settings, Info, Save, X, Edit2, Check, ArrowRight, Music, RotateCcw, Download, Pencil, RotateCw, Pause } from "lucide-react";
+import { Plus, Play, Trash2, Clock, Volume2, Sparkles, ChevronRight, ChevronDown, Settings, Info, Save, X, Edit2, Check, ArrowRight, Music, RotateCcw, Download, Pencil, RotateCw, Pause, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AuthGuard from "@/components/AuthGuard";
 import { saveAudioCache, getAudioCache, hasAudioCache, deleteAudioCache } from "@/lib/audioCache";
@@ -2010,11 +2010,19 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
                         </div>
 
                         {/* Content Preview */}
-                        <div className="flex-1 min-h-[60px] max-h-[120px] overflow-y-auto custom-scrollbar my-2">
-                            <p className="text-sm text-white/70 leading-relaxed font-light whitespace-pre-wrap">
-                                {card.content}
-                            </p>
-                        </div>
+                        {/* Content Preview - Click to View */}
+                        <motion.div
+                            whileHover={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.08)" }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={(e) => { e.stopPropagation(); onEdit(card); }}
+                            className="flex-1 flex items-center justify-center my-2 min-h-[80px] rounded-2xl bg-white/5 border border-white/5 transition-all cursor-pointer group/view overflow-hidden relative"
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover/view:opacity-100 transition-opacity" />
+                            <div className="flex flex-col items-center gap-2 text-white/30 group-hover/view:text-emerald-200/80 transition-colors relative z-10">
+                                <Eye className="w-5 h-5" />
+                                <span className="text-xs font-light tracking-wider opacity-80">点击查看文案</span>
+                            </div>
+                        </motion.div>
 
                         {/* Control Bar */}
                         <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
