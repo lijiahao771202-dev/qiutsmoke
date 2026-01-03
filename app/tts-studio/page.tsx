@@ -2254,6 +2254,16 @@ export default function TTSStudioPage() {
     // 使用 SWR 缓存数据
     const { cards: ttsCards, addCard: apiAddCard, deleteCard: apiDeleteCard, isLoading: isLoadingCards } = useTTSCards();
 
+    // 🚀 iOS 性能优化：延迟动画启动，等待页面完成静态渲染
+    const [isMounted, setIsMounted] = useState(false);
+    useEffect(() => {
+        // 使用 requestAnimationFrame 确保在下一帧启动动画
+        const raf = requestAnimationFrame(() => {
+            setIsMounted(true);
+        });
+        return () => cancelAnimationFrame(raf);
+    }, []);
+
     const [editingCard, setEditingCard] = useState<TTSCard | null>(null);
     const [editTitle, setEditTitle] = useState("");
     const [editContent, setEditContent] = useState("");
@@ -2481,7 +2491,7 @@ export default function TTSStudioPage() {
                                     key="grid"
                                     variants={CONTAINER_VARIANTS}
                                     initial="hidden"
-                                    animate="show"
+                                    animate={isMounted ? "show" : "hidden"}
                                     className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                                 >
                                     {ttsCards.map((card: TTSCard, index: number) => (

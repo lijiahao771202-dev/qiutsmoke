@@ -70,6 +70,8 @@ export function GlassCard({
           0 10px 20px -4px rgba(0, 0, 0, 0.1)
         `,
                 transform: "translate3d(0,0,0)",
+                willChange: "transform, opacity", // GPU 层提升
+                contain: "layout style paint", // 渲染隔离优化
             }}
             {...props}
         >
