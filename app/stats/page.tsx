@@ -306,6 +306,20 @@ export default function StatsPage() {
     );
 }
 
+// Apple Ease & Jelly Variants
+const APPLE_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+const JELLY_VARIANTS = {
+    hover: {
+        scale: 1.025,
+        transition: { duration: 0.4, ease: APPLE_EASE }
+    },
+    tap: {
+        scale: 0.96,
+        transition: { type: "spring", stiffness: 300, damping: 15 }
+    }
+};
+
 function StatCard({ icon: Icon, label, value, unit, index, color = "text-rose-400" }: any) {
     const itemVariants = {
         hidden: { opacity: 0, y: 20 },
@@ -347,9 +361,15 @@ function StatCard({ icon: Icon, label, value, unit, index, color = "text-rose-40
     }, [label, value, index]);
 
     return (
-        <div className="group" id={`stat-card-${index}`}>
+        <motion.div
+            className="group h-full"
+            id={`stat-card-${index}`}
+            variants={JELLY_VARIANTS}
+            whileHover="hover"
+            whileTap="tap"
+        >
             <GlassCard
-                className="relative overflow-hidden p-5 bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02]"
+                className="relative overflow-hidden p-5 bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02] h-full hover:scale-100"
                 hoverEffect={true}
             >
                 {/* 内部内容动画，避免卡片背景本身从0透明度加载 */}
@@ -369,7 +389,7 @@ function StatCard({ icon: Icon, label, value, unit, index, color = "text-rose-40
                     </div>
                 </motion.div>
             </GlassCard>
-        </div>
+        </motion.div>
     );
 }
 

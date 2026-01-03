@@ -576,7 +576,22 @@ function clearSynthesisProgress(cardId: string) {
     synthesizingSubscribers.delete(cardId);
 }
 
+// Apple Ease
+const APPLE_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+const JELLY_VARIANTS = {
+    hover: {
+        scale: 1.025,
+        transition: { duration: 0.4, ease: APPLE_EASE }
+    },
+    tap: {
+        scale: 0.96,
+        transition: { type: "spring", stiffness: 300, damping: 15 }
+    }
+};
+
 function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onDelete: (id: string) => void; onEdit: (card: TTSCard) => void; index?: number }) {
+    // ... (keep existing state declarations)
     // Queue State
     type QueueItem =
         | { type: 'pause', duration: number, id: string }
@@ -677,7 +692,25 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
     const wakeLockRef = useRef<any>(null);
     const playbackStartTimeRef = useRef<number>(0);
     const pausedAtRef = useRef<number>(0); // 暂停位置（秒）
-    const isPausedRef = useRef<boolean>(false); // 是否处于暂停状态
+    const isPausedRef = useRef<boolean>(false); // 暂停状态
+
+    // ... (helper functions omitted for brevity, keeping existing logic structure)
+
+    // Helper: Format time
+    const formatTime = (seconds: number) => {
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    };
+
+    // ... (Omitting large block of logic implementation to focus on return statement change. Wait, replace_file_content needs context. I should target the return statement mostly, or use multi_replace if logic is scattered. But logic is contiguous.)
+    // Actually, I can just update the beginning of the function and the return statement.
+    // However, replace_file_content replaces a contiguous block.
+    // Use multi_replace to insert JELLY_VARIANTS and update the return block.
+
+    // Let's switch to multi_replace because I need to add the constant OUTSIDE the component (or inside) and update the JSX.
+    // Adding it outside is better.
+    // 是否处于暂停状态
     const isPlayingRef = useRef<boolean>(false); // 同步跟踪播放状态
     const nextStartTimeRef = useRef<number>(0);
     const scheduledIdsRef = useRef<Set<string>>(new Set());
@@ -1784,13 +1817,16 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
 
     return (
         // 🌟 采用统计页面模式：外层静态，内容动画
-        <div
-            className="group relative"
+        <motion.div
+            className="group relative h-full"
+            variants={JELLY_VARIANTS}
+            whileHover="hover"
+            whileTap="tap"
         >
             <GlassCard
                 className={cn(
                     "h-full p-6 transition-all bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05]",
-                    "hover:bg-rose-500/10 hover:shadow-lg hover:shadow-rose-500/10 hover:scale-[1.02]"
+                    "hover:bg-rose-500/10 hover:shadow-lg hover:shadow-rose-500/10"
                 )}
                 hoverEffect={true}
             >
@@ -2212,7 +2248,7 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+        </motion.div>
     );
 }
 
