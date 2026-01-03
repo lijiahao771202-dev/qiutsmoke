@@ -2287,7 +2287,7 @@ export default function TTSStudioPage() {
     const [viewingCard, setViewingCard] = useState<TTSCard | null>(null);
 
     const [editTitle, setEditTitle] = useState("");
-    const [editTitle, setEditTitle] = useState("");
+
     const [editContent, setEditContent] = useState("");
     const [editVoiceId, setEditVoiceId] = useState(VOICES[0].id);
     const [isSaving, setIsSaving] = useState(false);
