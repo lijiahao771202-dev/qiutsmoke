@@ -601,7 +601,11 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoadingAudio, setIsLoadingAudio] = useState(false); // For spinning indicator
     const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
+    const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess, triggerError } = useHaptics();
+
+    // UI State: Controls whether the script text is fully visible or collapsed/blurred
+    const [showScript, setShowScript] = useState(false);
 
     // 合成状态 - 从全局状态初始化
     const [isSynthesizing, setIsSynthesizing] = useState(() => synthesizingCardsSet.has(card.id));
@@ -2011,17 +2015,40 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
 
                         {/* Content Preview */}
                         {/* Content Preview - Click to View */}
+                        {/* Content Preview - Blurred Reveal Interaction */}
                         <motion.div
-                            whileHover={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.08)" }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={(e) => { e.stopPropagation(); onEdit(card); }}
-                            className="flex-1 flex items-center justify-center my-2 min-h-[80px] rounded-2xl bg-white/5 border border-white/5 transition-all cursor-pointer group/view overflow-hidden relative"
+                            layout
+                            onClick={(e) => { e.stopPropagation(); setShowScript(!showScript); triggerLight(); }}
+                            className={cn(
+                                "flex-1 my-2 overflow-hidden rounded-xl transition-all duration-500 cursor-pointer relative group/text",
+                                showScript ? "bg-white/5 border border-white/10" : "hover:bg-white/5 border border-transparent hover:border-white/5"
+                            )}
                         >
-                            <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover/view:opacity-100 transition-opacity" />
-                            <div className="flex flex-col items-center gap-2 text-white/30 group-hover/view:text-emerald-200/80 transition-colors relative z-10">
-                                <Eye className="w-5 h-5" />
-                                <span className="text-xs font-light tracking-wider opacity-80">点击查看文案</span>
-                            </div>
+                            <motion.div
+                                layout
+                                className={cn(
+                                    "px-3 py-2 text-sm font-light leading-relaxed whitespace-pre-wrap transition-all duration-500",
+                                    showScript ? "text-white/90 min-h-[120px] max-h-[300px] overflow-y-auto custom-scrollbar" : "text-white/50 h-[80px] overflow-hidden select-none filter blur-[2px] group-hover/text:blur-[1px]"
+                                )}
+                            >
+                                {card.content || "暂无文案..."}
+                            </motion.div>
+
+                            {/* Overlay Indication when collapsed */}
+                            <AnimatePresence>
+                                {!showScript && (
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                                    >
+                                        <span className="text-xs text-white/40 tracking-widest uppercase font-medium bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm border border-white/5 group-hover/text:text-white/80 transition-colors">
+                                            Tap to Reveal
+                                        </span>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </motion.div>
 
                         {/* Control Bar */}
