@@ -2026,30 +2026,30 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                                 <ArrowRight className="w-3 h-3 opacity-0 group-hover/stats:opacity-100 transition-opacity -translate-x-2 group-hover/stats:translate-x-0 duration-300" />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-2 gap-2 mb-2">
                                 {/* Character Count */}
                                 <div className="flex flex-col">
                                     <span className="text-lg font-medium text-white/90 tabular-nums">
                                         {card.content?.length || 0}
                                     </span>
-                                    <span className="text-[10px] text-white/30 tracking-wider">字符</span>
+                                    <span className="text-[10px] text-white/30 tracking-wider">字符总数</span>
                                 </div>
 
-                                {/* Estimated Duration */}
+                                {/* Speech Rate */}
                                 <div className="flex flex-col">
                                     <span className="text-lg font-medium text-white/90 tabular-nums">
-                                        ~{Math.ceil((card.content?.length || 0) / 300)}
+                                        {card.rate || "0%"}
                                     </span>
-                                    <span className="text-[10px] text-white/30 tracking-wider">分钟预计</span>
+                                    <span className="text-[10px] text-white/30 tracking-wider">语速设置</span>
                                 </div>
                             </div>
 
-                            {/* Voice Model Tag */}
-                            <div className="flex items-center gap-1.5 mt-1 pt-2 border-t border-white/5">
-                                <div className="w-1.5 h-1.5 rounded-full bg-indigo-400/50" />
-                                <span className="text-xs text-white/50 truncate max-w-[120px]">
-                                    {VOICES.find(v => v.id === card.voice_id)?.name || card.voice_id}
+                            {/* Creation Date & Arrow */}
+                            <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                                <span className="text-[10px] text-white/30 font-mono">
+                                    {card.created_at ? new Date(card.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '-') : '--'}
                                 </span>
+                                <ArrowRight className="w-3 h-3 text-white/20 group-hover/stats:text-white/60 transition-colors" />
                             </div>
                         </motion.div>
 
