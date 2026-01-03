@@ -220,18 +220,13 @@ export default function ImmersiveMeditationPlayer({
                             />
 
                             {/* 唱片主体 - 旋转 */}
-                            <motion.div
-                                animate={{ rotate: isPlaying ? 360 : 0 }}
-                                transition={{
-                                    duration: 6,
-                                    repeat: isPlaying ? Infinity : 0,
-                                    ease: "linear"
-                                }}
-                                className="absolute inset-3 rounded-full"
+                            <div
+                                className="absolute inset-3 rounded-full animate-[spin_6s_linear_infinite]"
                                 style={{
                                     // 梦幻宝石渐变
                                     background: 'linear-gradient(135deg, #fcd34d 0%, #fda4af 50%, #c4b5fd 100%)',
-                                    boxShadow: 'inset 4px 4px 12px rgba(255,255,255,0.5), inset -4px -4px 12px rgba(0,0,0,0.1), 8px 16px 32px rgba(124, 58, 237, 0.25)'
+                                    boxShadow: 'inset 4px 4px 12px rgba(255,255,255,0.5), inset -4px -4px 12px rgba(0,0,0,0.1), 8px 16px 32px rgba(124, 58, 237, 0.25)',
+                                    animationPlayState: isPlaying ? 'running' : 'paused'
                                 }}
                             >
                                 {/* 唱片纹路 */}
@@ -266,7 +261,7 @@ export default function ImmersiveMeditationPlayer({
                                         }}
                                     />
                                 </div>
-                            </motion.div>
+                            </div>
 
                             {/* 高光装饰 */}
                             <div

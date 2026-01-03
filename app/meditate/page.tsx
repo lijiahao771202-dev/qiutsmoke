@@ -332,10 +332,10 @@ export default function MeditatePage() {
 
     const primeOnceRef = useRef(false);
     const primeAudio = () => {
-        if (primeOnceRef.current) return;
-        primeOnceRef.current = true;
+        // 🔥 [iOS Fix] 即使已经 prime 过，也可以重新触发以保持活跃，但这里为了避免打断正在播放的，加个判断
+        if (sharedAudioRef.current && !sharedAudioRef.current.paused) return;
 
-        const url = createSilenceWavURL(0.05);
+        const url = createSilenceWavURL(0.1);
         // 🔥 优先使用已初始化的对象
         let audio = sharedAudioRef.current;
         if (!audio) {
@@ -345,14 +345,17 @@ export default function MeditatePage() {
 
         (audio as any).playsInline = true;
         audio.preload = 'auto';
-        audio.volume = 0.01;
+        audio.volume = 0.01; // 微小音量
+        audio.loop = true;   // 🔥 [iOS Fix] 循环静音，保持 AudioContext 活跃，防止生成期间被系统挂起
         audio.src = url;
 
-        audio.onended = () => URL.revokeObjectURL(url);
+        // 不需要 onended，因为是 loop
         audio.onerror = () => URL.revokeObjectURL(url);
 
-        // 🔥 必须 catch 错误，防止阻塞后续逻辑
-        audio.play().catch(err => console.warn("Prime failed", err));
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(err => console.warn("Prime/Loop failed", err));
+        }
     };
 
     // === 预加载音频项目（并行解码） ===
@@ -777,12 +780,15 @@ export default function MeditatePage() {
                 })();
             } else if (item.type === 'audio' && item.url) {
                 // 🔥 [iOS Strict Fix] 强制复用 sharedAudioRef
-                if (!sharedAudioRef.current) {
-                    sharedAudioRef.current = new Audio();
-                    (sharedAudioRef.current as any).playsInline = true;
+                let audio = sharedAudioRef.current;
+                if (!audio) {
+                    audio = new Audio();
+                    sharedAudioRef.current = audio;
+                    (audio as any).playsInline = true;
                 }
-                const audio = sharedAudioRef.current;
 
+                // 停止之前的静音循环（如果有）
+                audio.loop = false;
                 audio.volume = 1;
                 audio.src = item.url;
 
@@ -1366,18 +1372,22 @@ export default function MeditatePage() {
     };
 
     const handleCardClick = async (id: string) => {
-        triggerLight(); // 立即触发轻触震动
+        // 🔥 [iOS Critical] 必须在用户点击的第一个同步 tick 执行 play()
+        // 不要 await 任何东西，先 prime
+        primeAudio();
+
+        triggerLight();
 
         // 🚀 Auto-play Logic
         try {
+            // 这里可以 await，因为 primeAudio 已经触发了 audio 实例
             await ensureAudioContext();
-            primeAudio();
             if (audioContextRef.current?.state === 'suspended') {
-                await audioContextRef.current.resume();
+                audioContextRef.current.resume();
             }
             setIsPlaying(true);
         } catch (e) {
-            console.error("Auto-play failed", e);
+            console.error("Auto-play setup failed", e);
         }
 
         setActiveCard(id);
