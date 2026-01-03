@@ -2013,19 +2013,12 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                         </div>
 
                         {/* Content Preview */}
-                        {/* Content Preview - Click to View */}
-                        {/* Content Stats Preview */}
-                        {/* Content Preview - Static Blur + Click to Modal */}
-                        <motion.div
-                            whileHover={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.08)" }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={(e) => { e.stopPropagation(); onView(card); triggerLight(); }}
-                            className="flex-1 my-2 overflow-hidden rounded-xl bg-white/5 border border-white/5 cursor-pointer relative group/text min-h-[80px]"
-                        >
-                            <div className="px-3 py-2 text-sm font-light leading-relaxed whitespace-pre-wrap text-white/50 h-[80px] overflow-hidden select-none filter blur-[2px] group-hover/text:blur-[1.5px] transition-[filter]">
+                        {/* Content Preview */}
+                        <div className="flex-1 min-h-[60px] max-h-[120px] overflow-y-auto custom-scrollbar my-2">
+                            <p className="text-sm text-white/70 leading-relaxed font-light whitespace-pre-wrap">
                                 {card.content || "暂无文案..."}
-                            </div>
-                        </motion.div>
+                            </p>
+                        </div>
 
                         {/* Control Bar */}
                         <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
