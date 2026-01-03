@@ -108,6 +108,26 @@ export default function MeditatePage() {
     // 🍎 Apple 经典贝塞尔曲线
     const APPLE_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
+    // 🌊 会呼吸的界面 (Organic Flow) 动画变体
+    const breathingVariants = {
+        idle: {
+            scale: [1, 1.015, 1],
+            transition: {
+                duration: 6,
+                ease: "easeInOut",
+                repeat: Infinity,
+            }
+        },
+        hover: {
+            scale: 1.025,
+            transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } // Apple Ease
+        },
+        tap: {
+            scale: 0.96,
+            transition: { type: "spring", stiffness: 300, damping: 15 }
+        }
+    };
+
     // 卡片内部内容动画变体生成器（根据索引计算延迟）
     const getCardContentVariants = (index: number) => ({
         hidden: { opacity: 0, y: 20 },
@@ -122,6 +142,9 @@ export default function MeditatePage() {
             }
         }
     });
+
+
+
 
     const [activeCard, setActiveCard] = useState<string | null>(null);
     const [selectedVoice, setSelectedVoice] = useState(VOICES[0].id);
@@ -1513,10 +1536,17 @@ export default function MeditatePage() {
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-8">
                         {/* Default Topics */}
                         {DEFAULT_TOPICS.map((topic, index) => (
-                            <button
+                            <motion.button
                                 key={topic.id}
                                 onClick={() => handleCardClick(topic.id)}
-                                className="group relative w-full aspect-square text-left transition-all hover:scale-[1.02] focus:outline-none rounded-[2rem] cursor-pointer"
+                                onHoverStart={() => triggerLight()} // 轻微触感
+                                onTapStart={() => triggerLight()}
+                                variants={breathingVariants}
+                                initial="idle"
+                                animate="idle"
+                                whileHover="hover"
+                                whileTap="tap"
+                                className="group relative w-full aspect-square text-left focus:outline-none rounded-[2rem] cursor-pointer"
                             >
                                 <GlassCard
                                     hoverEffect={true}
@@ -1561,15 +1591,22 @@ export default function MeditatePage() {
                                         </div>
                                     </motion.div>
                                 </GlassCard>
-                            </button>
+                            </motion.button>
                         ))}
 
                         {/* Custom Topics from Supabase */}
                         {customTopics.map((topic, index) => (
-                            <button
+                            <motion.button
                                 key={topic.id}
                                 onClick={() => handleCardClick(topic.id)}
-                                className="group relative w-full aspect-square text-left transition-all hover:scale-[1.02] focus:outline-none rounded-[2rem] cursor-pointer"
+                                onHoverStart={() => triggerLight()}
+                                onTapStart={() => triggerLight()}
+                                variants={breathingVariants}
+                                initial="idle"
+                                animate="idle"
+                                whileHover="hover"
+                                whileTap="tap"
+                                className="group relative w-full aspect-square text-left focus:outline-none rounded-[2rem] cursor-pointer"
                             >
                                 <GlassCard
                                     hoverEffect={true}
@@ -1620,7 +1657,7 @@ export default function MeditatePage() {
                                         </div>
                                     </motion.div>
                                 </GlassCard>
-                            </button>
+                            </motion.button>
                         ))}
 
                         {/* Add New Card Button - 无入场动画 */}

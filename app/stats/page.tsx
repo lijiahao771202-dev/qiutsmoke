@@ -2,11 +2,13 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useSpring, useTransform } from "framer-motion";
 import { ChevronLeft, ChevronRight, Clock, Calendar as CalendarIcon, Trophy, Activity, Flame } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { cn } from "@/lib/utils";
 import { useMeditationStats, useMeditationSessions } from "@/lib/hooks/useData";
+import { useHaptics } from "@/lib/hooks/useHaptics";
+import confetti from "canvas-confetti";
 
 interface StatsData {
     totalSessions: number;
@@ -33,6 +35,7 @@ export default function StatsPage() {
 
     // 使用 SWR 缓存数据
     const { stats } = useMeditationStats();
+    const { triggerLight, triggerMedium } = useHaptics();
 
     // 计算当前月份字符串
     const monthStr = useMemo(() => {
@@ -132,6 +135,19 @@ export default function StatsPage() {
                     <StatCard icon={Trophy} label="最长连续" value={stats?.longestStreak || 0} unit="天" index={3} color="text-yellow-400" />
                 </motion.div>
 
+                {/* Activity Trend Sparkline */}
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.4, duration: 0.8 }}
+                    className="w-full h-32 mb-8"
+                >
+                    <GlassCard className="h-full p-6 relative overflow-hidden flex items-center justify-center bg-gradient-to-r from-rose-500/[0.05] to-purple-500/[0.05]">
+                        <div className="absolute top-4 left-6 text-xs text-white/40 uppercase tracking-wider font-semibold">本月冥想趋势</div>
+                        <ActivitySparkline sessions={sessions} daysInMonth={getDaysInMonth(currentDate)} />
+                    </GlassCard>
+                </motion.div>
+
                 {/* Calendar Section */}
                 <div className="grid md:grid-cols-3 gap-8">
                     {/* Calendar */}
@@ -185,6 +201,8 @@ export default function StatsPage() {
                                                 transition={{ delay: 0.6 + (i * 0.01), duration: 0.3 }}
                                                 whileHover={{ scale: 1.1, zIndex: 10 }}
                                                 whileTap={{ scale: 0.95 }}
+                                                onHoverStart={() => triggerLight()}
+                                                onTapStart={() => triggerLight()}
                                                 onClick={() => {
                                                     const newDate = new Date(currentDate);
                                                     newDate.setDate(day);
@@ -303,8 +321,33 @@ function StatCard({ icon: Icon, label, value, unit, index, color = "text-rose-40
         }
     };
 
+    // Celebration effect for Streak
+    useEffect(() => {
+        if (label === "当前连续" && value > 0) {
+            // Delay slightly to match animation
+            const timer = setTimeout(() => {
+                const rect = document.getElementById(`stat-card-${index}`)?.getBoundingClientRect();
+                if (rect) {
+                    const x = (rect.left + rect.width / 2) / window.innerWidth;
+                    const y = (rect.top + rect.height / 2) / window.innerHeight;
+
+                    confetti({
+                        particleCount: 40,
+                        spread: 60,
+                        origin: { x, y },
+                        colors: ['#fb7185', '#f43f5e', '#ffffff'], // Rose & White
+                        disableForReducedMotion: true,
+                        zIndex: 100,
+                        scalar: 0.8
+                    });
+                }
+            }, 800 + (index * 100));
+            return () => clearTimeout(timer);
+        }
+    }, [label, value, index]);
+
     return (
-        <div className="group">
+        <div className="group" id={`stat-card-${index}`}>
             <GlassCard
                 className="relative overflow-hidden p-5 bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02]"
                 hoverEffect={true}
@@ -331,36 +374,77 @@ function StatCard({ icon: Icon, label, value, unit, index, color = "text-rose-40
 }
 
 function CountUp({ value }: { value: number }) {
-    const [displayValue, setDisplayValue] = useState(0);
-
+    const spring = useSpring(0, { stiffness: 50, damping: 15 });
+    const displayValue = useTransform(spring, (current) => Math.floor(current));
 
     useEffect(() => {
-        const start = 0;
-        const end = value;
-        const duration = 1500; // 动画持续时间
-        const startTime = Date.now();
+        spring.set(value);
+    }, [value, spring]);
 
-        let taskId: number;
+    return <motion.span>{displayValue}</motion.span>;
+}
 
-        const update = () => {
-            const now = Date.now();
-            const elapsed = now - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-
-            // 使用简易的 easeOutExpo
-            const easeValue = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
-
-            const current = Math.floor(start + (end - start) * easeValue);
-            setDisplayValue(current);
-
-            if (progress < 1) {
-                taskId = requestAnimationFrame(update);
+function ActivitySparkline({ sessions, daysInMonth }: { sessions: Session[], daysInMonth: number }) {
+    // Calculate daily minutes
+    const data = useMemo(() => {
+        const counts = new Array(daysInMonth).fill(0);
+        sessions.forEach(s => {
+            const d = new Date(s.started_at).getDate();
+            if (d >= 1 && d <= daysInMonth) {
+                // Use default 10 mins if duration missing (for demo), usually s.duration_seconds
+                const mins = (s.duration_seconds || 600) / 60;
+                counts[d - 1] += mins;
             }
-        };
+        });
+        return counts;
+    }, [sessions, daysInMonth]);
 
-        taskId = requestAnimationFrame(update);
-        return () => cancelAnimationFrame(taskId);
-    }, [value]);
+    // Path generation
+    const width = 100; // viewBox width
+    const height = 40; // viewBox height
+    const maxVal = Math.max(...data, 10); // Min max to avoid flat line
 
-    return <span>{displayValue}</span>;
+    // Create Path D
+    const d = `M 0,${height} ` + data.map((val, i) => {
+        const x = (i / (daysInMonth - 1)) * width;
+        const y = height - (val / maxVal) * height;
+        return `L ${x},${y}`;
+    }).join(" ");
+
+
+    return (
+        <div className="w-full h-full flex items-end pt-6">
+            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
+                {/* Gradient Definition */}
+                <defs>
+                    <linearGradient id="sparklineGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="rgba(244, 63, 94, 0.5)" />
+                        <stop offset="100%" stopColor="rgba(244, 63, 94, 0)" />
+                    </linearGradient>
+                </defs>
+
+                {/* Area Fill (optional, closing the path) */}
+                <motion.path
+                    d={`${d} L ${width},${height} Z`}
+                    fill="url(#sparklineGradient)"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 1, delay: 0.8 }}
+                />
+
+                {/* Line Path */}
+                <motion.path
+                    d={d}
+                    fill="none"
+                    stroke="#fb7185" // rose-400
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    initial={{ pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: 2, ease: "easeInOut", delay: 0.5 }}
+                />
+            </svg>
+        </div>
+    );
 }

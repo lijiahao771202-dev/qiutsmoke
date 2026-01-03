@@ -302,6 +302,7 @@ ${densityRule}
                             triggerLight();
                         }}
                         whileTap={{ scale: 0.98 }}
+                        onTapStart={triggerLight}
                     >
                         <h2 className="text-rose-200/80 text-sm font-medium uppercase tracking-wider flex items-center gap-2">
                             <Sparkles className="w-4 h-4 text-rose-400" /> 新建语料卡片
@@ -387,7 +388,8 @@ ${densityRule}
                                             </select>
                                             <motion.button
                                                 whileHover={{ scale: 1.02 }}
-                                                whileTap={{ scale: 0.95 }}
+                                                whileTap={{ scale: 0.96 }}
+                                                onTapStart={triggerMedium}
                                                 onClick={handleAIGenerate}
                                                 disabled={!aiPrompt.trim() || aiGenerating}
                                                 className="px-5 py-2.5 bg-gradient-to-r from-rose-500 to-pink-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-rose-500/20 hover:shadow-rose-500/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
@@ -425,8 +427,9 @@ ${densityRule}
 
                                         <motion.button
                                             whileHover={{ scale: 1.02 }}
-                                            whileTap={{ scale: 0.9 }}
+                                            whileTap={{ scale: 0.96 }}
                                             onClick={handleSubmit}
+                                            onTapStart={triggerLight}
                                             disabled={!text.trim() || isLoading}
                                             className={cn(
                                                 "flex items-center gap-2 px-6 py-2.5 rounded-xl font-medium text-sm transition-all shadow-lg",
@@ -1793,8 +1796,8 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
             >
                 {/* 🌟 内容层动画：采用统计页面模式 - opacity + y + index延迟 */}
                 <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
+                    initial={{ scale: 0.98, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
                     transition={{
                         type: "spring",
                         stiffness: 100,
@@ -1860,12 +1863,13 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
 
                                 {/* 菜单按钮 */}
                                 <div className="relative">
-                                    <button
+                                    <motion.button
+                                        whileTap={{ scale: 0.9 }}
                                         onClick={(e) => { e.stopPropagation(); triggerMedium(); setShowCardMenu(!showCardMenu); }}
                                         className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors"
                                     >
                                         <Edit2 className="w-4 h-4" />
-                                    </button>
+                                    </motion.button>
 
                                     {/* 下拉菜单 */}
                                     <AnimatePresence>
@@ -1983,9 +1987,10 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
 
                         {/* Control Bar */}
                         <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
-                            <button
+                            <motion.button
                                 onClick={(e) => { e.stopPropagation(); triggerLight(); togglePlay(); }}
                                 disabled={isBuffering || isSynthesizing || !hasCachedAudio}
+                                whileTap={{ scale: 0.9 }}
                                 className={cn(
                                     "flex items-center justify-center w-10 h-10 rounded-full transition-all border",
                                     isSynthesizing
@@ -2061,7 +2066,7 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
-                            </button>
+                            </motion.button>
 
                             {/* 🚀 合成进度显示 */}
                             {isSynthesizing && (
@@ -2441,14 +2446,17 @@ export default function TTSStudioPage() {
                                     <p className="text-sm font-light">这里空空如也，试着创建一个新的语音卡片吧。</p>
                                 </motion.div>
                             ) : (
-                                <div
+                                <motion.div
                                     key="grid"
+                                    variants={CONTAINER_VARIANTS}
+                                    initial="hidden"
+                                    animate="show"
                                     className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                                 >
                                     {ttsCards.map((card: TTSCard, index: number) => (
                                         <TTSCardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} index={index} />
                                     ))}
-                                </div>
+                                </motion.div>
                             )}
                         </AnimatePresence>
                     </div>
