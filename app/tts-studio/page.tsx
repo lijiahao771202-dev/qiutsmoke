@@ -601,7 +601,7 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoadingAudio, setIsLoadingAudio] = useState(false); // For spinning indicator
     const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
-    const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
+
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess, triggerError } = useHaptics();
 
     // UI State: Controls whether the script text is fully visible or collapsed/blurred
