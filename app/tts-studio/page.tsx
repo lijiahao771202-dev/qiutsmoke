@@ -573,7 +573,7 @@ function clearSynthesisProgress(cardId: string) {
     synthesizingSubscribers.delete(cardId);
 }
 
-function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id: string) => void; onEdit: (card: TTSCard) => void }) {
+function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onDelete: (id: string) => void; onEdit: (card: TTSCard) => void; index?: number }) {
     // Queue State
     type QueueItem =
         | { type: 'pause', duration: number, id: string }
@@ -1780,25 +1780,27 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     // So it stops correctly at end of current fetch.
 
     return (
-        // 🔥 外层容器：使用 motion.div + variants 实现逐个入场，无透明度动画
-        <motion.div
-            variants={CARD_WRAPPER_VARIANTS}
+        // 🌟 采用统计页面模式：外层静态，内容动画
+        <div
             className="group relative"
-            whileHover={{ scale: 1.02, transition: { duration: 0.3, ease: [0.25, 1, 0.5, 1] } }}
-            whileTap={{ scale: 0.98 }}
         >
             <GlassCard
                 className={cn(
                     "h-full p-6 transition-all bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05]",
-                    "hover:bg-rose-500/10 hover:shadow-lg hover:shadow-rose-500/10"
+                    "hover:bg-rose-500/10 hover:shadow-lg hover:shadow-rose-500/10 hover:scale-[1.02]"
                 )}
                 hoverEffect={true}
             >
-                {/* 🌟 内容层动画：仅缩放+模糊，无透明度变化 */}
+                {/* 🌟 内容层动画：采用统计页面模式 - opacity + y + index延迟 */}
                 <motion.div
-                    initial={{ scale: 0.98, filter: "blur(3px)" }}
-                    animate={{ scale: 1, filter: "blur(0px)" }}
-                    transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                        type: "spring",
+                        stiffness: 100,
+                        damping: 15,
+                        delay: index * 0.08
+                    }}
                     className="relative"
                 >
                     {/* Visualizer Background */}
@@ -2205,7 +2207,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     </motion.div>
                 )}
             </AnimatePresence>
-        </motion.div>
+        </div>
     );
 }
 
@@ -2439,17 +2441,14 @@ export default function TTSStudioPage() {
                                     <p className="text-sm font-light">这里空空如也，试着创建一个新的语音卡片吧。</p>
                                 </motion.div>
                             ) : (
-                                <motion.div
+                                <div
                                     key="grid"
                                     className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-                                    variants={CONTAINER_VARIANTS}
-                                    initial="hidden"
-                                    animate="show"
                                 >
-                                    {ttsCards.map((card: TTSCard) => (
-                                        <TTSCardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} />
+                                    {ttsCards.map((card: TTSCard, index: number) => (
+                                        <TTSCardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} index={index} />
                                     ))}
-                                </motion.div>
+                                </div>
                             )}
                         </AnimatePresence>
                     </div>
