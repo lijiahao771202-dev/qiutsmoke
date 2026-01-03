@@ -57,7 +57,7 @@ export function GlassCard({
                 "border border-white/10", // Base border
                 bgOpacity[transparency],
                 "group", // For hover states
-                hoverEffect && "transition-all duration-500 hover:bg-white/[0.05] hover:scale-[1.01] hover:shadow-2xl",
+                hoverEffect && "transition-[background-color,border-color,shadow,opacity] duration-500 hover:bg-white/[0.05] hover:scale-[1.01] hover:shadow-2xl",
                 className
             )}
             style={{

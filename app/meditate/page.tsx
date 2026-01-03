@@ -104,6 +104,25 @@ const sanitizeForTTS = (text: string): string => {
 };
 
 export default function MeditatePage() {
+    // 🌟 动画配置 - 采用统计页面模式
+    // 🍎 Apple 经典贝塞尔曲线
+    const APPLE_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+    // 卡片内部内容动画变体生成器（根据索引计算延迟）
+    const getCardContentVariants = (index: number) => ({
+        hidden: { opacity: 0, y: 20 },
+        visible: {
+            opacity: 1,
+            y: 0,
+            transition: {
+                type: "spring",
+                stiffness: 100,
+                damping: 15,
+                delay: index * 0.08  // 交错延迟
+            }
+        }
+    });
+
     const [activeCard, setActiveCard] = useState<string | null>(null);
     const [selectedVoice, setSelectedVoice] = useState(VOICES[0].id);
     const [customPrompt, setCustomPrompt] = useState(DEFAULT_PROMPT);
@@ -1471,27 +1490,39 @@ export default function MeditatePage() {
         <AuthGuard>
             <div className="min-h-screen text-slate-200">
                 {/* Main Content */}
-                <div className="flex-1 w-full max-w-4xl mx-auto z-10 overflow-y-auto pb-48 px-4 scrollbar-hide pt-24 min-h-screen">
+
+                <motion.div
+                    initial={{ y: 20 }}
+                    animate={{ y: 0 }}
+                    transition={{ duration: 0.8, ease: APPLE_EASE }}
+                    className="flex-1 w-full max-w-4xl mx-auto z-10 overflow-y-auto pb-48 px-4 scrollbar-hide pt-24 min-h-screen"
+                >
                     {/* 页面标题 */}
                     <header className="mb-8">
                         <h1 className="text-3xl font-thin text-white/90">正念冥想</h1>
-                        <p className="text-white/40 mt-2 font-light">选择一个主题，开始你的冥想之旅</p>
+                        <motion.p
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.2, duration: 1 }}
+                            className="text-white/40 mt-2 font-light"
+                        >
+                            选择一个主题，开始你的冥想之旅
+                        </motion.p>
                     </header>
 
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-8">
                         {/* Default Topics */}
-                        {DEFAULT_TOPICS.map((topic) => (
-                            <motion.button
+                        {DEFAULT_TOPICS.map((topic, index) => (
+                            <button
                                 key={topic.id}
-                                layoutId={`card-${topic.id}`}
                                 onClick={() => handleCardClick(topic.id)}
-                                className="group relative w-full aspect-square text-left transition-all hover:scale-[1.02] focus:outline-none rounded-[2rem]"
+                                className="group relative w-full aspect-square text-left transition-all hover:scale-[1.02] focus:outline-none rounded-[2rem] cursor-pointer"
                             >
                                 <GlassCard
                                     hoverEffect={true}
-                                    className="h-full p-6 flex flex-col justify-between bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05]"
+                                    className="h-full p-6 flex flex-col justify-between bg-gradient-to-br from-rose-500/[0.1] to-pink-500/[0.1] border-white/10"
                                 >
-
+                                    {/* 设置按钮 - 不参与动画 */}
                                     <div className="absolute top-3 right-3 z-20">
                                         <div
                                             onClick={(e) => {
@@ -1507,38 +1538,44 @@ export default function MeditatePage() {
                                         </div>
                                     </div>
 
-                                    {topic.icon ? <topic.icon className="w-8 h-8 mb-2 text-white/80" /> : <Wind className="w-8 h-8 mb-2 text-white/80" />}
-                                    <span className="text-lg font-medium leading-tight z-10">{topic.title}</span>
+                                    {/* 🌟 卡片内部内容动画 - 采用统计页面模式 */}
+                                    <motion.div
+                                        variants={getCardContentVariants(index)}
+                                        initial="hidden"
+                                        animate="visible"
+                                    >
+                                        {topic.icon ? <topic.icon className="w-8 h-8 mb-2 text-white/80" /> : <Wind className="w-8 h-8 mb-2 text-white/80" />}
+                                        <span className="text-lg font-medium leading-tight z-10 block">{topic.title}</span>
 
-                                    {/* 🚀 显示该卡片的设置：时长 + 引导模式 */}
-                                    <div className="flex gap-1.5 mt-2 flex-wrap">
-                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/60">
-                                            {cardSettings[topic.id]?.duration ?? meditationDuration}分钟
-                                        </span>
-                                        <span className={cn(
-                                            "text-[10px] px-2 py-0.5 rounded-full",
-                                            GUIDANCE_LEVELS[cardSettings[topic.id]?.guidanceLevel ?? guidanceLevel].color
-                                        )}>
-                                            {GUIDANCE_LEVELS[cardSettings[topic.id]?.guidanceLevel ?? guidanceLevel].label}
-                                        </span>
-                                    </div>
+                                        {/* 时长 + 引导模式徽章 */}
+                                        <div className="flex gap-1.5 mt-2 flex-wrap">
+                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/60">
+                                                {cardSettings[topic.id]?.duration ?? meditationDuration}分钟
+                                            </span>
+                                            <span className={cn(
+                                                "text-[10px] px-2 py-0.5 rounded-full",
+                                                GUIDANCE_LEVELS[cardSettings[topic.id]?.guidanceLevel ?? guidanceLevel].color
+                                            )}>
+                                                {GUIDANCE_LEVELS[cardSettings[topic.id]?.guidanceLevel ?? guidanceLevel].label}
+                                            </span>
+                                        </div>
+                                    </motion.div>
                                 </GlassCard>
-                            </motion.button>
+                            </button>
                         ))}
 
                         {/* Custom Topics from Supabase */}
-                        {customTopics.map((topic) => (
-                            <motion.button
+                        {customTopics.map((topic, index) => (
+                            <button
                                 key={topic.id}
-                                layoutId={`card-${topic.id}`}
                                 onClick={() => handleCardClick(topic.id)}
-                                className="group relative w-full aspect-square text-left transition-all hover:scale-[1.02] focus:outline-none rounded-[2rem]"
+                                className="group relative w-full aspect-square text-left transition-all hover:scale-[1.02] focus:outline-none rounded-[2rem] cursor-pointer"
                             >
                                 <GlassCard
                                     hoverEffect={true}
-                                    className="h-full p-6 flex flex-col justify-between bg-gradient-to-br from-rose-500/[0.05] to-pink-500/[0.05]"
+                                    className="h-full p-6 flex flex-col justify-between bg-gradient-to-br from-rose-500/[0.1] to-pink-500/[0.1] border-white/10"
                                 >
-
+                                    {/* 设置和删除按钮 - 不参与动画 */}
                                     <div className="absolute top-3 right-3 z-20 flex gap-2">
                                         <div
                                             onClick={(e) => {
@@ -1560,34 +1597,40 @@ export default function MeditatePage() {
                                         </div>
                                     </div>
 
-                                    {topic.icon ? <topic.icon className="w-8 h-8 mb-2 text-white/80" /> : <Wind className="w-8 h-8 mb-2 text-white/80" />}
-                                    <span className="text-lg font-medium leading-tight z-10">{topic.title}</span>
+                                    {/* 🌟 卡片内部内容动画 - 采用统计页面模式 */}
+                                    <motion.div
+                                        variants={getCardContentVariants(DEFAULT_TOPICS.length + index)}
+                                        initial="hidden"
+                                        animate="visible"
+                                    >
+                                        {topic.icon ? <topic.icon className="w-8 h-8 mb-2 text-white/80" /> : <Wind className="w-8 h-8 mb-2 text-white/80" />}
+                                        <span className="text-lg font-medium leading-tight z-10 block">{topic.title}</span>
 
-                                    {/* 🚀 显示该卡片的设置：时长 + 引导模式 */}
-                                    <div className="flex gap-1.5 mt-2 flex-wrap">
-                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/60">
-                                            {cardSettings[topic.id]?.duration ?? meditationDuration}分钟
-                                        </span>
-                                        <span className={cn(
-                                            "text-[10px] px-2 py-0.5 rounded-full",
-                                            GUIDANCE_LEVELS[cardSettings[topic.id]?.guidanceLevel ?? guidanceLevel].color
-                                        )}>
-                                            {GUIDANCE_LEVELS[cardSettings[topic.id]?.guidanceLevel ?? guidanceLevel].label}
-                                        </span>
-                                    </div>
+                                        {/* 时长 + 引导模式徽章 */}
+                                        <div className="flex gap-1.5 mt-2 flex-wrap">
+                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/60">
+                                                {cardSettings[topic.id]?.duration ?? meditationDuration}分钟
+                                            </span>
+                                            <span className={cn(
+                                                "text-[10px] px-2 py-0.5 rounded-full",
+                                                GUIDANCE_LEVELS[cardSettings[topic.id]?.guidanceLevel ?? guidanceLevel].color
+                                            )}>
+                                                {GUIDANCE_LEVELS[cardSettings[topic.id]?.guidanceLevel ?? guidanceLevel].label}
+                                            </span>
+                                        </div>
+                                    </motion.div>
                                 </GlassCard>
-                            </motion.button>
+                            </button>
                         ))}
 
-                        {/* Add New Card Button */}
-                        <motion.button
-                            layout
+                        {/* Add New Card Button - 无入场动画 */}
+                        <button
                             onClick={() => {
                                 setNewCardTitle("");
                                 setNewCardPrompt("");
                                 setShowAddCard(true);
                             }}
-                            className="group relative w-full aspect-square text-center transition-all hover:scale-[1.02] focus:outline-none rounded-[2rem]"
+                            className="group relative w-full aspect-square text-center transition-all hover:scale-[1.02] focus:outline-none rounded-[2rem] cursor-pointer"
                         >
                             <GlassCard className="h-full p-4 flex flex-col items-center justify-center border-dashed border-2 border-white/20 hover:border-white/40 bg-transparent">
                                 <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-4 group-hover:bg-white/10 transition-colors">
@@ -1595,9 +1638,10 @@ export default function MeditatePage() {
                                 </div>
                                 <span className="text-sm text-white/40 group-hover:text-white/70">添加冥想</span>
                             </GlassCard>
-                        </motion.button>
+                        </button>
                     </div>
-                </div>
+                </motion.div>
+                {/* 🌟 底部空白已由容器 padding-bottom 处理 */}
 
                 {/* Settings Modal (Prompt + Voice) */}
                 <AnimatePresence>

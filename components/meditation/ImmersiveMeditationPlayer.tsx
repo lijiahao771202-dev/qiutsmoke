@@ -100,14 +100,54 @@ export default function ImmersiveMeditationPlayer({
 
     if (!mounted) return null;
 
+    // 🌟 核心动画配置
+    const containerVariants = {
+        hidden: { opacity: 0, scale: 0.95 },
+        visible: {
+            opacity: 1,
+            scale: 1,
+            transition: {
+                when: "beforeChildren",
+                staggerChildren: 0.1, // 错落感：每个子元素间隔 0.1s 出现
+                duration: 0.4,
+                ease: "easeOut"
+            }
+        },
+        exit: {
+            opacity: 0,
+            scale: 0.95,
+            transition: {
+                when: "afterChildren",
+                staggerChildren: 0.05,
+                staggerDirection: -1,
+                duration: 0.3
+            }
+        }
+    };
+
+    const itemVariants = {
+        hidden: { opacity: 0, y: 20 }, // 初始状态：透明且下移
+        visible: {
+            opacity: 1,
+            y: 0,
+            transition: {
+                type: "spring",
+                stiffness: 100, // 柔和弹簧
+                damping: 20,
+                mass: 1
+            }
+        },
+        exit: { opacity: 0, y: 10, transition: { duration: 0.2 } }
+    };
+
     return createPortal(
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
             {isOpen && (
                 <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.4, ease: "easeOut" }}
+                    variants={containerVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
                     className="fixed inset-0 z-[9999] flex flex-col font-nunito"
                     style={{
                         // 柔和渐变背景 (Dreamy Gradient) - 确保不透明以遮挡底部内容
@@ -117,10 +157,13 @@ export default function ImmersiveMeditationPlayer({
                     {/* ============================================
                         ❌ 关闭按钮 - 粘土风格
                         ============================================ */}
+                    {/* ============================================
+                        ❌ 关闭按钮 - 粘土风格
+                        ============================================ */}
                     <motion.button
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.3, type: "spring", stiffness: 200 }}
+                        variants={itemVariants}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
                         onClick={() => {
                             triggerMedium();
                             onClose();
@@ -129,8 +172,7 @@ export default function ImmersiveMeditationPlayer({
                             flex items-center justify-center
                             bg-white/80 backdrop-blur-xl rounded-2xl
                             border-4 border-white/40
-                            transition-all duration-200 
-                            hover:scale-105 active:scale-95"
+                            transition-colors duration-200"
                         style={{
                             top: 'calc(env(safe-area-inset-top) + 24px)', // 适配 iOS 安全区域
                             boxShadow: '4px 4px 12px rgba(253, 164, 175, 0.4), inset 0 2px 4px rgba(255,255,255,0.9)'
@@ -143,10 +185,11 @@ export default function ImmersiveMeditationPlayer({
                     {/* ============================================
                         🏷️ 标题 - 粘土风格卡片
                         ============================================ */}
+                    {/* ============================================
+                        🏷️ 标题 - 粘土风格卡片
+                        ============================================ */}
                     <motion.div
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.2, type: "spring" }}
+                        variants={itemVariants}
                         className="mt-24 mx-auto"
                     >
                         <div
@@ -164,10 +207,13 @@ export default function ImmersiveMeditationPlayer({
                     {/* ============================================
                         📜 全文按钮 (Top Right)
                         ============================================ */}
+                    {/* ============================================
+                        📜 全文按钮 (Top Right)
+                        ============================================ */}
                     <motion.button
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.3, type: "spring", stiffness: 200 }}
+                        variants={itemVariants}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
                         onClick={() => {
                             triggerLight();
                             setShowFullText(true);
@@ -176,8 +222,7 @@ export default function ImmersiveMeditationPlayer({
                             flex items-center justify-center
                             bg-white/80 backdrop-blur-xl rounded-2xl
                             border-4 border-white/40
-                            transition-all duration-200 
-                            hover:scale-105 active:scale-95"
+                            transition-colors duration-200"
                         style={{
                             top: 'calc(env(safe-area-inset-top) + 24px)',
                             boxShadow: '4px 4px 12px rgba(167, 139, 250, 0.4), inset 0 2px 4px rgba(255,255,255,0.9)'
@@ -190,7 +235,7 @@ export default function ImmersiveMeditationPlayer({
                     {/* ============================================
                         🎵 中央唱片 - 粘土风格
                         ============================================ */}
-                    <div className="flex-1 flex items-center justify-center px-8">
+                    <motion.div variants={itemVariants} className="flex-1 flex items-center justify-center px-8">
                         <div className="relative w-64 h-64 md:w-72 md:h-72">
 
                             {/* 🌬️ 呼吸光环 - Breathing Aura */}
@@ -268,7 +313,7 @@ export default function ImmersiveMeditationPlayer({
                                 className="absolute top-6 left-10 w-12 h-6 rounded-full bg-white/40 rotate-[-30deg] blur-sm"
                             />
                         </div>
-                    </div>
+                    </motion.div>
 
                     {/* ============================================
                         📝 字幕区 - 淡入淡出
@@ -353,10 +398,11 @@ export default function ImmersiveMeditationPlayer({
                     {/* ============================================
                         🎛️ 底部控制栏 - 粘土风格
                         ============================================ */}
+                    {/* ============================================
+                        🎛️ 底部控制栏 - 粘土风格
+                        ============================================ */}
                     <motion.div
-                        initial={{ opacity: 0, y: 50 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.4, type: "spring", stiffness: 150 }}
+                        variants={itemVariants}
                         className="pb-safe px-8 pb-8"
                     >
                         <div className="flex items-center justify-center gap-4">

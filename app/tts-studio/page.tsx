@@ -668,7 +668,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
     const audioContextRef = useRef<AudioContext | null>(null);
     const activeSourceNodeRef = useRef<AudioBufferSourceNode | null>(null); // 🔥 当前活跃的源节点
     const mainGainNodeRef = useRef<GainNode | null>(null); // 🔥 全局增益节点
-    
+
     const cachedSourceRef = useRef<AudioBufferSourceNode | null>(null);
     const cachedAudioBufferRef = useRef<AudioBuffer | null>(null); // 保存解码后的 AudioBuffer
     const wakeLockRef = useRef<any>(null);
@@ -702,7 +702,7 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                 audio.onerror = null;
             }
             if (activeSourceNodeRef.current) {
-                try { activeSourceNodeRef.current.stop(); } catch(e) {}
+                try { activeSourceNodeRef.current.stop(); } catch (e) { }
             }
         };
     }, []);
@@ -955,10 +955,10 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
             currentItemIdRef.current = null; // 重置
             return;
         } else {
-             // Resume logic
-             if (audioContextRef.current?.state === 'suspended') {
-                 audioContextRef.current.resume();
-             }
+            // Resume logic
+            if (audioContextRef.current?.state === 'suspended') {
+                audioContextRef.current.resume();
+            }
         }
 
         // 队列为空时停止
@@ -976,8 +976,8 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         // 🔥 关键防护：如果有音频正在播放，不处理
         // Web Audio check: currentItemIdRef tracks if we are working on an item
         if (currentItemIdRef.current === audioQueue[0].id) {
-             // Already playing this item
-             return; 
+            // Already playing this item
+            return;
         }
 
         // 持续预加载
@@ -991,35 +991,35 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
         currentItemIdRef.current = item.id;
 
         const cleanup = () => {
-             // Clear listeners
-             if (activeSourceNodeRef.current) {
-                 activeSourceNodeRef.current.onended = null;
-                 activeSourceNodeRef.current = null;
-             }
-             if (currentAudio) {
-                 currentAudio.onended = null;
-                 currentAudio.onerror = null;
-                 setCurrentAudio(null);
-             }
-             
-             if (item.url && item.url.startsWith('blob:')) {
-                 // Defer revoke to avoid cutting tail if using Audio element
-                 setTimeout(() => URL.revokeObjectURL(item.url!), 1000);
-             }
+            // Clear listeners
+            if (activeSourceNodeRef.current) {
+                activeSourceNodeRef.current.onended = null;
+                activeSourceNodeRef.current = null;
+            }
+            if (currentAudio) {
+                currentAudio.onended = null;
+                currentAudio.onerror = null;
+                setCurrentAudio(null);
+            }
 
-             setAudioQueue(prev => prev.slice(1));
-             currentItemIdRef.current = null;
-             isProcessingRef.current = false;
+            if (item.url && item.url.startsWith('blob:')) {
+                // Defer revoke to avoid cutting tail if using Audio element
+                setTimeout(() => URL.revokeObjectURL(item.url!), 1000);
+            }
+
+            setAudioQueue(prev => prev.slice(1));
+            currentItemIdRef.current = null;
+            isProcessingRef.current = false;
         };
 
         const ctx = initAudioContext();
         if (!ctx) { isProcessingRef.current = false; return; }
 
         if (item.type === 'pause' || (item.type === 'text' && item.buffer)) {
-             // Use Web Audio API
-             setIsLoadingAudio(false);
-             
-             try {
+            // Use Web Audio API
+            setIsLoadingAudio(false);
+
+            try {
                 // Ensure context is running if we are supposed to be playing
                 if (ctx.state === 'suspended') ctx.resume();
 
@@ -1031,14 +1031,14 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     // Create silent buffer
                     const frameCount = (item.duration / 1000) * ctx.sampleRate;
                     const silentBuffer = ctx.createBuffer(1, frameCount || 1, ctx.sampleRate);
-                     source.buffer = silentBuffer;
+                    source.buffer = silentBuffer;
                 } else {
                     source.buffer = item.buffer!;
                 }
 
                 source.connect(gainNode);
                 gainNode.connect(ctx.destination);
-                
+
                 source.onended = () => {
                     console.log(`[TTS WebAudio] Item ended: ${item.id}`);
                     cleanup();
@@ -1046,40 +1046,40 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
 
                 activeSourceNodeRef.current = source;
                 mainGainNodeRef.current = gainNode;
-                
+
                 source.start(0);
-                
+
                 // Still set currentAudio to null to indicate we are not using HTMLAudioElement
                 setCurrentAudio(null);
 
-             } catch(e) {
-                 console.error("[TTS WebAudio] Play failed", e);
-                 cleanup();
-             }
+            } catch (e) {
+                console.error("[TTS WebAudio] Play failed", e);
+                cleanup();
+            }
 
         } else if (item.type === 'text' && item.url) {
-             // Fallback to HTMLAudioElement if buffer missing (should be rare with prefetch)
-             console.log("[TTS] Fallback to HTMLAudioElement for", item.id);
-             
-             let audio = sharedAudioRef.current || new Audio();
-             (audio as any).playsInline = true;
-             audio.src = item.url;
-             audio.volume = 1;
-             
-             audio.onended = () => {
-                 setTimeout(cleanup, 500);
-             };
-             audio.onerror = (e) => {
-                 console.error("[TTS HTMLAudio] Error", e);
-                 cleanup();
-             };
+            // Fallback to HTMLAudioElement if buffer missing (should be rare with prefetch)
+            console.log("[TTS] Fallback to HTMLAudioElement for", item.id);
 
-             setCurrentAudio(audio);
-             audio.play().catch(e => {
-                 console.error("Play failed", e);
-                 cleanup();
-             });
-             setIsLoadingAudio(false);
+            let audio = sharedAudioRef.current || new Audio();
+            (audio as any).playsInline = true;
+            audio.src = item.url;
+            audio.volume = 1;
+
+            audio.onended = () => {
+                setTimeout(cleanup, 500);
+            };
+            audio.onerror = (e) => {
+                console.error("[TTS HTMLAudio] Error", e);
+                cleanup();
+            };
+
+            setCurrentAudio(audio);
+            audio.play().catch(e => {
+                console.error("Play failed", e);
+                cleanup();
+            });
+            setIsLoadingAudio(false);
 
         } else {
             // Still loading or invalid
@@ -1745,9 +1745,9 @@ function TTSCardItem({ card, onDelete, onEdit }: { card: TTSCard; onDelete: (id:
                     // 否则从头开始播放缓存
                     await playCachedAudio();
                 } else if (audioQueue.length > 0) {
-                     // Resume Queue Playback
-                     setIsPlaying(true);
-                     isPlayingRef.current = true;
+                    // Resume Queue Playback
+                    setIsPlaying(true);
+                    isPlayingRef.current = true;
                 }
             }
         } finally {
@@ -2402,9 +2402,10 @@ export default function TTSStudioPage() {
                         <p className="text-white/40 mt-2 font-light">Text to Speech Studio</p>
                     </motion.header>
 
-                    <motion.div variants={ITEM_VARIANTS}>
+                    {/* 🔥 新建卡片 - 无入场动画 */}
+                    <div>
                         <GlassInput onAddCard={apiAddCard} />
-                    </motion.div>
+                    </div>
 
                     <div className="mt-8">
                         <AnimatePresence mode="wait">
