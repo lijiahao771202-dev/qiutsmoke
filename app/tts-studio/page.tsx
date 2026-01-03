@@ -138,7 +138,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
     const [title, setTitle] = useState("");
     const [voiceId, setVoiceId] = useState(VOICES[0].id);
     const [isLoading, setIsLoading] = useState(false);
-    const { triggerLight, triggerSuccess, triggerHeavy } = useHaptics();
+    const { triggerLight, triggerMedium, triggerSuccess, triggerHeavy } = useHaptics();
 
     // 折叠状态 - 默认折叠
     const [isCollapsed, setIsCollapsed] = useState(true);
