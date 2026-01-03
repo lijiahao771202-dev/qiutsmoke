@@ -747,12 +747,7 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
     // Helpers
     // -------------------------------------------------------------------------
 
-    // 格式化时间为 mm:ss
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
+
 
     const initAudioContext = () => {
         if (typeof window === 'undefined') return null;
