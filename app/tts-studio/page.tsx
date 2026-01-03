@@ -2025,13 +2025,7 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                                 {card.content || "暂无文案..."}
                             </div>
 
-                            {/* Overlay Indication */}
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/20 backdrop-blur-sm border border-white/10 opacity-60 group-hover/text:opacity-100 transition-opacity">
-                                    <Eye className="w-3.5 h-3.5 text-white/70" />
-                                    <span className="text-xs text-white/70 tracking-wider font-medium">查看文案</span>
-                                </div>
-                            </div>
+
                         </motion.div>
 
                         {/* Control Bar */}
