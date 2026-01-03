@@ -2673,6 +2673,66 @@ export default function TTSStudioPage() {
                     )}
                 </AnimatePresence>
 
+                {/* 👁️ 阅读模式弹窗 (Read-Only Modal) */}
+                <AnimatePresence>
+                    {viewingCard && (
+                        <motion.div
+                            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setViewingCard(null)}
+                        >
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="bg-zinc-900/90 border border-white/10 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl relative flex flex-col max-h-[80vh]"
+                            >
+                                {/* Header */}
+                                <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-white/5">
+                                    <h3 className="text-lg font-medium text-white/90 truncate pr-4">
+                                        {viewingCard.title || "未命名文案"}
+                                    </h3>
+                                    <button
+                                        onClick={() => setViewingCard(null)}
+                                        className="p-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                {/* Content Scroll Area */}
+                                <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+                                    <p className="text-base text-white/80 leading-loose whitespace-pre-wrap font-light tracking-wide">
+                                        {viewingCard.content}
+                                    </p>
+                                </div>
+
+                                {/* Footer */}
+                                <div className="px-6 py-4 border-t border-white/5 bg-black/20 flex justify-end">
+                                    <button
+                                        onClick={() => {
+                                            setViewingCard(null);
+                                            handleEdit(viewingCard);
+                                        }}
+                                        className="text-xs text-white/30 hover:text-white/60 transition-colors mr-auto self-center"
+                                    >
+                                        需要修改?
+                                    </button>
+                                    <button
+                                        onClick={() => setViewingCard(null)}
+                                        className="px-6 py-2 rounded-xl bg-white text-black font-medium text-sm hover:bg-white/90 transition-colors"
+                                    >
+                                        关闭
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 {/* 删除确认弹窗 (iOS WebView 兼容) */}
                 <AnimatePresence>
                     {deleteConfirmId && (
