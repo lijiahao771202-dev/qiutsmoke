@@ -21,28 +21,7 @@ const SPRING_TRANSITION = {
   mass: 1
 } as const;
 
-const CONTAINER_VARIANTS = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.2
-    }
-  }
-};
-
-const ITEM_VARIANTS = {
-  hidden: { y: 20, filter: "blur(5px)" }, // 🔥 Removed opacity: 0
-  show: {
-    y: 0,
-    filter: "blur(0px)",
-    transition: {
-      duration: 0.8,
-      ease: [0.25, 1, 0.5, 1]
-    }
-  }
-};
+// 🚀 入场动画已移除，只保留组件内部动画
 
 export default function Home() {
   const [days, setDays] = useState(0);
@@ -102,17 +81,13 @@ export default function Home() {
       {/* 🪷 Full Screen Lotus Garden Background - Only render after data loads */}
       {!isSessionsLoading && lotusRecords.length > 0 && <LotusGarden records={lotusRecords} streakDays={Math.min(7, lotusRecords.length)} />}
 
-      {/* Main Content Container */}
-      <motion.main
-        variants={CONTAINER_VARIANTS}
-        initial="hidden"
-        animate="show"
+      {/* Main Content Container - 静态容器，无入场动画 */}
+      <main
         className="relative z-10 flex flex-col px-6 pt-10 pb-24 mx-auto w-full max-w-md h-full justify-around gap-2"
       >
 
         {/* --- Block 1: Header & Status --- */}
         <motion.div
-          variants={ITEM_VARIANTS}
           className="flex flex-col items-center justify-center relative shrink-0"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
@@ -142,7 +117,7 @@ export default function Home() {
 
 
         {/* --- Card Queue: Swipeable Stack --- */}
-        <motion.div variants={ITEM_VARIANTS} className="w-full h-[18rem] relative z-20">
+        <div className="w-full h-[18rem] relative z-20">
           <CardStack>
             {/* Card 1: Main Dashboard (Command Center) */}
             <div className="w-full h-full">
@@ -161,9 +136,9 @@ export default function Home() {
 
 
           </CardStack>
-        </motion.div>
+        </div>
 
-      </motion.main>
+      </main>
     </div>
   );
 }
