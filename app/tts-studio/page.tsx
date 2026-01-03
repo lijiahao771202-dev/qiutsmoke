@@ -590,7 +590,7 @@ const JELLY_VARIANTS = {
     }
 };
 
-function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onDelete: (id: string) => void; onEdit: (card: TTSCard) => void; index?: number }) {
+function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSCard; onDelete: (id: string) => void; onEdit: (card: TTSCard) => void; onView: (card: TTSCard) => void; index?: number }) {
     // ... (keep existing state declarations)
     // Queue State
     type QueueItem =
@@ -604,8 +604,7 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
 
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess, triggerError } = useHaptics();
 
-    // UI State: Controls whether the script text is fully visible or collapsed/blurred
-    const [showScript, setShowScript] = useState(false);
+
 
     // 合成状态 - 从全局状态初始化
     const [isSynthesizing, setIsSynthesizing] = useState(() => synthesizingCardsSet.has(card.id));
@@ -2015,40 +2014,24 @@ function TTSCardItem({ card, onDelete, onEdit, index = 0 }: { card: TTSCard; onD
 
                         {/* Content Preview */}
                         {/* Content Preview - Click to View */}
-                        {/* Content Preview - Blurred Reveal Interaction */}
+                        {/* Content Preview - Static Blur + Click to Modal */}
                         <motion.div
-                            layout
-                            onClick={(e) => { e.stopPropagation(); setShowScript(!showScript); triggerLight(); }}
-                            className={cn(
-                                "flex-1 my-2 overflow-hidden rounded-xl transition-all duration-500 cursor-pointer relative group/text",
-                                showScript ? "bg-white/5 border border-white/10" : "hover:bg-white/5 border border-transparent hover:border-white/5"
-                            )}
+                            whileHover={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.08)" }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={(e) => { e.stopPropagation(); onView(card); triggerLight(); }}
+                            className="flex-1 my-2 overflow-hidden rounded-xl bg-white/5 border border-white/5 cursor-pointer relative group/text min-h-[80px]"
                         >
-                            <motion.div
-                                layout
-                                className={cn(
-                                    "px-3 py-2 text-sm font-light leading-relaxed whitespace-pre-wrap transition-all duration-500",
-                                    showScript ? "text-white/90 min-h-[120px] max-h-[300px] overflow-y-auto custom-scrollbar" : "text-white/50 h-[80px] overflow-hidden select-none filter blur-[2px] group-hover/text:blur-[1px]"
-                                )}
-                            >
+                            <div className="px-3 py-2 text-sm font-light leading-relaxed whitespace-pre-wrap text-white/50 h-[80px] overflow-hidden select-none filter blur-[2px] group-hover/text:blur-[1.5px] transition-[filter]">
                                 {card.content || "暂无文案..."}
-                            </motion.div>
+                            </div>
 
-                            {/* Overlay Indication when collapsed */}
-                            <AnimatePresence>
-                                {!showScript && (
-                                    <motion.div
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                                    >
-                                        <span className="text-xs text-white/40 tracking-widest uppercase font-medium bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm border border-white/5 group-hover/text:text-white/80 transition-colors">
-                                            Tap to Reveal
-                                        </span>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
+                            {/* Overlay Indication */}
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/20 backdrop-blur-sm border border-white/10 opacity-60 group-hover/text:opacity-100 transition-opacity">
+                                    <Eye className="w-3.5 h-3.5 text-white/70" />
+                                    <span className="text-xs text-white/70 tracking-wider font-medium">查看文案</span>
+                                </div>
+                            </div>
                         </motion.div>
 
                         {/* Control Bar */}
@@ -2300,6 +2283,10 @@ export default function TTSStudioPage() {
     }, []);
 
     const [editingCard, setEditingCard] = useState<TTSCard | null>(null);
+    // 👁️ 阅读模式：查看完整文案（只读）
+    const [viewingCard, setViewingCard] = useState<TTSCard | null>(null);
+
+    const [editTitle, setEditTitle] = useState("");
     const [editTitle, setEditTitle] = useState("");
     const [editContent, setEditContent] = useState("");
     const [editVoiceId, setEditVoiceId] = useState(VOICES[0].id);
@@ -2530,7 +2517,7 @@ export default function TTSStudioPage() {
                                     className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                                 >
                                     {ttsCards.map((card: TTSCard, index: number) => (
-                                        <TTSCardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} index={index} />
+                                        <TTSCardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} onView={(c) => setViewingCard(c)} index={index} />
                                     ))}
                                 </motion.div>
                             )}
