@@ -51,6 +51,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
+  // 🚫 只缓存 GET 请求，POST/PUT 等无法被 Cache API 缓存
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
   // API 请求不缓存，直接走网络
   if (url.pathname.startsWith('/api/')) {
     return;
