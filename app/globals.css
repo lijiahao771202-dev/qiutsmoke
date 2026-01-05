@@ -12,10 +12,34 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* 🎨 Warm & Healing Color System */
+:root {
+  --background: #FDFCF8;
+  /* Warm Beige */
+  --foreground: #4A453E;
+  /* Deep Warm Grey */
+
+  /* Accents */
+  --color-warm-peach: #FFF1E6;
+  --color-sage-green: #B4CFB0;
+  --color-sun-orange: #FFB74D;
+  --color-muted-clay: #E2D5C3;
+  --color-soft-white: #FFFCF7;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: transparent;
-    --foreground: #ededed;
+    --background: #1C1917;
+    /* Warm Dark Grey */
+    --foreground: #E7E5E4;
+    /* Warm White */
+
+    /* Dark Mode Accents */
+    --color-warm-peach: #2D2A26;
+    --color-sage-green: #4A5D48;
+    --color-sun-orange: #B47D3E;
+    --color-muted-clay: #292524;
+    --color-soft-white: #272522;
   }
 }
 
