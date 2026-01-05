@@ -54,18 +54,17 @@ export default function RootLayout({
                 });
               }
               
-              // 注册 Service Worker 实现离线缓存
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').then(function(registration) {
-                    console.log('SW registered: ', registration);
-                    // 强制更新 SW
-                    registration.update();
-                  }).catch(function(error) {
-                    console.log('SW registration failed: ', error);
+                if ('serviceWorker' in navigator) {
+                  window.addEventListener('load', function() {
+                      // 🛑 临时：强制注销所有 SW 以解决 405 问题
+                      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                          for(let registration of registrations) {
+                              registration.unregister();
+                              console.log('SW Unregistered');
+                          }
+                      });
                   });
-                });
-              }
+                }
             `,
           }}
         />

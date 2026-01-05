@@ -1,10 +1,6 @@
 import { NextResponse } from 'next/server';
 import { MemoryService } from '@/lib/services/memory-rag';
 
-// Switch to Node.js runtime for transformers.js support
-export const runtime = 'nodejs';
-export const maxDuration = 60; // Allow longer timeout for model loading
-
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 
 const SYSTEM_PROMPT = `
@@ -63,6 +59,10 @@ const SYSTEM_PROMPT = `
  { "mood": "calm", "type": "text" }
  |||JSON_END|||
  `;
+
+export async function GET() {
+    return NextResponse.json({ status: 'ok', message: 'API is working' });
+}
 
 export async function POST(req: Request) {
     try {
