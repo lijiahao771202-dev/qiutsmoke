@@ -59,6 +59,8 @@ export default function RootLayout({
                 window.addEventListener('load', function() {
                   navigator.serviceWorker.register('/sw.js').then(function(registration) {
                     console.log('SW registered: ', registration);
+                    // 强制更新 SW
+                    registration.update();
                   }).catch(function(error) {
                     console.log('SW registration failed: ', error);
                   });

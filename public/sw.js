@@ -1,7 +1,7 @@
 // Rain Meditation App - Service Worker
 // 缓存静态资源，实现快速加载
 
-const CACHE_NAME = 'rain-meditation-v1';
+const CACHE_NAME = 'rain-meditation-v2';
 const STATIC_ASSETS = [
   '/',
   '/practice',

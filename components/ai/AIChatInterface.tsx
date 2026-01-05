@@ -145,7 +145,7 @@ export default function AIChatInterface() {
                 apiMessages.push({ role: 'system', content: hiddenContext });
             }
 
-            const response = await fetch('/api/chat', {
+            const response = await fetch('/api/ai-chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
