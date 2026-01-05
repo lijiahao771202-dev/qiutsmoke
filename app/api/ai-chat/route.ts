@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { MemoryService } from '@/lib/services/memory-rag';
 
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 
@@ -61,7 +60,15 @@ const SYSTEM_PROMPT = `
  `;
 
 export async function GET() {
-    return NextResponse.json({ status: 'ok', message: 'API is working' });
+    console.log("[GET /api/ai-chat] Health check hit");
+    return NextResponse.json({
+        status: 'ok',
+        message: 'API Route is reachable',
+        env_check: {
+            has_api_key: !!process.env.DEEPSEEK_API_KEY,
+            has_supabase_url: !!process.env.NEXT_PUBLIC_SUPABASE_URL
+        }
+    });
 }
 
 export async function POST(req: Request) {
@@ -72,6 +79,9 @@ export async function POST(req: Request) {
         if (!apiKey) {
             return new Response(JSON.stringify({ error: "Missing API Key" }), { status: 500 });
         }
+
+        // Lazy load MemoryService to avoid top-level issues
+        const { MemoryService } = await import('@/lib/services/memory-rag');
 
         // 1. Retrieve RAG Context
         let memoryContext = "";
