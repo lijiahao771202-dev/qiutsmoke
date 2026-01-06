@@ -79,7 +79,7 @@ export default function RootLayout({
         }}
       >
         <AppWrapper>
-          <div className="relative z-10 font-sans">
+          <div className="relative z-10 font-sans" style={{ minHeight: '100dvh', height: '100%' }}>
             {children}
           </div>
         </AppWrapper>

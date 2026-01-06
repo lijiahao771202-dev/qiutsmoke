@@ -175,8 +175,8 @@ export default function AppWrapper({ children }: { children: React.ReactNode }) 
                 {!isAdmin && !isHome && <BackgroundLayer />}
                 {!isAdmin && !isHome && <PremiumGlassLayer />}
                 {!isAdmin && !isHome && <IOS26CompatLayer />}
-                {/* 移除动画，直接渲染 */}
-                <div style={{ width: '100%', height: '100%' }}>
+                {/* 使用 minHeight 确保容器填充整个视口 */}
+                <div style={{ width: '100%', minHeight: '100dvh' }}>
                     {children}
                 </div>
                 {/* 在首页隐藏导航栏和头像 */}
