@@ -13,6 +13,14 @@ import { useMoodStore, MOOD_THEMES } from "@/lib/store/useMoodStore";
 import ImmersiveMeditationPlayer from "@/components/meditation/ImmersiveMeditationPlayer";
 import { VoiceCallInterface } from "@/components/ai/VoiceCallInterface";
 
+// 🎯 快速回复选项 - Quick Reply Options
+const QUICK_REPLY_OPTIONS = [
+    "😌 今天感觉还不错",
+    "😔 有点焦虑",
+    "😴 需要放松一下",
+    "🧘 想做冥想练习"
+];
+
 export default function AIChatInterface() {
     const router = useRouter();
     const { triggerLight, triggerMedium, triggerHeavy } = useHaptics();
@@ -57,12 +65,13 @@ export default function AIChatInterface() {
             }
         }
 
-        // Update initial message
+        // Update initial message with quick replies
         setMessages([{
             id: "welcome",
             role: "ai",
             content: greeting,
             createdAt: Date.now(),
+            quickReplies: QUICK_REPLY_OPTIONS, // ✨ 添加快速回复按钮
         }]);
 
         // Small delay for effect
@@ -375,6 +384,16 @@ export default function AIChatInterface() {
                             key={msg.id}
                             message={msg}
                             isTyping={msg.role === 'ai' && msg === messages[messages.length - 1] && !msg.type}
+                            onQuickReply={(text) => {
+                                // 🎯 快速回复点击处理
+                                // 1. 移除当前消息的快速回复按钮
+                                setMessages(prev => prev.map(m =>
+                                    m.id === msg.id ? { ...m, quickReplies: undefined } : m
+                                ));
+                                // 2. 发送消息
+                                sendMessageToAI(text);
+                                triggerLight();
+                            }}
                         />
                     ))}
                     <div ref={messagesEndRef} />
