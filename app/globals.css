@@ -137,53 +137,31 @@ body {
   min-height: -webkit-fill-available;
   margin: 0;
   padding: 0;
-  /* iOS PWA: 确保背景填充底部安全区 (Home Indicator) */
-  padding-bottom: env(safe-area-inset-bottom, 0px);
   background: #000000;
   /* 防止内容溢出 */
   overflow-x: hidden;
   overscroll-behavior-y: none;
 }
 
-/* 背景层全屏覆盖 - 终极强制覆盖方案 (The Nuclear Option) */
+/* 背景层全屏覆盖 - 简化版本 */
 .bg-fullscreen {
   position: fixed;
-  top: -10vh !important;
-  /* 强制向上延伸 10% 屏幕高度 */
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100vw !important;
-  height: 120vh !important;
-  /* 强制高度为 120% 屏幕高度 */
-  z-index: 0;
-  pointer-events: none;
-  margin: 0 !important;
-  padding: 0 !important;
-  transform: translate3d(0, 0, 0);
-  /* 开启硬件加速 */
-}
-
-/* 💣 iOS PWA 全屏修复 - 强制背景延伸到安全区域下方 */
-.ios-fullscreen {
-  /* 确保容器本身覆盖全屏 */
-  min-height: 100vh !important;
-  min-height: 100dvh !important;
-  min-height: -webkit-fill-available !important;
-}
-
-/* 使用伪元素在底部安全区域生成一个黑色背景延伸层 */
-.ios-fullscreen::after {
-  content: '';
-  position: fixed;
+  top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  /* 安全区域高度 + 额外 50px 確保完全覆盖 */
-  height: calc(env(safe-area-inset-bottom, 0px) + 50px);
-  background: #000000;
+  width: 100vw;
+  height: 100vh;
   z-index: 0;
   pointer-events: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* iOS PWA 全屏适配 - 简化版本 */
+.ios-fullscreen {
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 @layer utilities {
