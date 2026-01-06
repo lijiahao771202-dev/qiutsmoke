@@ -338,8 +338,8 @@ export default function AIChatInterface() {
                 <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 400 400\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.95\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")' }} />
             </div>
 
-            {/* Main Container - 使用 flex-1 确保chat区域填充剩余空间 */}
-            <div className="relative z-10 flex flex-col" style={{ height: '100%', minHeight: '100dvh' }}>
+            {/* Main Container - 绝对定位填充整个屏幕 */}
+            <div className="absolute inset-0 z-10 flex flex-col">
 
                 {/* Top Navigation - Minimalist & Warm */}
                 <div className="flex justify-between items-center p-6 pt-safe">
