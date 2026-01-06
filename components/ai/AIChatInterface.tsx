@@ -388,7 +388,7 @@ export default function AIChatInterface() {
                 </div>
 
                 {/* Input Area - Floating Capsule */}
-                <div className="p-6 pb-safe shrink-0" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 24px))' }}>
+                <div className="p-4 pb-6 shrink-0">
                     <div
                         className="relative flex items-center gap-2 p-1.5 bg-white/60 dark:bg-[#292524]/60 backdrop-blur-xl border border-white/40 dark:border-white/5 rounded-[2rem] shadow-[0_8px_32px_rgba(0,0,0,0.04)]"
                     >
