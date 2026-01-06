@@ -125,14 +125,24 @@ button {
 }
 
 /* iOS 全屏支持 - 确保视口充满整个屏幕 */
-html,
-body {
+html {
   height: 100%;
+  /* iOS PWA: 强制背景延伸到安全区域下方 */
+  background: #000000;
+}
+
+body {
+  min-height: 100%;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
   margin: 0;
   padding: 0;
-  overflow: hidden;
-  /* 确保视口充满整个屏幕，不留白边 */
+  /* iOS PWA: 确保背景填充底部安全区 (Home Indicator) */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   background: #000000;
+  /* 防止内容溢出 */
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
 }
 
 /* 背景层全屏覆盖 - 终极强制覆盖方案 (The Nuclear Option) */

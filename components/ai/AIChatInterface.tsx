@@ -293,7 +293,14 @@ export default function AIChatInterface() {
     const [isVoiceMode, setIsVoiceMode] = useState(false);
 
     return (
-        <div className={`fixed inset-0 overflow-hidden bg-black text-white font-sans selection:bg-teal-500/30 transition-colors duration-1000`}>
+        <div
+            className={`fixed top-0 left-0 right-0 bottom-0 overflow-hidden bg-black text-white font-sans selection:bg-teal-500/30 transition-colors duration-1000`}
+            style={{
+                minHeight: '100dvh',
+                // iOS PWA: 强制填充底部安全区
+                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+            }}
+        >
 
             {/* 🎙️ Full Screen Voice Interface */}
             <AnimatePresence>
