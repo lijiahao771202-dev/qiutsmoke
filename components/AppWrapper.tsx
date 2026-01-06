@@ -164,20 +164,24 @@ import { PageTransition } from './PageTransition';
 export default function AppWrapper({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const isAdmin = pathname?.startsWith('/admin');
+    // 🔥 新增：在首页（AI聊天界面）隐藏导航栏和头像，实现沉浸式体验
+    const isHome = pathname === '/';
 
     return (
         <BackgroundProvider>
             <AuthProvider>
                 <PushSubscriber />
-                {!isAdmin && <BackgroundLayer />}
-                {!isAdmin && <PremiumGlassLayer />}
-                {!isAdmin && <IOS26CompatLayer />}
+                {/* 在首页不渲染背景层，因为 AIChatInterface 有自己的背景 */}
+                {!isAdmin && !isHome && <BackgroundLayer />}
+                {!isAdmin && !isHome && <PremiumGlassLayer />}
+                {!isAdmin && !isHome && <IOS26CompatLayer />}
                 {/* 移除动画，直接渲染 */}
                 <div style={{ width: '100%', height: '100%' }}>
                     {children}
                 </div>
-                {!isAdmin && <NavBar />}
-                {!isAdmin && <UserProfile />}
+                {/* 在首页隐藏导航栏和头像 */}
+                {!isAdmin && !isHome && <NavBar />}
+                {!isAdmin && !isHome && <UserProfile />}
             </AuthProvider>
         </BackgroundProvider>
     );
