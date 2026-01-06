@@ -191,6 +191,14 @@ export default function AIChatInterface() {
             if (jsonBlock) {
                 try {
                     const data = JSON.parse(jsonBlock);
+
+                    // 🎯 处理动态快速回复
+                    if (data.quickReplies && Array.isArray(data.quickReplies)) {
+                        setMessages(prev => prev.map(m =>
+                            m.id === aiMsgId ? { ...m, quickReplies: data.quickReplies } : m
+                        ));
+                    }
+
                     if (data.recommendation) {
                         setTimeout(() => {
                             const cardMsg: Message = {
@@ -200,6 +208,8 @@ export default function AIChatInterface() {
                                 type: "card",
                                 cardData: { ...data.recommendation, onClick: () => handleStartPractice(data.recommendation) },
                                 createdAt: Date.now(),
+                                // 推荐卡片后的快速回复
+                                quickReplies: ["▶️ 开始练习", "🔄 换一个", "💬 先聊聊"],
                             };
                             setMessages(prev => [...prev, cardMsg]);
                             triggerHeavy();
@@ -224,6 +234,7 @@ export default function AIChatInterface() {
                     console.error("JSON Parse Error", e);
                 }
             }
+
 
             return spokenText.trim(); // Return text for Voice Mode TTS
 
