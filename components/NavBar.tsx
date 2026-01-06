@@ -32,7 +32,12 @@ export default function NavBar() {
     const isActive = (path: string) => pathname === path;
 
     return (
-        <nav className="fixed md:top-8 md:bottom-auto bottom-[env(safe-area-inset-bottom)] left-1/2 -translate-x-1/2 z-50 rounded-full p-2 flex justify-center items-center gap-6 md:gap-4 backdrop-blur-[40px] backdrop-saturate-[1.8] bg-white/[0.08] border border-white/[0.15] shadow-[0_8px_32px_rgba(0,0,0,0.3),inset_0_0.5px_0_0_rgba(255,255,255,0.25),inset_0_-0.5px_0_0_rgba(0,0,0,0.1)] ring-1 ring-inset ring-white/10">
+        <nav
+            className="fixed md:top-8 md:bottom-auto left-1/2 -translate-x-1/2 z-50 rounded-full p-2 flex justify-center items-center gap-6 md:gap-4 backdrop-blur-[40px] backdrop-saturate-[1.8] bg-white/[0.08] border border-white/[0.15] shadow-[0_8px_32px_rgba(0,0,0,0.3),inset_0_0.5px_0_0_rgba(255,255,255,0.25),inset_0_-0.5px_0_0_rgba(0,0,0,0.1)] ring-1 ring-inset ring-white/10"
+            style={{
+                bottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))'
+            }}
+        >
             <NavLink
                 href="/"
                 isActive={isActive("/")}

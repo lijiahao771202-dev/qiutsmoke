@@ -237,7 +237,8 @@ export function VoiceCallInterface({ onClose, onSendMessage }: VoiceCallInterfac
 
             {/* Controls */}
             <motion.div
-                className="absolute bottom-12"
+                className="absolute"
+                style={{ bottom: 'calc(3rem + env(safe-area-inset-bottom, 0px))' }}
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
             >
