@@ -164,6 +164,28 @@ body {
   /* 开启硬件加速 */
 }
 
+/* 💣 iOS PWA 全屏修复 - 强制背景延伸到安全区域下方 */
+.ios-fullscreen {
+  /* 确保容器本身覆盖全屏 */
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  min-height: -webkit-fill-available !important;
+}
+
+/* 使用伪元素在底部安全区域生成一个黑色背景延伸层 */
+.ios-fullscreen::after {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* 安全区域高度 + 额外 50px 確保完全覆盖 */
+  height: calc(env(safe-area-inset-bottom, 0px) + 50px);
+  background: #000000;
+  z-index: 0;
+  pointer-events: none;
+}
+
 @layer utilities {
   .glass-panel {
     @apply bg-white/10 backdrop-blur-2xl border border-white/10 shadow-black/20;

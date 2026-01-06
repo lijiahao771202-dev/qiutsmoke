@@ -293,14 +293,8 @@ export default function AIChatInterface() {
     const [isVoiceMode, setIsVoiceMode] = useState(false);
 
     return (
-        <div
-            className={`fixed top-0 left-0 right-0 bottom-0 overflow-hidden bg-black text-white font-sans selection:bg-teal-500/30 transition-colors duration-1000`}
-            style={{
-                minHeight: '100dvh',
-                // iOS PWA: 强制填充底部安全区
-                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-            }}
-        >
+        // iOS PWA 全屏修复：使用 ios-fullscreen 类强制背景延伸到安全区域下方
+        <div className="ios-fullscreen fixed inset-0 overflow-hidden bg-black text-white font-sans selection:bg-teal-500/30 transition-colors duration-1000">
 
             {/* 🎙️ Full Screen Voice Interface */}
             <AnimatePresence>
@@ -312,8 +306,11 @@ export default function AIChatInterface() {
                 )}
             </AnimatePresence>
 
-            {/* 🌅 Emotional Atmosphere Background */}
-            <div className={`absolute inset-0 z-0 ${theme.bg} dark:bg-[#1C1917] transition-colors duration-1000`}>
+            {/* 🌅 Emotional Atmosphere Background - 强制 100% 屏幕高度 */}
+            <div
+                className={`absolute inset-0 z-0 ${theme.bg} dark:bg-[#1C1917] transition-colors duration-1000`}
+                style={{ minHeight: 'calc(100% + env(safe-area-inset-bottom, 0px))' }}
+            >
                 {/* Primary Mood Glow */}
                 <motion.div
                     animate={{
