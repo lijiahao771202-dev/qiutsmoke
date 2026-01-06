@@ -208,8 +208,7 @@ export default function AIChatInterface() {
                                 type: "card",
                                 cardData: { ...data.recommendation, onClick: () => handleStartPractice(data.recommendation) },
                                 createdAt: Date.now(),
-                                // 推荐卡片后的快速回复
-                                quickReplies: ["▶️ 开始练习", "🔄 换一个", "💬 先聊聊"],
+                                // ❗ 卡片不需要快速回复按钮
                             };
                             setMessages(prev => [...prev, cardMsg]);
                             triggerHeavy();
@@ -390,23 +389,45 @@ export default function AIChatInterface() {
             {/* Chat Area */}
             <div className="relative z-10 flex-1 overflow-y-auto px-6 scrollbar-hide">
                 <div className="flex flex-col justify-end min-h-full pb-4">
-                    {messages.map((msg) => (
-                        <ChatMessage
-                            key={msg.id}
-                            message={msg}
-                            isTyping={msg.role === 'ai' && msg === messages[messages.length - 1] && !msg.type}
-                            onQuickReply={(text) => {
-                                // 🎯 快速回复点击处理
-                                // 1. 移除当前消息的快速回复按钮
-                                setMessages(prev => prev.map(m =>
-                                    m.id === msg.id ? { ...m, quickReplies: undefined } : m
-                                ));
-                                // 2. 发送消息
-                                sendMessageToAI(text);
-                                triggerLight();
-                            }}
-                        />
-                    ))}
+                    {messages.map((msg, index) => {
+                        // 🎯 只在最新的非卡片消息上显示快速回复
+                        const isLatestMessage = index === messages.length - 1;
+                        const shouldShowQuickReplies = isLatestMessage && msg.type !== 'card' && msg.type !== 'breathing';
+
+                        return (
+                            <ChatMessage
+                                key={msg.id}
+                                message={{
+                                    ...msg,
+                                    // 只有最新消息才显示 quickReplies
+                                    quickReplies: shouldShowQuickReplies ? msg.quickReplies : undefined
+                                }}
+                                isTyping={msg.role === 'ai' && isLatestMessage && !msg.type}
+                                onQuickReply={(text) => {
+                                    // 🎯 快速回复点击处理
+                                    // 1. 移除当前消息的快速回复按钮
+                                    setMessages(prev => prev.map(m =>
+                                        m.id === msg.id ? { ...m, quickReplies: undefined } : m
+                                    ));
+
+                                    // 2. 特殊处理：如果点击"开始练习"，直接启动练习
+                                    if (text.includes('开始练习') || text.includes('开始')) {
+                                        // 查找最近的卡片并触发 onClick
+                                        const lastCardMsg = [...messages].reverse().find(m => m.type === 'card' && m.cardData?.onClick);
+                                        if (lastCardMsg?.cardData?.onClick) {
+                                            lastCardMsg.cardData.onClick();
+                                            triggerMedium();
+                                            return;
+                                        }
+                                    }
+
+                                    // 3. 其他情况：发送消息
+                                    sendMessageToAI(text);
+                                    triggerLight();
+                                }}
+                            />
+                        );
+                    })}
                     <div ref={messagesEndRef} />
                 </div>
             </div>
