@@ -293,11 +293,8 @@ export default function AIChatInterface() {
     const [isVoiceMode, setIsVoiceMode] = useState(false);
 
     return (
-        // 根容器：使用主题背景色而不是黑色，避免底部空隙显示黑色
-        <div
-            className={`fixed inset-0 overflow-hidden ${theme.bg} text-white font-sans selection:bg-teal-500/30 transition-colors duration-1000`}
-            style={{ height: '100vh', minHeight: '100dvh' }}
-        >
+        // 根容器：使用 h-screen 和 flex 确保布局正确
+        <div className={`h-screen w-screen overflow-hidden ${theme.bg} text-white font-sans selection:bg-teal-500/30 transition-colors duration-1000 flex flex-col`}>
 
             {/* 🎙️ Full Screen Voice Interface */}
             <AnimatePresence>
@@ -309,8 +306,8 @@ export default function AIChatInterface() {
                 )}
             </AnimatePresence>
 
-            {/* 🌅 Emotional Atmosphere Background */}
-            <div className={`absolute inset-0 z-0 ${theme.bg} dark:bg-[#1C1917] transition-colors duration-1000`}>
+            {/* 🌅 Emotional Atmosphere Background - 绝对定位背景层 */}
+            <div className={`fixed inset-0 z-0 ${theme.bg} dark:bg-[#1C1917] transition-colors duration-1000 pointer-events-none`}>
                 {/* Primary Mood Glow */}
                 <motion.div
                     animate={{
@@ -335,96 +332,92 @@ export default function AIChatInterface() {
                 />
 
                 {/* Subtle Grain Overlay */}
-                <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 400 400\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.95\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")' }} />
+                <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 400 400\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.95\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")' }} />
             </div>
 
-            {/* Main Container - 绝对定位填充整个屏幕 */}
-            <div className="absolute inset-0 z-10 flex flex-col">
-
-                {/* Top Navigation - Minimalist & Warm */}
-                <div className="flex justify-between items-center p-4 pt-12 shrink-0">
-                    <div className="flex items-center gap-3">
-                        {/* Status Indicator: Breathing Dot instead of Bars */}
-                        <div className={`w-2.5 h-2.5 rounded-full transition-colors duration-500 ${isTTSPlaying ? "bg-[#FFB74D] animate-ping" : "bg-[#D1D5DB]"}`} />
-                        <span className="text-sm font-medium tracking-wide text-[#78716C] dark:text-[#A8A29E]">
-                            {isTTSPlaying ? "Speaking..." : " 小岛 · 倾听中"}
-                        </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        {/* 🎙️ Voice Mode Button */}
-                        <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => setIsVoiceMode(true)}
-                            className="p-2 rounded-full bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 backdrop-blur-md border border-rose-500/20 transition-colors shadow-sm"
-                        >
-                            <Phone size={20} strokeWidth={2} />
-                        </motion.button>
-
-                        <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={handleClose}
-                            className="p-2 rounded-full bg-white/40 dark:bg-black/20 backdrop-blur-md border border-white/30 dark:border-white/5 text-[#57534E] dark:text-[#D6D3D1] hover:bg-white/60 transition-colors shadow-sm"
-                        >
-                            <X size={20} strokeWidth={2} />
-                        </motion.button>
-                    </div>
+            {/* Top Navigation - 固定高度，不允许缩放 */}
+            <div className="relative z-10 flex justify-between items-center px-4 pt-12 pb-2 shrink-0">
+                <div className="flex items-center gap-3">
+                    {/* Status Indicator: Breathing Dot instead of Bars */}
+                    <div className={`w-2.5 h-2.5 rounded-full transition-colors duration-500 ${isTTSPlaying ? "bg-[#FFB74D] animate-ping" : "bg-[#D1D5DB]"}`} />
+                    <span className="text-sm font-medium tracking-wide text-[#78716C] dark:text-[#A8A29E]">
+                        {isTTSPlaying ? "Speaking..." : " 小岛 · 倾听中"}
+                    </span>
                 </div>
 
-                {/* Chat Area */}
-                <div className="flex-1 overflow-y-auto px-6 scrollbar-hide">
-                    <div className="flex flex-col justify-end min-h-full pb-4">
-                        {messages.map((msg) => (
-                            <ChatMessage
-                                key={msg.id}
-                                message={msg}
-                                isTyping={msg.role === 'ai' && msg === messages[messages.length - 1] && !msg.type}
-                            />
-                        ))}
-                        <div ref={messagesEndRef} />
-                    </div>
-                </div>
-
-                {/* Input Area - Floating Capsule */}
-                <div className="p-4 pb-8 shrink-0">
-                    <div
-                        className="relative flex items-center gap-2 p-1.5 bg-white/60 dark:bg-[#292524]/60 backdrop-blur-xl border border-white/40 dark:border-white/5 rounded-[2rem] shadow-[0_8px_32px_rgba(0,0,0,0.04)]"
+                <div className="flex items-center gap-2">
+                    {/* 🎙️ Voice Mode Button */}
+                    <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => setIsVoiceMode(true)}
+                        className="p-2 rounded-full bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 backdrop-blur-md border border-rose-500/20 transition-colors shadow-sm"
                     >
-                        <input
-                            type="text"
-                            value={inputText}
-                            onChange={(e) => setInputText(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                            placeholder={userInputEnabled ? "告诉我有心事..." : "正在倾听..."}
-                            disabled={!userInputEnabled}
-                            className="flex-1 bg-transparent border-none rounded-full px-5 py-3.5 text-[#44403C] dark:text-[#E7E5E4] placeholder-[#A8A29E] focus:outline-none focus:ring-0 text-base"
+                        <Phone size={20} strokeWidth={2} />
+                    </motion.button>
+
+                    <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handleClose}
+                        className="p-2 rounded-full bg-white/40 dark:bg-black/20 backdrop-blur-md border border-white/30 dark:border-white/5 text-[#57534E] dark:text-[#D6D3D1] hover:bg-white/60 transition-colors shadow-sm"
+                    >
+                        <X size={20} strokeWidth={2} />
+                    </motion.button>
+                </div>
+            </div>
+
+            {/* Chat Area */}
+            <div className="relative z-10 flex-1 overflow-y-auto px-6 scrollbar-hide">
+                <div className="flex flex-col justify-end min-h-full pb-4">
+                    {messages.map((msg) => (
+                        <ChatMessage
+                            key={msg.id}
+                            message={msg}
+                            isTyping={msg.role === 'ai' && msg === messages[messages.length - 1] && !msg.type}
                         />
+                    ))}
+                    <div ref={messagesEndRef} />
+                </div>
+            </div>
 
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-1 pr-1">
-                            <motion.button
-                                whileHover={{ scale: 1.05, backgroundColor: "rgba(0,0,0,0.05)" }}
-                                whileTap={{ scale: 0.95 }}
-                                className="p-3 rounded-full text-[#78716C] dark:text-[#A8A29E] hover:text-[#57534E] transition-colors"
-                            >
-                                <Mic size={20} />
-                            </motion.button>
+            {/* Input Area - Floating Capsule */}
+            <div className="relative z-10 px-4 pb-8 shrink-0">
+                <div
+                    className="relative flex items-center gap-2 p-1.5 bg-white/60 dark:bg-[#292524]/60 backdrop-blur-xl border border-white/40 dark:border-white/5 rounded-[2rem] shadow-[0_8px_32px_rgba(0,0,0,0.04)]"
+                >
+                    <input
+                        type="text"
+                        value={inputText}
+                        onChange={(e) => setInputText(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+                        placeholder={userInputEnabled ? "告诉我有心事..." : "正在倾听..."}
+                        disabled={!userInputEnabled}
+                        className="flex-1 bg-transparent border-none rounded-full px-5 py-3.5 text-[#44403C] dark:text-[#E7E5E4] placeholder-[#A8A29E] focus:outline-none focus:ring-0 text-base"
+                    />
 
-                            <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={handleSendMessage}
-                                disabled={!inputText.trim() || !userInputEnabled}
-                                className={`p-3 rounded-full transition-all duration-300 shadow-sm ${inputText.trim()
-                                    ? "bg-[#FFB74D] text-white shadow-[#FFB74D]/30"
-                                    : "bg-[#E5E5E5] dark:bg-[#44403C] text-[#A3A3A3]"
-                                    }`}
-                            >
-                                <Send size={18} className={inputText ? "ml-0.5" : ""} strokeWidth={2.5} />
-                            </motion.button>
-                        </div>
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-1 pr-1">
+                        <motion.button
+                            whileHover={{ scale: 1.05, backgroundColor: "rgba(0,0,0,0.05)" }}
+                            whileTap={{ scale: 0.95 }}
+                            className="p-3 rounded-full text-[#78716C] dark:text-[#A8A29E] hover:text-[#57534E] transition-colors"
+                        >
+                            <Mic size={20} />
+                        </motion.button>
+
+                        <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={handleSendMessage}
+                            disabled={!inputText.trim() || !userInputEnabled}
+                            className={`p-3 rounded-full transition-all duration-300 shadow-sm ${inputText.trim()
+                                ? "bg-[#FFB74D] text-white shadow-[#FFB74D]/30"
+                                : "bg-[#E5E5E5] dark:bg-[#44403C] text-[#A3A3A3]"
+                                }`}
+                        >
+                            <Send size={18} className={inputText ? "ml-0.5" : ""} strokeWidth={2.5} />
+                        </motion.button>
                     </div>
                 </div>
             </div>
