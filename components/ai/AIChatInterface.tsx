@@ -342,8 +342,8 @@ export default function AIChatInterface() {
             <div className="absolute inset-0 z-10 flex flex-col">
 
                 {/* Top Navigation - Minimalist & Warm */}
-                <div className="flex justify-between items-center p-6 pt-safe">
-                    <div className="flex items-center gap-3 pt-6">
+                <div className="flex justify-between items-center p-4 pt-12 shrink-0">
+                    <div className="flex items-center gap-3">
                         {/* Status Indicator: Breathing Dot instead of Bars */}
                         <div className={`w-2.5 h-2.5 rounded-full transition-colors duration-500 ${isTTSPlaying ? "bg-[#FFB74D] animate-ping" : "bg-[#D1D5DB]"}`} />
                         <span className="text-sm font-medium tracking-wide text-[#78716C] dark:text-[#A8A29E]">
@@ -388,7 +388,7 @@ export default function AIChatInterface() {
                 </div>
 
                 {/* Input Area - Floating Capsule */}
-                <div className="p-4 pb-6 shrink-0">
+                <div className="p-4 pb-8 shrink-0">
                     <div
                         className="relative flex items-center gap-2 p-1.5 bg-white/60 dark:bg-[#292524]/60 backdrop-blur-xl border border-white/40 dark:border-white/5 rounded-[2rem] shadow-[0_8px_32px_rgba(0,0,0,0.04)]"
                     >
