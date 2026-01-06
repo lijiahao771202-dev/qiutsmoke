@@ -338,8 +338,8 @@ export default function AIChatInterface() {
                 <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 400 400\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.95\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")' }} />
             </div>
 
-            {/* Main Container */}
-            <div className="relative z-10 flex flex-col h-full">
+            {/* Main Container - 使用 flex-1 确保chat区域填充剩余空间 */}
+            <div className="relative z-10 flex flex-col" style={{ height: '100%', minHeight: '100dvh' }}>
 
                 {/* Top Navigation - Minimalist & Warm */}
                 <div className="flex justify-between items-center p-6 pt-safe">
@@ -388,7 +388,7 @@ export default function AIChatInterface() {
                 </div>
 
                 {/* Input Area - Floating Capsule */}
-                <div className="p-6 pb-24 md:pb-8 pb-safe">
+                <div className="p-6 pb-safe shrink-0" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 24px))' }}>
                     <motion.div
                         className="relative flex items-center gap-2 p-1.5 bg-white/60 dark:bg-[#292524]/60 backdrop-blur-xl border border-white/40 dark:border-white/5 rounded-[2rem] shadow-[0_8px_32px_rgba(0,0,0,0.04)]"
                         initial={{ y: 20, opacity: 0 }}
