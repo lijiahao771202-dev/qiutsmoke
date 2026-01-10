@@ -17,6 +17,7 @@ import { Play, Pause, X, SkipBack, SkipForward, FileText, ChevronDown, Shuffle, 
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { cn } from "@/lib/utils";
 import { type AmbientSound, type AmbientSoundType } from "@/hooks/useWhiteNoise";
+import { useWakeLock } from "@/hooks/useWakeLock";
 
 // ============================================================================
 // 类型定义
@@ -308,6 +309,7 @@ export default function TTSStudioPlayer({
     onSetMasterVolume,
 }: TTSStudioPlayerProps) {
     const { triggerLight, triggerMedium } = useHaptics();
+    const { requestWakeLock, releaseWakeLock } = useWakeLock();
     const [showFullText, setShowFullText] = useState(false);
     const [showMixer, setShowMixer] = useState(false);
 
@@ -315,6 +317,15 @@ export default function TTSStudioPlayer({
     const progressBarRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [dragProgress, setDragProgress] = useState(0);
+
+    // 🔒 屏幕唤醒锁管理：播放时阻止熄屏
+    useEffect(() => {
+        if (isOpen && isPlaying) {
+            requestWakeLock();
+        } else {
+            releaseWakeLock();
+        }
+    }, [isOpen, isPlaying, requestWakeLock, releaseWakeLock]);
 
     useEffect(() => {
         if (isOpen) document.body.style.overflow = 'hidden';
