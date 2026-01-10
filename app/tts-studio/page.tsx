@@ -14,6 +14,8 @@ import { getApiUrl } from "@/lib/config";
 // Re-export for backwards compatibility
 export type { TTSCard } from "@/lib/hooks/useData";
 import { useHaptics } from "@/lib/hooks/useHaptics";
+import TTSStudioPlayer from "@/components/tts/TTSStudioPlayer";
+import { useWhiteNoise, AMBIENT_SOUNDS, type AmbientSoundType } from "@/hooks/useWhiteNoise";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -586,7 +588,7 @@ const JELLY_VARIANTS = {
     },
     tap: {
         scale: 0.96,
-        transition: { type: "spring", stiffness: 300, damping: 15 }
+        transition: { type: "spring" as const, stiffness: 300, damping: 15 }
     }
 };
 
@@ -1036,7 +1038,7 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                 setCurrentAudio(null);
             }
 
-            if (item.url && item.url.startsWith('blob:')) {
+            if (item.type === 'text' && item.url && item.url.startsWith('blob:')) {
                 // Defer revoke to avoid cutting tail if using Audio element
                 setTimeout(() => URL.revokeObjectURL(item.url!), 1000);
             }
@@ -1988,6 +1990,20 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
 
                                                 <div className="my-1 border-t border-white/10" />
 
+                                                {/* 沉浸播放 */}
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setShowCardMenu(false);
+                                                        triggerMedium();
+                                                        onView(card);
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-purple-400 hover:bg-purple-500/20 transition-colors"
+                                                >
+                                                    <Eye className="w-4 h-4" />
+                                                    <span>沉浸播放</span>
+                                                </button>
+
                                                 {/* 编辑 */}
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); setShowCardMenu(false); onEdit(card); }}
@@ -2284,6 +2300,160 @@ export default function TTSStudioPage() {
     const [aiDurationEdit, setAiDurationEdit] = useState<number>(5); // 目标时长（分钟）
     const [guidanceLevelEdit, setGuidanceLevelEdit] = useState<'light' | 'medium' | 'heavy'>('medium');
 
+    // 🎵 沉浸式播放器状态
+    const [playerCard, setPlayerCard] = useState<TTSCard | null>(null);
+    const [isPlayerOpen, setIsPlayerOpen] = useState(false);
+    const [playerIsPlaying, setPlayerIsPlaying] = useState(false);
+    const [playerCurrentTime, setPlayerCurrentTime] = useState(0);
+    const [playerDuration, setPlayerDuration] = useState(0);
+    const [playerCurrentText, setPlayerCurrentText] = useState("");
+
+    // 🌿 白噪音/环境音（复用冥想页面的 hook）
+    const {
+        activeTracks,
+        trackVolumes,
+        masterVolume,
+        setMasterVolume,
+        toggleTrack,
+        setTrackVolume,
+        stopAll: stopAllAmbient,
+    } = useWhiteNoise();
+
+    // 🎵 沉浸式播放器：音频引擎
+    const playerAudioRef = useRef<HTMLAudioElement | null>(null);
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const [analyser, setAnalyser] = useState<AnalyserNode | null>(null); // Use state to trigger re-render
+    const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+
+    // 初始化音频引擎
+    useEffect(() => {
+        if (!playerAudioRef.current) {
+            playerAudioRef.current = new Audio();
+            playerAudioRef.current.crossOrigin = "anonymous";
+        }
+
+        const audio = playerAudioRef.current;
+
+        const handleTimeUpdate = () => {
+            setPlayerCurrentTime(audio.currentTime);
+            if (playerCard?.content) {
+                // Update logic if needed
+            }
+        };
+
+        const handleLoadedMetadata = () => {
+            setPlayerDuration(audio.duration);
+        };
+
+        const handleEnded = () => {
+            setPlayerIsPlaying(false);
+            setPlayerCurrentTime(0);
+        };
+
+        audio.addEventListener('timeupdate', handleTimeUpdate);
+        audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+        audio.addEventListener('ended', handleEnded);
+
+        return () => {
+            audio.removeEventListener('timeupdate', handleTimeUpdate);
+            audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+            audio.removeEventListener('ended', handleEnded);
+            audio.pause();
+        };
+    }, [playerCard]);
+
+    // 初始化 Web Audio API (在首次用户交互后)
+    const initAudioContext = () => {
+        if (!audioCtxRef.current && playerAudioRef.current) {
+            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+            const ctx = new AudioContext();
+            const analyserNode = ctx.createAnalyser();
+            analyserNode.fftSize = 256;
+
+            const source = ctx.createMediaElementSource(playerAudioRef.current);
+            source.connect(analyserNode);
+            analyserNode.connect(ctx.destination);
+
+            audioCtxRef.current = ctx;
+            setAnalyser(analyserNode);
+            sourceRef.current = source;
+        } else if (audioCtxRef.current?.state === 'suspended') {
+            audioCtxRef.current.resume();
+        }
+    };
+
+    // 播放卡片逻辑
+    const handlePlayCard = async (card: TTSCard) => {
+        setPlayerCard(card);
+        setPlayerDuration(0);
+        setPlayerCurrentTime(0);
+        setPlayerIsPlaying(false);
+        setPlayerCurrentText(card.title || "Ready");
+
+        // Open player first
+        setIsPlayerOpen(true);
+
+        // Init context needs user gesture, may need to be called in the click handler directly or here
+        initAudioContext();
+
+        // 尝试获取缓存并播放
+        try {
+            const blob = await getAudioCache(card.id);
+            if (blob && playerAudioRef.current) {
+                const url = URL.createObjectURL(blob);
+                playerAudioRef.current.src = url;
+                // Wait for unified animation flow (0.8s)
+                setTimeout(() => {
+                    playerAudioRef.current?.play()
+                        .then(() => setPlayerIsPlaying(true))
+                        .catch(e => console.error("Playback failed", e));
+                }, 800);
+
+                setPlayerCurrentText("正在播放...");
+            } else {
+                setPlayerCurrentText("未找到音频缓存，请先在列表中点击播放以合成");
+            }
+        } catch (error) {
+            console.error("Failed to load audio cache", error);
+            setPlayerCurrentText("加载音频失败");
+        }
+    };
+
+    // 播放控制
+    const togglePlayPause = () => {
+        if (!playerAudioRef.current) return;
+        if (playerIsPlaying) {
+            playerAudioRef.current.pause();
+            setPlayerIsPlaying(false);
+        } else {
+            initAudioContext();
+            playerAudioRef.current.play();
+            setPlayerIsPlaying(true);
+        }
+    };
+
+    const handleSeek = (time: number) => {
+        if (!playerAudioRef.current) return;
+        playerAudioRef.current.currentTime = time;
+        setPlayerCurrentTime(time);
+    };
+
+    const handlePrev = () => {
+        if (!playerCard) return;
+        const currentIndex = ttsCards.findIndex(c => c.id === playerCard.id);
+        if (currentIndex > 0) {
+            handlePlayCard(ttsCards[currentIndex - 1]);
+        }
+    };
+
+    const handleNext = () => {
+        if (!playerCard) return;
+        const currentIndex = ttsCards.findIndex(c => c.id === playerCard.id);
+        if (currentIndex < ttsCards.length - 1) {
+            handlePlayCard(ttsCards[currentIndex + 1]);
+        }
+    };
+
     // 删除确认弹窗状态（替代 iOS 不支持的 confirm）
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
@@ -2503,7 +2673,14 @@ export default function TTSStudioPage() {
                                     className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                                 >
                                     {ttsCards.map((card: TTSCard, index: number) => (
-                                        <TTSCardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} onView={(c) => setViewingCard(c)} index={index} />
+                                        <TTSCardItem
+                                            key={card.id}
+                                            card={card}
+                                            onDelete={handleDelete}
+                                            onEdit={handleEdit}
+                                            onView={(c) => handlePlayCard(c)}
+                                            index={index}
+                                        />
                                     ))}
                                 </motion.div>
                             )}
@@ -2759,6 +2936,37 @@ export default function TTSStudioPage() {
                         </motion.div>
                     )}
                 </AnimatePresence>
+
+                {/* 🎵 沉浸式播放器 */}
+                <TTSStudioPlayer
+                    isOpen={isPlayerOpen}
+                    title={playerCard?.title || ""}
+                    currentText={playerCurrentText}
+                    fullText={playerCard?.content || ""}
+                    isPlaying={playerIsPlaying}
+                    isLoading={false}
+                    currentTime={playerCurrentTime}
+                    duration={playerDuration}
+                    onPlayPause={togglePlayPause}
+                    onSeek={handleSeek}
+                    onPrev={handlePrev}
+                    onNext={handleNext}
+                    onClose={() => {
+                        setIsPlayerOpen(false);
+                        setPlayerIsPlaying(false);
+                        setPlayerCard(null);
+                        playerAudioRef.current?.pause();
+                    }}
+                    analyserNode={analyser}
+                    // 白噪音 Props
+                    ambientSounds={AMBIENT_SOUNDS}
+                    activeTracks={activeTracks}
+                    trackVolumes={trackVolumes}
+                    masterVolume={masterVolume}
+                    onToggleTrack={toggleTrack}
+                    onSetTrackVolume={setTrackVolume}
+                    onSetMasterVolume={setMasterVolume}
+                />
             </div>
         </AuthGuard>
     );

@@ -14,8 +14,9 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, X, SkipBack, SkipForward, FileText, AlignLeft } from "lucide-react";
+import { Play, Pause, X, SkipBack, SkipForward, FileText, AlignLeft, Wind as WindIcon, Volume2, Music } from "lucide-react";
 import { useHaptics } from "@/lib/hooks/useHaptics";
+import { cn } from "@/lib/utils";
 
 interface ImmersiveMeditationPlayerProps {
     /** 是否显示播放器 */
@@ -42,6 +43,22 @@ interface ImmersiveMeditationPlayerProps {
     queueTotal?: number;
     /** 已播放的秒数 */
     elapsedSeconds?: number;
+    /** 多选混音控制 - 当前激活的音轨 */
+    activeTracks?: Set<string>;
+    /** 各音轨独立音量 */
+    trackVolumes?: Record<string, number>;
+    /** 主音量 */
+    masterVolume?: number;
+    /** 切换音轨回调 */
+    onToggleTrack?: (id: string) => void;
+    /** 设置单个音轨音量回调 */
+    onSetTrackVolume?: (id: string, volume: number) => void;
+    /** 设置主音量回调 */
+    onSetMasterVolume?: (volume: number) => void;
+    /** 停止所有音轨回调 */
+    onStopAll?: () => void;
+    /** 可用的环境音列表 */
+    ambientSounds?: { id: string; name: string; icon: string }[];
 }
 
 // 格式化时间为 mm:ss
@@ -64,9 +81,20 @@ export default function ImmersiveMeditationPlayer({
     queueCurrent = 0,
     queueTotal = 0,
     elapsedSeconds = 0,
+    activeTracks = new Set(),
+    trackVolumes = {},
+    masterVolume = 0.7,
+    onToggleTrack = () => { },
+    onSetTrackVolume = () => { },
+    onSetMasterVolume = () => { },
+    onStopAll = () => { },
+    ambientSounds = [],
 }: ImmersiveMeditationPlayerProps) {
     const { triggerLight, triggerMedium, triggerHeavy } = useHaptics();
     const [showFullText, setShowFullText] = useState(false);
+    const [showAmbientPanel, setShowAmbientPanel] = useState(false);
+    // 当前展开的音轨（用于显示独立音量控制）
+    const [expandedTrack, setExpandedTrack] = useState<string | null>(null);
 
     // 用于字幕淡入淡出的 key
     const [textKey, setTextKey] = useState(0);
@@ -101,7 +129,7 @@ export default function ImmersiveMeditationPlayer({
     if (!mounted) return null;
 
     // 🌟 核心动画配置
-    const containerVariants = {
+    const containerVariants: any = {
         hidden: { opacity: 0, scale: 0.95 },
         visible: {
             opacity: 1,
@@ -125,7 +153,7 @@ export default function ImmersiveMeditationPlayer({
         }
     };
 
-    const itemVariants = {
+    const itemVariants: any = {
         hidden: { opacity: 0, y: 20 }, // 初始状态：透明且下移
         visible: {
             opacity: 1,
@@ -154,9 +182,6 @@ export default function ImmersiveMeditationPlayer({
                         background: 'linear-gradient(180deg, #fff1f2 0%, #e0e7ff 50%, #ccfbf1 100%)'
                     }}
                 >
-                    {/* ============================================
-                        ❌ 关闭按钮 - 粘土风格
-                        ============================================ */}
                     {/* ============================================
                         ❌ 关闭按钮 - 粘土风格
                         ============================================ */}
@@ -458,6 +483,160 @@ export default function ImmersiveMeditationPlayer({
                             </button>
                         </div>
                     </motion.div>
+
+                    {/* ============================================
+                        🌿 环境音控制按钮 (支持多选混音)
+                        ============================================ */}
+                    <motion.div
+                        variants={itemVariants}
+                        className="absolute bottom-32 right-6 z-10"
+                    >
+                        <button
+                            onClick={() => {
+                                triggerLight();
+                                setShowAmbientPanel(!showAmbientPanel);
+                            }}
+                            className={cn(
+                                "w-14 h-14 flex flex-col items-center justify-center rounded-2xl border-4 transition-all duration-300",
+                                activeTracks.size > 0
+                                    ? "bg-teal-500/80 border-teal-200 text-white shadow-lg"
+                                    : "bg-white/80 border-white/40 text-teal-500 shadow-md"
+                            )}
+                            style={{
+                                boxShadow: activeTracks.size > 0
+                                    ? '4px 4px 15px rgba(20, 184, 166, 0.4)'
+                                    : '4px 4px 12px rgba(153, 246, 228, 0.4)'
+                            }}
+                            aria-label="环境音控制"
+                        >
+                            <Music className={cn("w-6 h-6", activeTracks.size > 0 && "animate-pulse")} />
+                            <span className="text-[10px] font-bold mt-0.5">
+                                {activeTracks.size > 0 ? `${activeTracks.size}轨` : '混音'}
+                            </span>
+                        </button>
+                    </motion.div>
+
+                    {/* ============================================
+                        🌬️ 多选混音控制面板
+                        ============================================ */}
+                    <AnimatePresence>
+                        {showAmbientPanel && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: 20, scale: 0.95 }}
+                                className="absolute bottom-52 right-6 z-20 w-72 bg-white/90 backdrop-blur-2xl rounded-[2rem] border-4 border-white/50 p-5 shadow-2xl"
+                                style={{
+                                    boxShadow: '0 20px 50px rgba(0,0,0,0.1), inset 0 2px 4px rgba(255,255,255,0.8)'
+                                }}
+                            >
+                                {/* 标题栏 */}
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm font-bold text-teal-600 flex items-center gap-2">
+                                        <WindIcon className="w-4 h-4" /> 混音面板
+                                    </h3>
+                                    <div className="flex items-center gap-2">
+                                        {activeTracks.size > 0 && (
+                                            <button
+                                                onClick={() => {
+                                                    triggerLight();
+                                                    onStopAll();
+                                                }}
+                                                className="px-2 py-1 text-[10px] font-bold text-rose-500 bg-rose-50 rounded-full hover:bg-rose-100"
+                                                title="停止全部"
+                                            >
+                                                全部停止
+                                            </button>
+                                        )}
+                                        <button onClick={() => setShowAmbientPanel(false)} className="p-1 hover:bg-teal-50 rounded-full" title="关闭面板">
+                                            <X className="w-4 h-4 text-teal-400" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* 主音量控制 */}
+                                <div className="mb-4 p-3 bg-teal-50/50 rounded-xl">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-[10px] font-bold text-slate-500 tracking-wider uppercase flex items-center gap-1">
+                                            <Volume2 className="w-3 h-3" /> 主音量
+                                        </span>
+                                        <span className="text-[10px] font-bold text-teal-600">{Math.round(masterVolume * 100)}%</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.01"
+                                        value={masterVolume}
+                                        onChange={(e) => onSetMasterVolume(parseFloat(e.target.value))}
+                                        className="w-full h-2 bg-teal-100 rounded-full appearance-none cursor-pointer accent-teal-500"
+                                        title="主音量"
+                                    />
+                                </div>
+
+                                {/* 音轨列表 - 支持多选 */}
+                                <div className="space-y-2 max-h-60 overflow-y-auto">
+                                    {ambientSounds.map((sound) => {
+                                        const isActive = activeTracks.has(sound.id);
+                                        const trackVol = trackVolumes[sound.id] ?? 0.5;
+
+                                        return (
+                                            <div key={sound.id} className="space-y-1">
+                                                <button
+                                                    onClick={() => {
+                                                        triggerLight();
+                                                        onToggleTrack(sound.id);
+                                                    }}
+                                                    className={cn(
+                                                        "w-full flex items-center justify-between p-3 rounded-xl border-2 transition-all",
+                                                        isActive
+                                                            ? "bg-teal-500 border-teal-300 text-white"
+                                                            : "bg-white/80 border-white/60 text-slate-600 hover:bg-teal-50"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-lg">{sound.icon}</span>
+                                                        <span className="text-sm font-bold">{sound.name}</span>
+                                                    </div>
+                                                    {isActive && (
+                                                        <span className="text-[10px] font-bold bg-white/30 px-2 py-0.5 rounded-full">
+                                                            {Math.round(trackVol * 100)}%
+                                                        </span>
+                                                    )}
+                                                </button>
+
+                                                {/* 激活时显示独立音量控制 */}
+                                                {isActive && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, height: 0 }}
+                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                        exit={{ opacity: 0, height: 0 }}
+                                                        className="px-3 py-2 bg-teal-50/50 rounded-lg"
+                                                    >
+                                                        <input
+                                                            type="range"
+                                                            min="0"
+                                                            max="1"
+                                                            step="0.01"
+                                                            value={trackVol}
+                                                            onChange={(e) => onSetTrackVolume(sound.id, parseFloat(e.target.value))}
+                                                            className="w-full h-1.5 bg-teal-200 rounded-full appearance-none cursor-pointer accent-teal-600"
+                                                            title={`${sound.name}音量`}
+                                                        />
+                                                    </motion.div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* 提示文字 */}
+                                <p className="text-[10px] text-slate-400 text-center mt-3">
+                                    💡 点击可叠加多种环境音
+                                </p>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
                     {/* ============================================
                         📜 全文阅读 Modal

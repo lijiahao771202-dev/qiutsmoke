@@ -12,6 +12,7 @@ import AuthGuard from "@/components/AuthGuard";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useMeditationTopics } from "@/lib/hooks/useData";
 import { useBackgroundAudio } from "@/hooks/useBackgroundAudio";
+import { useWhiteNoise } from "@/hooks/useWhiteNoise";
 import { getApiUrl } from "@/lib/config";
 import ImmersiveMeditationPlayer from "@/components/meditation/ImmersiveMeditationPlayer";
 
@@ -109,7 +110,7 @@ export default function MeditatePage() {
     const APPLE_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
     // 🌊 会呼吸的界面 (Organic Flow) 动画变体
-    const breathingVariants = {
+    const breathingVariants: any = {
         idle: {
             scale: [1, 1.015, 1],
             transition: {
@@ -129,7 +130,7 @@ export default function MeditatePage() {
     };
 
     // 卡片内部内容动画变体生成器（根据索引计算延迟）
-    const getCardContentVariants = (index: number) => ({
+    const getCardContentVariants = (index: number): any => ({
         hidden: { opacity: 0, y: 20 },
         visible: {
             opacity: 1,
@@ -301,6 +302,7 @@ export default function MeditatePage() {
     const { triggerInhale, triggerExhale, triggerHold } = useHapticBreathing();
     const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
     const [showAudioHint, setShowAudioHint] = useState(false);
+    const { activeTracks, trackVolumes, masterVolume, setMasterVolume, toggleTrack, setTrackVolume, stopAll, AMBIENT_SOUNDS } = useWhiteNoise();
     const [text, setText] = useState("");
     const [currentSpokenText, setCurrentSpokenText] = useState(""); // 💬 当前正在朗读的句子
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -484,10 +486,20 @@ export default function MeditatePage() {
 
                 // 🔥 详细记录错误信息
                 const errorText = await res.text().catch(() => "No error details");
+                console.warn(`[TTS Retry] Attempt ${i + 1}/${retries} failed: ${res.status} - ${errorText}`);
 
-                // 如果是 4xx 错误，不重试
+                // 如果是 4xx 错误（客户端错误），不重试
                 if (res.status >= 400 && res.status < 500) return null;
+
+                // 5xx 服务器错误，等待后重试
+                if (res.status >= 500 && i < retries - 1) {
+                    const delay = 1000 * Math.pow(2, i); // 指数退避: 1s, 2s, 4s
+                    console.log(`[TTS Retry] Waiting ${delay}ms before retry...`);
+                    await new Promise(r => setTimeout(r, delay));
+                    continue;
+                }
             } catch (e) {
+                console.warn(`[TTS Retry] Network error on attempt ${i + 1}/${retries}:`, e);
                 if (i === retries - 1) return null;
                 await new Promise(r => setTimeout(r, 1000 * (i + 1))); // 递增延迟
             }
@@ -2004,8 +2016,18 @@ export default function MeditatePage() {
                             elapsedTimerRef.current = null;
                         }
                         hasStartedSpeakingRef.current = false;
+                        // 关闭时停止所有环境音
+                        stopAll();
                     }}
                     cardId={activeCard || undefined}
+                    activeTracks={activeTracks as Set<string>}
+                    trackVolumes={trackVolumes as Record<string, number>}
+                    masterVolume={masterVolume}
+                    onToggleTrack={(id) => toggleTrack(id as any)}
+                    onSetTrackVolume={(id, vol) => setTrackVolume(id as any, vol)}
+                    onSetMasterVolume={setMasterVolume}
+                    onStopAll={stopAll}
+                    ambientSounds={AMBIENT_SOUNDS}
                 />
                 <div className="fixed bottom-1 left-0 right-0 text-center pointer-events-none opacity-20 text-[10px] text-white z-50">
                     v0.1.2 (Release)
