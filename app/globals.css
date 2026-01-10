@@ -10,6 +10,35 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Macaron Palette for Player V2 */
+  --color-rosewater: #F8C8DC;
+  --color-lemon-yellow: #FCF3AD;
+  --color-dusty-rose-brown: #8D6262;
+  --color-vibrant-rose-pink: #E3A3B9;
+
+  --font-display: "Be Vietnam Pro", sans-serif;
+
+  --animate-blob: blob 7s infinite;
+  --animate-spin-slow: spin 8s linear infinite;
+
+  @keyframes blob {
+    0% {
+      transform: translate(0px, 0px) scale(1);
+    }
+
+    33% {
+      transform: translate(30px, -50px) scale(1.1);
+    }
+
+    66% {
+      transform: translate(-20px, 20px) scale(0.9);
+    }
+
+    100% {
+      transform: translate(0px, 0px) scale(1);
+    }
+  }
 }
 
 @media (prefers-color-scheme: dark) {

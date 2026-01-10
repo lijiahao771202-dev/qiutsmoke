@@ -47,4 +47,5 @@ next-env.d.ts
 .edgeone/*
 !.edgeone/project.json
 .tef_dist/*
-  
+  stitch_liquid_glass_music_player_v1/code.html
+stitch_liquid_glass_music_player_v1/screen.png

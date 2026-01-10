@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Liquid Glass Music Player V2</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              // Custom macaron palette colors
+              "rosewater": "#F8C8DC", // Soft rose pink
+              "lemon-yellow": "#FCF3AD", // Pale lemon yellow
+              "dusty-rose-brown": "#8D6262", // Refined, dusty rose-brown for text/icons
+              "vibrant-rose-pink": "#E3A3B9", // Vibrant yet soft rose pink for play button
+            },
+            fontFamily: {
+              "display": ["Be Vietnam Pro", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "2xl": "4rem", "full": "9999px"},
+            animation: {
+              'spin-slow': 'spin 8s linear infinite',
+              'blob': 'blob 7s infinite',
+            },
+            keyframes: {
+              blob: {
+                "0%": {
+                  transform: "translate(0px, 0px) scale(1)",
+                },
+                "33%": {
+                  transform: "translate(30px, -50px) scale(1.1)",
+                },
+                "66%": {
+                  transform: "translate(-20px, 20px) scale(0.9)",
+                },
+                "100%": {
+                  transform: "translate(0px, 0px) scale(1)",
+                },
+              },
+            },
+          },
+        },
+      }
+    </script>
+<style>.glass-panel {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+        }
+        .glass-panel-deep {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .vinyl-groove {
+            background: radial-gradient(
+                circle, 
+                transparent 45%, 
+                rgba(0,0,0,0.1) 46%, 
+                transparent 47%,
+                transparent 50%,
+                rgba(0,0,0,0.1) 51%,
+                transparent 52%,
+                transparent 55%,
+                rgba(0,0,0,0.1) 56%,
+                transparent 57%
+            );
+        }
+        .text-shadow-sm {
+            text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }.rotate-vinyl {
+            animation: spin 10s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-display overflow-hidden">
+<div class="relative flex h-screen w-full flex-col overflow-hidden bg-gradient-to-br from-rosewater to-lemon-yellow">
+<div class="absolute top-0 -left-4 w-72 h-72 bg-rosewater rounded-full mix-blend-multiply filter blur-2xl opacity-40 animate-blob"></div>
+<div class="absolute top-0 -right-4 w-72 h-72 bg-lemon-yellow rounded-full mix-blend-multiply filter blur-2xl opacity-40 animate-blob animation-delay-2000"></div>
+<div class="absolute -bottom-8 left-20 w-72 h-72 bg-vibrant-rose-pink rounded-full mix-blend-multiply filter blur-2xl opacity-40 animate-blob animation-delay-4000"></div>
+<div class="relative z-20 flex items-center justify-between p-6 pt-12">
+<button class="flex items-center justify-center size-10 rounded-full glass-panel hover:bg-white/20 transition-colors text-dusty-rose-brown">
+<span class="material-symbols-outlined" style="font-size: 24px;">keyboard_arrow_down</span>
+</button>
+<div class="flex flex-col items-center">
+<h2 class="text-dusty-rose-brown font-bold text-sm uppercase tracking-widest opacity-80">Now Playing</h2>
+</div>
+<button class="flex items-center justify-center size-10 rounded-full glass-panel hover:bg-white/20 transition-colors text-dusty-rose-brown">
+<span class="material-symbols-outlined" style="font-size: 20px;">more_horiz</span>
+</button>
+</div>
+<div class="flex-1 relative z-10 flex flex-col items-center justify-center px-6 pb-8">
+<div class="relative w-full max-w-sm aspect-[3/4.5]">
+<div class="absolute top-4 left-4 right-4 bottom-[-16px] glass-panel-deep rounded-2xl transform scale-95 opacity-60"></div>
+<div class="absolute inset-0 glass-panel rounded-2xl flex flex-col p-6 items-center justify-between shadow-2xl ring-1 ring-white/40">
+<div class="relative w-64 h-64 mt-4 group">
+<div class="absolute inset-4 bg-black/20 rounded-full blur-xl transform translate-y-4"></div>
+<div class="w-full h-full rounded-full bg-black p-1 shadow-2xl relative rotate-vinyl overflow-hidden border-4 border-gray-900/10">
+<div class="w-full h-full rounded-full overflow-hidden relative">
+<div class="absolute inset-0 vinyl-groove z-10 pointer-events-none"></div>
+<img alt="Abstract colorful swirls representing the album cover" class="w-full h-full object-cover" data-alt="Abstract colorful swirls representing the album cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA9_pXl9bqD51mN1Rvyx3elHQYg63CjIinI5FmdYx-09SGDuU2F2awqq79OFz55Pqn9nfMmb26Q3MrtHxs5kCauTv5o8F2npuuZgQiasxRQJqBkBXBWUUWWloE4trcxD4OPCrWUpt2uu8jpRjWj4Too_2ivYlT2qgY6DuPqAaK7GbpyTCJ526x2AuTSzu4uEYeGBp8kn4b3JYXgAWXsIOGjwnnRsV0_Uv2ttRI5DbyRjM9AyjWav_5kO717c5t4GYAAp2z01vVH6VI"/>
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-gradient-to-br from-gray-800 to-black rounded-full border-4 border-gray-700 z-20 flex items-center justify-center">
+<div class="w-2 h-2 bg-black rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="text-center w-full mt-6 mb-2">
+<div class="flex items-center justify-between mb-1">
+<button class="text-dusty-rose-brown/40 hover:text-dusty-rose-brown transition-colors">
+<span class="material-symbols-outlined">add_circle</span>
+</button>
+<h1 class="text-3xl font-bold text-dusty-rose-brown truncate max-w-[200px] leading-tight text-shadow-sm">Neon Dreams</h1>
+<button class="text-dusty-rose-brown hover:text-vibrant-rose-pink transition-colors">
+<span class="material-symbols-outlined font-variation-FILL-1">favorite</span>
+</button>
+</div>
+<p class="text-lg font-medium text-dusty-rose-brown/70">Future Synthwave</p>
+</div>
+<div class="w-full space-y-2 mb-4">
+<div aria-label="Audio Waveform Visualization" class="h-8 flex items-end justify-center gap-[3px] w-full px-2 opacity-80">
+<div class="w-1.5 h-3 bg-dusty-rose-brown/30 rounded-full"></div>
+<div class="w-1.5 h-5 bg-dusty-rose-brown/40 rounded-full"></div>
+<div class="w-1.5 h-4 bg-dusty-rose-brown/30 rounded-full"></div>
+<div class="w-1.5 h-6 bg-dusty-rose-brown/50 rounded-full"></div>
+<div class="w-1.5 h-3 bg-dusty-rose-brown/30 rounded-full"></div>
+<div class="w-1.5 h-5 bg-dusty-rose-brown/60 rounded-full"></div>
+<div class="w-1.5 h-7 bg-dusty-rose-brown rounded-full"></div>
+<div class="w-1.5 h-4 bg-dusty-rose-brown/80 rounded-full"></div>
+<div class="w-1.5 h-6 bg-dusty-rose-brown rounded-full"></div>
+<div class="w-1.5 h-8 bg-dusty-rose-brown rounded-full"></div>
+<div class="w-1.5 h-5 bg-dusty-rose-brown/80 rounded-full"></div>
+<div class="w-1.5 h-7 bg-dusty-rose-brown rounded-full"></div>
+<div class="w-1.5 h-4 bg-dusty-rose-brown/60 rounded-full"></div>
+<div class="w-1.5 h-3 bg-dusty-rose-brown/40 rounded-full"></div>
+<div class="w-1.5 h-5 bg-dusty-rose-brown/30 rounded-full"></div>
+<div class="w-1.5 h-2 bg-dusty-rose-brown/30 rounded-full"></div>
+<div class="w-1.5 h-4 bg-dusty-rose-brown/30 rounded-full"></div>
+</div>
+<div class="flex justify-between text-xs font-bold text-dusty-rose-brown/60 px-1">
+<span>1:24</span>
+<span>3:45</span>
+</div>
+</div>
+<div class="flex items-center justify-between w-full px-2">
+<button class="text-dusty-rose-brown/60 hover:text-dusty-rose-brown transition-colors p-2">
+<span class="material-symbols-outlined text-[28px]">shuffle</span>
+</button>
+<div class="flex items-center gap-4">
+<button class="group relative flex items-center justify-center size-12 rounded-full glass-panel hover:bg-white/30 transition-all">
+<span class="material-symbols-outlined text-dusty-rose-brown text-[32px] ml-[-2px]">skip_previous</span>
+</button>
+<button class="relative flex items-center justify-center size-20 rounded-full bg-vibrant-rose-pink text-primary shadow-lg shadow-vibrant-rose-pink/30 hover:scale-105 transition-transform">
+<div class="absolute inset-0 rounded-full bg-gradient-to-br from-vibrant-rose-pink to-dusty-rose-brown opacity-100"></div>
+<span class="relative material-symbols-outlined text-white text-[48px] font-variation-FILL-1">play_arrow</span>
+</button>
+<button class="group relative flex items-center justify-center size-12 rounded-full glass-panel hover:bg-white/30 transition-all">
+<span class="material-symbols-outlined text-dusty-rose-brown text-[32px] mr-[-2px]">skip_next</span>
+</button>
+</div>
+<button class="text-dusty-rose-brown/60 hover:text-dusty-rose-brown transition-colors p-2">
+<span class="material-symbols-outlined text-[28px]">repeat</span>
+</button>
+</div>
+</div>
+</div>
+<div class="mt-8">
+<button class="flex items-center gap-2 px-6 py-3 rounded-full glass-panel hover:bg-white/30 transition-all group shadow-lg shadow-dusty-rose-brown/10">
+<span class="material-symbols-outlined text-dusty-rose-brown text-lg group-hover:scale-110 transition-transform">lyrics</span>
+<span class="text-dusty-rose-brown font-bold text-sm tracking-wide">Lyrics</span>
+</button>
+</div>
+<div class="mt-6 flex items-center gap-2 text-dusty-rose-brown/50">
+<span class="material-symbols-outlined text-sm">speaker_group</span>
+<span class="text-xs font-bold tracking-wide uppercase">AirPods Pro</span>
+</div>
+</div>
+</div>
+</body></html>
