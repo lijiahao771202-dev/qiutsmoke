@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, Volume2, Play, Pause, RotateCcw } from "lucide-react";
+import { ChevronDown, Volume2, Play, Pause, RotateCcw } from "lucide-react";
 import { useGlobalWhiteNoise } from "@/contexts/WhiteNoiseContext";
 import { SOUND_DATA } from "@/lib/data/soundscapes";
 import { GlassSoundCard } from "@/components/soundscapes/GlassSoundCard";
@@ -38,12 +38,64 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
         }
     };
 
+    // 1. Modal Slide Animation (Container)
+    const modalVariants = {
+        hidden: { y: "100%" },
+        visible: {
+            y: 0,
+            transition: {
+                type: "spring" as const,
+                stiffness: 300,
+                damping: 30,
+                mass: 1
+            }
+        },
+        exit: {
+            y: "100%",
+            transition: {
+                type: "spring" as const,
+                stiffness: 300,
+                damping: 30,
+                mass: 1
+            }
+        }
+    };
+
+    // 2. Content Stagger Animation (Inner Wrapper)
+    const contentStaggerVariants = {
+        hidden: { opacity: 0 },
+        visible: {
+            opacity: 1,
+            transition: {
+                staggerChildren: 0.2, // Increased stagger for "交错" feeling
+                delayChildren: 0.3    // Wait for slide-up to partially complete
+            }
+        },
+        exit: { opacity: 0 }
+    };
+
+    // 3. Item Jelly Animation (Individual Elements)
+    const itemVariants = {
+        hidden: { y: 40, opacity: 0, scale: 0.9 },
+        visible: {
+            y: 0,
+            opacity: 1,
+            scale: 1,
+            transition: {
+                type: "spring" as const,
+                stiffness: 90,  // Very soft spring (was 200)
+                damping: 14,    // Low damping for bounce
+                mass: 1.5       // Heavy mass for "slow" jelly feel
+            }
+        }
+    };
+
     return (
         <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
+            variants={modalVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
             className="relative min-h-screen w-full overflow-hidden bg-[#1c1917] font-sans"
         >
             {/* 🌅 Warm Cozy Background (Sunset/Fireplace Theme) */}
@@ -76,27 +128,30 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
                 <div className="absolute inset-0 bg-[url('/noise.png')] opacity-[0.03] pointer-events-none mix-blend-overlay" />
             </div>
 
-            {/* Content Container */}
-            <div className="relative z-10 w-full h-screen flex flex-col pt-[calc(env(safe-area-inset-top)+24px)]">
+            {/* Content Container - Handles Staggering */}
+            <motion.div
+                variants={contentStaggerVariants}
+                className="relative z-10 w-full h-screen flex flex-col pt-[calc(env(safe-area-inset-top)+24px)]"
+            >
 
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-6 shrink-0">
+                <motion.div variants={itemVariants} className="flex items-center justify-between px-6 py-6 shrink-0">
                     <button
                         onClick={handleBack}
                         className="p-3 rounded-full bg-stone-800/40 backdrop-blur-md border border-white/5 text-stone-300 hover:bg-stone-700/50 hover:text-white transition-all active:scale-95 group"
                         aria-label="返回"
                         title="返回"
                     >
-                        <ChevronLeft className="w-6 h-6 group-hover:-translate-x-0.5 transition-transform" />
+                        <ChevronDown className="w-6 h-6 group-hover:translate-y-0.5 transition-transform" />
                     </button>
                     <h1 className="text-xl font-medium text-orange-50/90 tracking-wide font-serif">
                         环境音效
                     </h1>
                     <div className="w-12" /> {/* Spacer for centering */}
-                </div>
+                </motion.div>
 
                 {/* Categories Tabs */}
-                <div className="px-6 pb-2 overflow-x-auto gap-4 no-scrollbar mask-gradient-x shrink-0">
+                <motion.div variants={itemVariants} className="px-6 pb-2 overflow-x-auto gap-4 no-scrollbar mask-gradient-x shrink-0">
                     <div className="flex gap-3 pb-2">
                         {SOUND_DATA.map((cat) => {
                             const isActive = activeTab === cat.id;
@@ -121,17 +176,17 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
                             );
                         })}
                     </div>
-                </div>
+                </motion.div>
 
                 {/* Sounds Grid - Scrollable Area */}
-                <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-32 mask-gradient-y">
+                <motion.div variants={itemVariants} className="flex-1 overflow-y-auto min-h-0 px-6 pb-32 mask-gradient-y">
                     <AnimatePresence mode="wait">
                         <motion.div
                             key={activeTab}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.3 }}
+                            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                            transition={{ duration: 0.4, ease: "easeOut" }}
                             className="grid grid-cols-2 lg:grid-cols-4 gap-4 py-4"
                         >
                             {SOUND_DATA.find(cat => cat.id === activeTab)?.sounds.map((sound) => {
@@ -152,18 +207,23 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
                             })}
                         </motion.div>
                     </AnimatePresence>
-                </div>
-            </div>
+                </motion.div>
+            </motion.div>
 
             {/* Global Controls (Floating bottom) */}
             <AnimatePresence>
                 {(activeTracks.size > 0 || isPlaying) && (
                     <motion.div
-                        initial={{ y: 100, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        exit={{ y: 100, opacity: 0 }}
-                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                        className="fixed left-6 right-6 z-50 bottom-[calc(2.5rem+env(safe-area-inset-bottom))]"
+                        initial={{ opacity: 0, y: 50 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 50 }}
+                        transition={{
+                            delay: 0.5,
+                            type: "spring",
+                            stiffness: 100,
+                            damping: 20
+                        }}
+                        className="fixed bottom-8 left-6 right-6 z-20"
                     >
                         <div className="bg-stone-900/80 backdrop-blur-2xl border border-white/10 rounded-[32px] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex items-center gap-4">
                             {/* Play/Pause */}
@@ -207,6 +267,6 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
                     </motion.div>
                 )}
             </AnimatePresence>
-        </motion.div >
+        </motion.div>
     );
 }

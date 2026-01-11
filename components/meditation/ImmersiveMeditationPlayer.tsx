@@ -99,26 +99,44 @@ export default function ImmersiveMeditationPlayer({
 
     // Animation Variants
     const containerVariants = {
-        hidden: { opacity: 0 },
-        visible: { opacity: 1, transition: { duration: 0.4 } },
-        exit: { opacity: 0, y: "100%", transition: { duration: 0.4 } },
+        hidden: { y: "100%" },
+        visible: {
+            y: 0,
+            transition: {
+                type: "spring" as const,
+                stiffness: 300,
+                damping: 30,
+                mass: 1,
+                staggerChildren: 0.1, // Faster stagger
+                delayChildren: 0.2 // Wait for container to start sliding up
+            }
+        },
+        exit: {
+            y: "100%",
+            transition: {
+                type: "spring" as const,
+                stiffness: 300,
+                damping: 30,
+                mass: 1
+            }
+        },
     };
 
-    const cardVariants = {
-        hidden: { scale: 0.9, opacity: 0, y: 50 },
+    const cardContentVariants = {
+        hidden: { scale: 0.8, opacity: 0, y: 30 },
         visible: {
             scale: 1,
             opacity: 1,
             y: 0,
             transition: {
                 type: "spring" as const,
-                stiffness: 100,
-                damping: 20,
-                mass: 1,
-                delay: 0.15 // Wait for backdrop to fade in
+                stiffness: 200, // Reduced stiffness for slower, jellier feel
+                damping: 12,    // Low damping for bounce
+                mass: 1.2,      // Heavier mass for "jelly" inertia
+                duration: 0.8
             }
         },
-        exit: { scale: 0.9, opacity: 0, y: 50, transition: { duration: 0.2 } },
+        exit: { scale: 0.9, opacity: 0, transition: { duration: 0.2 } }
     };
 
     return createPortal(
@@ -175,11 +193,8 @@ export default function ImmersiveMeditationPlayer({
                             {/* Main Glass Card */}
                             <div className="absolute inset-0 bg-white/20 backdrop-blur-2xl border border-white/30 rounded-[2.5rem] flex flex-col p-6 items-center justify-between shadow-2xl ring-1 ring-white/40">
 
-                                {/* Vinyl Record */}
                                 <motion.div
-                                    initial={{ opacity: 0, scale: 0.8 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    transition={{ delay: 0.1, duration: 0.4, ease: "easeOut" }}
+                                    variants={cardContentVariants}
                                     className="relative w-64 h-64 mt-4 group"
                                 >
                                     <div className="absolute inset-4 bg-black/20 rounded-full blur-xl transform translate-y-4" />
@@ -229,9 +244,7 @@ export default function ImmersiveMeditationPlayer({
 
                                 {/* Title & Info */}
                                 <motion.div
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: 0.2, duration: 0.4, ease: "easeOut" }}
+                                    variants={cardContentVariants}
                                     className="text-center w-full mt-6 mb-2"
                                 >
                                     <div className="flex items-center justify-between mb-1">
@@ -320,9 +333,7 @@ export default function ImmersiveMeditationPlayer({
 
                                 {/* Controls */}
                                 <motion.div
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: 0.3, duration: 0.4, ease: "easeOut" }}
+                                    variants={cardContentVariants}
                                     className="flex items-center justify-between w-full px-4"
                                 >
                                     <button className="text-dusty-rose-brown/60 hover:text-dusty-rose-brown transition-colors p-2">
@@ -422,9 +433,15 @@ export default function ImmersiveMeditationPlayer({
                     {/* Soundscapes Overlay */}
                     <AnimatePresence>
                         {showSoundscapes && (
-                            <div className="fixed inset-0 z-[10000] bg-black">
+                            <motion.div
+                                initial={{ y: "100%" }}
+                                animate={{ y: 0 }}
+                                exit={{ y: "100%" }}
+                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                className="fixed inset-0 z-[10000] bg-black"
+                            >
                                 <SoundscapesContent onClose={() => setShowSoundscapes(false)} />
-                            </div>
+                            </motion.div>
                         )}
                     </AnimatePresence>
 

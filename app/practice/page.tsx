@@ -337,8 +337,7 @@ function PracticeContent() {
         // Transition
         transitionStartTime: 0,
         transitionDuration: 2000,
-        transitionStartTime: 0,
-        transitionDuration: 2000,
+
         completionStartTime: 0, // NEW
         themeStartTime: 0, // NEW: For theme intro animations
 
@@ -2389,11 +2388,11 @@ function PracticeContent() {
                 <AnimatePresence>
                     {showSoundscapes && (
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ duration: 0.3 }}
-                            className="absolute inset-0 z-[100000] bg-black/80 backdrop-blur-xl"
+                            initial={{ y: "100%" }}
+                            animate={{ y: 0 }}
+                            exit={{ y: "100%" }}
+                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            className="absolute inset-0 z-[10000] bg-black"
                         >
                             <SoundscapesContent onClose={() => setShowSoundscapes(false)} />
                         </motion.div>
