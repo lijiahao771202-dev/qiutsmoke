@@ -97,46 +97,38 @@ export default function ImmersiveMeditationPlayer({
 
     if (!mounted) return null;
 
-    // Animation Variants
+    // Animation Variants - Simplified for iOS performance
     const containerVariants = {
-        hidden: { y: "100%" },
+        hidden: { opacity: 0 },
         visible: {
-            y: 0,
+            opacity: 1,
             transition: {
-                type: "spring" as const,
-                stiffness: 300,
-                damping: 30,
-                mass: 1,
-                staggerChildren: 0.1, // Faster stagger
-                delayChildren: 0.2 // Wait for container to start sliding up
+                duration: 0.3,
+                ease: [0.4, 0, 0.2, 1] as const
             }
         },
         exit: {
-            y: "100%",
+            opacity: 0,
             transition: {
-                type: "spring" as const,
-                stiffness: 300,
-                damping: 30,
-                mass: 1
+                duration: 0.25,
+                ease: [0.4, 0, 1, 1] as const
             }
         },
     };
 
+    // Card content - simple fade + slight scale, no stagger
     const cardContentVariants = {
-        hidden: { scale: 0.8, opacity: 0, y: 30 },
+        hidden: { opacity: 0, scale: 0.95 },
         visible: {
-            scale: 1,
             opacity: 1,
-            y: 0,
+            scale: 1,
             transition: {
-                type: "spring" as const,
-                stiffness: 200, // Reduced stiffness for slower, jellier feel
-                damping: 12,    // Low damping for bounce
-                mass: 1.2,      // Heavier mass for "jelly" inertia
-                duration: 0.8
+                duration: 0.4,
+                ease: [0.4, 0, 0.2, 1] as const,
+                delay: 0.1
             }
         },
-        exit: { scale: 0.9, opacity: 0, transition: { duration: 0.2 } }
+        exit: { opacity: 0, transition: { duration: 0.15 } }
     };
 
     return createPortal(
@@ -150,10 +142,10 @@ export default function ImmersiveMeditationPlayer({
                     exit="exit"
                     className="fixed inset-0 z-[9999] flex flex-col font-display overflow-hidden bg-gradient-to-br from-rosewater to-lemon-yellow"
                 >
-                    {/* Background Blobs */}
-                    <div className="absolute top-0 -left-4 w-96 h-96 bg-rosewater rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob" />
-                    <div className="absolute top-0 -right-4 w-96 h-96 bg-lemon-yellow rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob [animation-delay:2s]" />
-                    <div className="absolute -bottom-8 left-20 w-96 h-96 bg-vibrant-rose-pink rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob [animation-delay:4s]" />
+                    {/* Background Blobs - Optimized for iOS (removed mix-blend-multiply, reduced blur) */}
+                    <div className="absolute top-0 -left-4 w-96 h-96 bg-rosewater/40 rounded-full filter blur-2xl opacity-60 will-change-transform" />
+                    <div className="absolute top-0 -right-4 w-96 h-96 bg-lemon-yellow/40 rounded-full filter blur-2xl opacity-60 will-change-transform" />
+                    <div className="absolute -bottom-8 left-20 w-96 h-96 bg-vibrant-rose-pink/40 rounded-full filter blur-2xl opacity-60 will-change-transform" />
 
                     {/* Top Bar */}
                     <div className="relative z-20 flex items-center justify-between p-6 pt-safe">
@@ -187,11 +179,11 @@ export default function ImmersiveMeditationPlayer({
                         className="flex-1 relative z-10 flex flex-col items-center justify-center px-6 pb-8"
                     >
                         <div className="relative w-full max-w-sm aspect-[3/4.5]">
-                            {/* Deep Glass Layer */}
-                            <div className="absolute top-4 left-4 right-4 -bottom-4 bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] transform scale-95 opacity-60 shadow-2xl" />
+                            {/* Deep Glass Layer - Simplified for iOS */}
+                            <div className="absolute top-4 left-4 right-4 -bottom-4 bg-white/10 backdrop-blur-md border border-white/10 rounded-[2.5rem] transform scale-95 opacity-60 shadow-2xl will-change-transform" />
 
-                            {/* Main Glass Card */}
-                            <div className="absolute inset-0 bg-white/20 backdrop-blur-2xl border border-white/30 rounded-[2.5rem] flex flex-col p-6 items-center justify-between shadow-2xl ring-1 ring-white/40">
+                            {/* Main Glass Card - Reduced blur for iOS */}
+                            <div className="absolute inset-0 bg-white/25 backdrop-blur-lg border border-white/30 rounded-[2.5rem] flex flex-col p-6 items-center justify-between shadow-2xl ring-1 ring-white/40 will-change-transform">
 
                                 <motion.div
                                     variants={cardContentVariants}
