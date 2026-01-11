@@ -164,6 +164,7 @@ import { PageTransition } from './PageTransition';
 export default function AppWrapper({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const isAdmin = pathname?.startsWith('/admin');
+    const isSoundscapes = pathname?.startsWith('/practice/soundscapes');
 
     return (
         <BackgroundProvider>
@@ -176,8 +177,8 @@ export default function AppWrapper({ children }: { children: React.ReactNode }) 
                 <div style={{ width: '100%', height: '100%' }}>
                     {children}
                 </div>
-                {!isAdmin && <NavBar />}
-                {!isAdmin && <UserProfile />}
+                {!isAdmin && !isSoundscapes && <NavBar />}
+                {!isAdmin && !isSoundscapes && <UserProfile />}
             </AuthProvider>
         </BackgroundProvider>
     );

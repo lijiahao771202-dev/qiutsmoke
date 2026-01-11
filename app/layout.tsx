@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Nunito } from "next/font/google";
 import "./globals.css";
 import AppWrapper from "@/components/AppWrapper";
+import { WhiteNoiseProvider } from "@/contexts/WhiteNoiseContext";
 
 const nunito = Nunito({
   subsets: ["latin"],
@@ -82,9 +83,11 @@ export default function RootLayout({
         }}
       >
         <AppWrapper>
-          <div className="relative z-10 font-sans">
-            {children}
-          </div>
+          <WhiteNoiseProvider>
+            <div className="relative z-10 font-sans">
+              {children}
+            </div>
+          </WhiteNoiseProvider>
         </AppWrapper>
       </body>
     </html>

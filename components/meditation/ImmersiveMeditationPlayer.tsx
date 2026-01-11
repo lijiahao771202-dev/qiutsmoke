@@ -1,10 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { cn } from "@/lib/utils";
+import { SoundscapesContent } from "@/components/soundscapes/SoundscapesContent";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -59,9 +61,11 @@ export default function ImmersiveMeditationPlayer({
     ambientSounds = [],
 }: ImmersiveMeditationPlayerProps) {
     const { triggerLight, triggerMedium, triggerSuccess } = useHaptics();
+    const router = useRouter();
     const [mounted, setMounted] = useState(false);
     const [showFullText, setShowFullText] = useState(false);
-    const [showAmbientPanel, setShowAmbientPanel] = useState(false);
+    const [showSoundscapes, setShowSoundscapes] = useState(false);
+
 
     // Format time mm:ss
     const formatTime = (seconds: number) => {
@@ -150,11 +154,11 @@ export default function ImmersiveMeditationPlayer({
                         </div>
 
                         <button
-                            onClick={() => setShowAmbientPanel(!showAmbientPanel)}
-                            className={cn(
-                                "flex items-center justify-center w-10 h-10 rounded-full glass-panel hover:bg-white/20 transition-colors text-dusty-rose-brown",
-                                showAmbientPanel && "bg-white/30 text-vibrant-rose-pink"
-                            )}
+                            onClick={() => {
+                                triggerMedium();
+                                setShowSoundscapes(true);
+                            }}
+                            className="flex items-center justify-center w-10 h-10 rounded-full glass-panel hover:bg-white/20 transition-colors text-dusty-rose-brown"
                         >
                             <span className="material-symbols-outlined text-xl">tune</span>
                         </button>
@@ -377,61 +381,7 @@ export default function ImmersiveMeditationPlayer({
                         </div>
                     </div>
 
-                    {/* Ambient Panel Overlay (Optional for Mix) */}
-                    <AnimatePresence>
-                        {showAmbientPanel && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 50 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 50 }}
-                                className="absolute bottom-0 left-0 right-0 z-30 bg-white/90 backdrop-blur-2xl rounded-t-[2.5rem] p-6 pb-safe border-t border-white/50 shadow-[0_-10px_40px_rgba(0,0,0,0.1)]"
-                            >
-                                <div className="flex justify-between items-center mb-6">
-                                    <h3 className="text-dusty-rose-brown font-bold text-lg flex items-center gap-2">
-                                        <span className="material-symbols-outlined">graphic_eq</span> Soundscape
-                                    </h3>
-                                    <button onClick={() => setShowAmbientPanel(false)} className="p-2 bg-rosewater/20 rounded-full text-dusty-rose-brown">
-                                        <span className="material-symbols-outlined">close</span>
-                                    </button>
-                                </div>
 
-                                <div className="space-y-4 max-h-60 overflow-y-auto custom-scrollbar">
-                                    <div className="bg-rosewater/10 p-4 rounded-2xl flex items-center gap-3">
-                                        <span className="material-symbols-outlined text-dusty-rose-brown">volume_up</span>
-                                        <input
-                                            type="range"
-                                            min={0}
-                                            max={1}
-                                            step={0.01}
-                                            value={masterVolume}
-                                            onChange={(e) => onSetMasterVolume(parseFloat(e.target.value))}
-                                            className="flex-1 accent-dusty-rose-brown h-1 bg-dusty-rose-brown/20 rounded-full appearance-none"
-                                        />
-                                    </div>
-
-                                    {ambientSounds.map(sound => (
-                                        <div key={sound.id} className="flex items-center justify-between p-3 rounded-xl bg-white/40 border border-white/20">
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-xl">{sound.icon}</span>
-                                                <span className="text-sm font-bold text-dusty-rose-brown">{sound.name}</span>
-                                            </div>
-                                            <button
-                                                onClick={() => onToggleTrack?.(sound.id)}
-                                                className={cn(
-                                                    "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
-                                                    activeTracks?.has(sound.id) ? "bg-vibrant-rose-pink text-white" : "bg-white/50 text-dusty-rose-brown/50"
-                                                )}
-                                            >
-                                                <span className="material-symbols-outlined text-sm">
-                                                    {activeTracks?.has(sound.id) ? "check" : "add"}
-                                                </span>
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
 
                     {/* Full Script Modal */}
                     <AnimatePresence>
@@ -466,6 +416,15 @@ export default function ImmersiveMeditationPlayer({
                                     </div>
                                 </motion.div>
                             </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Soundscapes Overlay */}
+                    <AnimatePresence>
+                        {showSoundscapes && (
+                            <div className="fixed inset-0 z-[10000] bg-black">
+                                <SoundscapesContent onClose={() => setShowSoundscapes(false)} />
+                            </div>
                         )}
                     </AnimatePresence>
 

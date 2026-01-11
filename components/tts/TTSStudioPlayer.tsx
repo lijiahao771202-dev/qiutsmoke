@@ -12,12 +12,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, X, SkipBack, SkipForward, FileText, ChevronDown, Shuffle, Repeat, Sparkles, Volume2 } from "lucide-react";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { cn } from "@/lib/utils";
 import { type AmbientSound, type AmbientSoundType } from "@/hooks/useWhiteNoise";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { SoundscapesContent } from "@/components/soundscapes/SoundscapesContent";
 
 // ============================================================================
 // 类型定义
@@ -308,12 +310,12 @@ export default function TTSStudioPlayer({
     onSetTrackVolume,
     onSetMasterVolume,
 }: TTSStudioPlayerProps) {
+    const router = useRouter();
     const { triggerLight, triggerMedium } = useHaptics();
     const { requestWakeLock, releaseWakeLock } = useWakeLock();
     const [showFullText, setShowFullText] = useState(false);
-    const [showMixer, setShowMixer] = useState(false);
-
-    // 进度条拖动逻辑
+    const [showSoundscapes, setShowSoundscapes] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
     const progressBarRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [dragProgress, setDragProgress] = useState(0);
@@ -455,14 +457,12 @@ export default function TTSStudioPlayer({
 
                         {/* Ambient Mixer Toggle */}
                         <button
-                            onClick={() => setShowMixer(!showMixer)}
+                            onClick={() => setShowSoundscapes(true)}
                             className={cn(
                                 "flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur border shadow-sm transition-all",
-                                showMixer
-                                    ? "bg-orange-100/80 border-orange-200 text-orange-600"
-                                    : "bg-white/50 border-white/20 text-slate-600 hover:bg-white/70"
+                                "bg-white/50 border-white/20 text-slate-600 hover:bg-white/70"
                             )}
-                            title="Toggle Ambient Sound Mixer"
+                            title="Open Soundscapes Mixer"
                         >
                             <Sparkles className="w-4 h-4" />
                             <span className="text-xs font-semibold tracking-wide uppercase">Mixer</span>
@@ -603,80 +603,19 @@ export default function TTSStudioPlayer({
                         </div>
                     </motion.div>
 
-                    {/* Ambient Mixer Sheet */}
+
+
+                    {/* Soundscapes Overlay */}
                     <AnimatePresence>
-                        {showMixer && (
+                        {showSoundscapes && (
                             <motion.div
-                                initial={{ opacity: 0, y: 50 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 50 }}
-                                className="absolute bottom-[200px] inset-x-4 z-30 p-4 bg-white/80 backdrop-blur-xl border border-white/40 rounded-3xl shadow-2xl"
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                transition={{ duration: 0.3 }}
+                                className="absolute inset-0 z-[10000] bg-black/80 backdrop-blur-xl"
                             >
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide flex items-center gap-2">
-                                        <Sparkles className="w-4 h-4 text-orange-500" />
-                                        Soundscapes
-                                    </h3>
-                                    {/* Master Volume */}
-                                    <div className="flex items-center gap-2 bg-slate-100 rounded-full px-3 py-1">
-                                        <Volume2 className="w-3 h-3 text-slate-400" />
-                                        <input
-                                            type="range"
-                                            min="0"
-                                            max="1"
-                                            step="0.05"
-                                            value={masterVolume ?? 0.7}
-                                            onChange={(e) => onSetMasterVolume?.(parseFloat(e.target.value))}
-                                            className="w-20 h-1 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-orange-500"
-                                            aria-label="Master Volume"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-5 gap-2">
-                                    {ambientSounds?.map((sound) => {
-                                        const isActive = activeTracks?.has(sound.id);
-                                        return (
-                                            <div key={sound.id} className="flex flex-col items-center gap-2">
-                                                <button
-                                                    onClick={() => {
-                                                        triggerLight();
-                                                        onToggleTrack?.(sound.id);
-                                                    }}
-                                                    className={cn(
-                                                        "w-12 h-12 flex items-center justify-center text-2xl rounded-2xl transition-all shadow-sm border",
-                                                        isActive
-                                                            ? "bg-orange-100 border-orange-200 shadow-orange-100"
-                                                            : "bg-white border-white hover:bg-slate-50 border-slate-100"
-                                                    )}
-                                                    title={sound.name}
-                                                >
-                                                    {sound.icon}
-                                                </button>
-
-                                                {/* Mini Volume Slider */}
-                                                {isActive && (
-                                                    <motion.div
-                                                        initial={{ opacity: 0, height: 0 }}
-                                                        animate={{ opacity: 1, height: 'auto' }}
-                                                        className="w-full px-1"
-                                                    >
-                                                        <input
-                                                            type="range"
-                                                            min="0"
-                                                            max="1"
-                                                            step="0.1"
-                                                            value={trackVolumes?.[sound.id] ?? 0.5}
-                                                            onChange={(e) => onSetTrackVolume?.(sound.id, parseFloat(e.target.value))}
-                                                            className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-orange-500"
-                                                            aria-label={`${sound.name} Volume`}
-                                                        />
-                                                    </motion.div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                <SoundscapesContent onClose={() => setShowSoundscapes(false)} />
                             </motion.div>
                         )}
                     </AnimatePresence>

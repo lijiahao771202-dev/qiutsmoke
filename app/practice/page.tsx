@@ -14,7 +14,8 @@ import { getApiUrl } from "@/lib/config";
 import { useBinauralBeats, BINAURAL_PRESETS } from "@/lib/hooks/useBinauralBeats";
 import { useLocalNotifications } from "@/lib/hooks/useLocalNotifications";
 import { unlockAudio, playCompletionSound } from "@/lib/audioUnlock";
-import { useWhiteNoise, AMBIENT_SOUNDS } from "@/hooks/useWhiteNoise";
+import { useGlobalWhiteNoise } from "@/contexts/WhiteNoiseContext";
+import { SoundscapesContent } from "@/components/soundscapes/SoundscapesContent";
 
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
@@ -213,12 +214,12 @@ export default function ImmersivePracticePage() {
     if (!mounted) return null;
 
     return createPortal(
-        <PracticeContent router={router} />,
+        <PracticeContent />,
         document.body
     );
 }
 
-function PracticeContent({ router }: { router: any }) {
+function PracticeContent() {
     // --- State ---
     const [phase, setPhase] = useState<Phase>("IDLE");
     const [durationMinutes, setDurationMinutes] = useState(() => {
@@ -256,6 +257,7 @@ function PracticeContent({ router }: { router: any }) {
 
     // --- Time Selector Visibility ---
     const [isSelectorVisible, setIsSelectorVisible] = useState(false); // Default hidden
+    const [showSoundscapes, setShowSoundscapes] = useState(false);
     const selectorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     // Initial Show on Mount (optional, user said "defaults to hidden" if no operation, but usually better to show briefly?)
@@ -298,23 +300,10 @@ function PracticeContent({ router }: { router: any }) {
     const [sessionDuration, setSessionDuration] = useState<number>(0);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
-    // --- Binaural Beats ---
-    const [binauralEnabled, setBinauralEnabled] = useState<boolean>(() => {
-        if (typeof window !== "undefined") {
-            return localStorage.getItem("binauralEnabled") === "true";
-        }
-        return false;
-    });
-    const [selectedBinaural, setSelectedBinaural] = useState<string>(() => {
-        if (typeof window !== "undefined") {
-            return localStorage.getItem("binauralPreset") || "alpha";
-        }
-        return "alpha";
-    });
-    const { start: startBinaural, stop: stopBinaural, isPlaying: isBinauralPlaying } = useBinauralBeats();
+    const router = useRouter(); // Use App Router
+    const { activeTracks, stopAll } = useGlobalWhiteNoise();
 
-    // --- White Noise / Ambient Sounds ---
-    const { activeTracks, toggleTrack, stopAll: stopAllAmbient } = useWhiteNoise();
+    // --- Local Notifications (for auto habit reminder) ---
 
     // --- Local Notifications (for auto habit reminder) ---
     const { scheduleBreakReminder } = useLocalNotifications();
@@ -1915,19 +1904,8 @@ function PracticeContent({ router }: { router: any }) {
         }
 
         // 🎵 Start Binaural Beats if enabled
-        if (binauralEnabled) {
-            console.log('[Practice] Binaural enabled, looking for preset:', selectedBinaural);
-            const preset = BINAURAL_PRESETS.find(p => p.id === selectedBinaural);
-            if (preset) {
-                console.log('[Practice] Starting binaural with preset:', preset);
-                // Pass duration for frequency ramping
-                startBinaural(preset, durationMinutes * 60);
-            } else {
-                console.warn('[Practice] Preset not found:', selectedBinaural);
-            }
-        } else {
-            console.log('[Practice] Binaural is disabled');
-        }
+        // 🎵 Start Binaural Beats if enabled
+        // NOW MANAGED GLOBALLY VIA MIXER. NO AUTO-START HERE.
 
         // Start Recursive Cycle
         runBreathingCycle("INHALE");
@@ -2005,8 +1983,7 @@ function PracticeContent({ router }: { router: any }) {
         stopMonitoring();
 
         // 🎵 Stop Binaural Beats
-        stopBinaural();
-        stopAllAmbient();
+        stopAll();
 
         if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
@@ -2077,15 +2054,14 @@ function PracticeContent({ router }: { router: any }) {
         if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
         clearHapticTimers();
-        stopBinaural(); // Ensure audio stops on exit
-        stopAllAmbient();
+        stopAll(); // Ensure audio stops on exit
     };
 
     const handleExit = () => {
         cleanup();
         if (phase === "IDLE") {
             // If already in IDLE, go back to home
-            router.back();
+            router.push('/');
         } else {
             // Otherwise, return to IDLE state (not home)
             setPhase("IDLE");
@@ -2141,67 +2117,22 @@ function PracticeContent({ router }: { router: any }) {
                         {/* Right Side Controls - Only show in IDLE */}
                         {phase === "IDLE" && (
                             <div className="flex gap-2 items-center">
-                                {/* 🎵 Sound Selection Button + Dropdown */}
+                                {/* 🎵 Sound Selection Button - Navigates to Global Mixer */}
                                 <div className="relative">
                                     <button
                                         onClick={() => {
-                                            const menu = document.getElementById('sound-menu');
-                                            if (menu) menu.classList.toggle('hidden');
+                                            setShowSoundscapes(true);
                                             triggerLight();
                                         }}
-                                        title="音效设置"
-                                        className={`w-11 h-11 flex items-center justify-center rounded-full backdrop-blur-md transition-all border ${(binauralEnabled || activeTracks.size > 0)
+                                        title="Soundscapes Mixer"
+                                        aria-label="Open Soundscapes Mixer"
+                                        className={`w-11 h-11 flex items-center justify-center rounded-full backdrop-blur-md transition-all border ${(activeTracks.size > 0)
                                             ? 'bg-emerald-500/30 text-emerald-300 border-emerald-400/30'
                                             : 'bg-white/5 text-white/50 border-white/5 hover:bg-white/10'
                                             }`}
                                     >
                                         <span className="text-xl">🎵</span>
                                     </button>
-
-                                    {/* Dropdown Menu - Liquid Glass Style */}
-                                    <div
-                                        id="sound-menu"
-                                        className="hidden absolute right-0 top-14 min-w-[200px] rounded-2xl overflow-hidden z-50"
-                                        style={{
-                                            background: 'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.05) 100%)',
-                                            backdropFilter: 'blur(40px) saturate(180%)',
-                                            WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-                                            border: '1px solid rgba(255,255,255,0.18)',
-                                            boxShadow: '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)',
-                                        }}
-                                    >
-                                        {/* Binaural Option */}
-                                        <button
-                                            onClick={() => {
-                                                setBinauralEnabled(!binauralEnabled);
-                                                localStorage.setItem("binauralEnabled", String(!binauralEnabled));
-                                                triggerLight();
-                                            }}
-                                            className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/10 active:bg-white/15 transition-colors"
-                                            style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
-                                        >
-                                            <span className="text-xl">🧠</span>
-                                            <span className="text-white/90 text-[15px] flex-1 font-medium">双耳节拍</span>
-                                            {binauralEnabled && <span className="text-cyan-400 text-lg">✓</span>}
-                                        </button>
-
-                                        {/* Ambient Sound Options */}
-                                        {AMBIENT_SOUNDS.map((sound, idx) => (
-                                            <button
-                                                key={sound.id}
-                                                onClick={() => {
-                                                    toggleTrack(sound.id);
-                                                    triggerLight();
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/10 active:bg-white/15 transition-colors"
-                                                style={idx < AMBIENT_SOUNDS.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.08)' } : {}}
-                                            >
-                                                <span className="text-xl">{sound.icon}</span>
-                                                <span className="text-white/90 text-[15px] flex-1 font-medium">{sound.name}</span>
-                                                {activeTracks.has(sound.id) && <span className="text-cyan-400 text-lg">✓</span>}
-                                            </button>
-                                        ))}
-                                    </div>
                                 </div>
 
                                 {/* Breathing Pattern Button - Icon Only */}
@@ -2454,7 +2385,20 @@ function PracticeContent({ router }: { router: any }) {
                     />
                 )}
 
-
+                {/* Soundscapes Overlay */}
+                <AnimatePresence>
+                    {showSoundscapes && (
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ duration: 0.3 }}
+                            className="absolute inset-0 z-[100000] bg-black/80 backdrop-blur-xl"
+                        >
+                            <SoundscapesContent onClose={() => setShowSoundscapes(false)} />
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 <style jsx global>{`
         .hide-scrollbar::-webkit-scrollbar {
