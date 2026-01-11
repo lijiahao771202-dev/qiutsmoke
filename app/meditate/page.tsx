@@ -600,17 +600,27 @@ export default function MeditatePage() {
                     }
                 }
 
-                const audio = new Audio(item.url);
+                // 🔥 [iOS Critical Fix] 复用共享 Audio 对象，避免 iOS 阻止非用户手势触发的新 Audio 播放
+                // iOS 只允许用户手势直接触发的 Audio.play()，onended 回调中创建新 Audio 会被静默拒绝
+                let audio = sharedAudioRef.current;
+                if (!audio) {
+                    audio = new Audio();
+                    sharedAudioRef.current = audio;
+                }
+
+                // 清理之前的事件监听（避免内存泄漏和重复触发）
+                audio.onended = null;
+                audio.onerror = null;
+                audio.onpause = null;
+
+                // 设置新的音频源
                 (audio as any).playsInline = true;
                 audio.preload = 'auto';
+                audio.loop = false; // 确保不循环（之前可能用于静音保活）
+                audio.volume = 1;
+                audio.src = item.url;
 
-                // 🔥 [iOS Fix] 复用共享 Audio 对象，避免 iOS 限制多个 Audio 实例
-                // const audio = sharedAudioRef.current || new Audio();
-                // audio.src = item.url;
-                // (audio as any).playsInline = true;
-                // audio.preload = 'auto';
-
-                // 设置 Media Session
+                // 设置 Media Session（锁屏控制）
                 try {
                     if ('mediaSession' in navigator) {
                         navigator.mediaSession.metadata = new MediaMetadata({
@@ -631,8 +641,8 @@ export default function MeditatePage() {
                     if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
                     setAudioQueue(prev => prev.filter(q => q.id !== item.id));
                     scheduledIdsRef.current.delete(item.id);
-                    setCurrentAudio(null);
-                    // 🔥 播放完成后触发下一个
+                    // 🔥 不要 setCurrentAudio(null)，保持 sharedAudioRef 可复用
+                    // 🔥 播放完成后解锁，让 useEffect 触发下一个
                     isPlayingNextRef.current = false;
                 };
                 audio.onerror = (e) => {
@@ -640,7 +650,6 @@ export default function MeditatePage() {
                     if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
                     setAudioQueue(prev => prev.filter(q => q.id !== item.id));
                     scheduledIdsRef.current.delete(item.id);
-                    setCurrentAudio(null);
                     isPlayingNextRef.current = false;
                 };
 

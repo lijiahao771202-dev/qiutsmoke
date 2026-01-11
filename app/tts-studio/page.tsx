@@ -816,14 +816,29 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
     // -------------------------------------------------------------------------
     const playAudioElement = (url: string): Promise<void> => {
         return new Promise((resolve) => {
-            const audio = new Audio(url);
-            setCurrentAudio(audio); // Capture ref
+            // 🔥 [iOS Critical Fix] 复用共享 Audio 对象，避免 iOS 阻止非用户手势触发的新 Audio 播放
+            let audio = sharedAudioRef.current;
+            if (!audio) {
+                audio = new Audio();
+                sharedAudioRef.current = audio;
+            }
 
+            // 清理之前的事件监听
+            audio.onended = null;
+            audio.onerror = null;
+            audio.onpause = null;
+
+            // 设置新的音频源
             audio.preload = 'auto';
             // @ts-ignore
             audio.playsInline = true;
+            audio.loop = false;
+            audio.volume = 1;
+            audio.src = url;
 
-            // MediaSession
+            setCurrentAudio(audio); // 保持 ref 引用
+
+            // MediaSession（锁屏控制）
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.metadata = new MediaMetadata({
                     title: card.title || "TTS Playback",
@@ -1097,10 +1112,22 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
             // Fallback to HTMLAudioElement if buffer missing (should be rare with prefetch)
             console.log("[TTS] Fallback to HTMLAudioElement for", item.id);
 
-            let audio = sharedAudioRef.current || new Audio();
+            // 🔥 [iOS Critical Fix] 确保复用 sharedAudioRef，不要 fallback 创建新的
+            let audio = sharedAudioRef.current;
+            if (!audio) {
+                audio = new Audio();
+                sharedAudioRef.current = audio;
+            }
+
+            // 清理之前的事件监听
+            audio.onended = null;
+            audio.onerror = null;
+            audio.onpause = null;
+
             (audio as any).playsInline = true;
-            audio.src = item.url;
+            audio.loop = false;
             audio.volume = 1;
+            audio.src = item.url;
 
             audio.onended = () => {
                 setTimeout(cleanup, 500);
