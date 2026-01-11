@@ -177,10 +177,13 @@ export default function ImmersiveMeditationPlayer({
                                     <div className="absolute inset-4 bg-black/20 rounded-full blur-xl transform translate-y-4" />
                                     <div
                                         className={cn(
-                                            "w-full h-full rounded-full bg-black p-1 shadow-2xl relative overflow-hidden border-4 border-gray-900/10 transition-all duration-[2s] ease-linear",
+                                            "w-full h-full rounded-full bg-black p-1 shadow-2xl relative overflow-hidden border-4 border-gray-900/10 transition-all duration-[2s] ease-linear will-change-transform",
                                             isPlaying && !isBuffering ? "animate-[spin_10s_linear_infinite]" : ""
                                         )}
-                                        style={{ animationPlayState: isPlaying && !isBuffering ? "running" : "paused" }}
+                                        style={{
+                                            animationPlayState: isPlaying && !isBuffering ? "running" : "paused",
+                                            transform: "translateZ(0)" // 开启硬件加速
+                                        }}
                                     >
                                         <div className="w-full h-full rounded-full overflow-hidden relative">
                                             {/* Vinyl Groove Texture - Exact from prototype */}

@@ -708,252 +708,54 @@ export default function MeditatePage() {
         isPlayingNextRef.current = false;
     };
 
-    // 🔥 用 b1d4d20 的方式：useEffect 监听 audioQueue 变化，顺序播放
+    // 🔥 核心播放调度器：轮询 + Resume 逻辑
     useEffect(() => {
-        // 停止播放时清理
+        // 停止播放时的清理
         if (!isPlaying) {
-            // 🔥 [Audio Fix] 平滑淡出，避免爆音
-            if (currentAudio) {
-                const audio = currentAudio;
-                const fadeOutDuration = 100; // ms
+            // [Audio Fix] 平滑淡出
+            const audio = sharedAudioRef.current || currentAudio;
+            if (audio && !audio.paused) {
+                const fadeOutDuration = 200;
                 const steps = 10;
                 const stepTime = fadeOutDuration / steps;
                 const volumeStep = audio.volume / steps;
-
                 let currentStep = 0;
                 const fadeInterval = setInterval(() => {
                     currentStep++;
                     audio.volume = Math.max(0, audio.volume - volumeStep);
-
                     if (currentStep >= steps) {
                         clearInterval(fadeInterval);
                         audio.pause();
-                        audio.volume = 1; // 恢复音量供下次使用
+                        audio.volume = 1;
                     }
                 }, stepTime);
             }
+
             if (currentSourceRef.current) {
                 try { currentSourceRef.current.stop(); } catch { }
                 currentSourceRef.current = null;
             }
             isPlayingNextRef.current = false;
             setIsBuffering(false);
-            isProcessingRef.current = false; // 重置
-            // currentItemIdRef 保持不变以支持断点续传
             return;
         }
 
-        // 队列为空时停止
-        if (audioQueue.length === 0) {
-            if (isPlaying && !isGenerating) {
-                console.log("[Meditate] ✅ Session Complete");
-                triggerSuccess();
-                setIsPlaying(false);
-            }
-            return;
+        // 播放中：首先尝试恢复暂停的音频
+        const audio = sharedAudioRef.current;
+        if (audio && audio.paused && audio.src && !audio.ended && audio.currentTime > 0) {
+            console.log("[Meditate] ⏯️ Resuming paused audio in main loop");
+            audio.volume = 1;
+            audio.play().catch(e => console.error("[Meditate] Resume failed", e));
         }
 
-        // 🔥 锁：防止并发执行
-        if (isProcessingRef.current) return;
+        // 启动轮询调度下一首
+        const interval = setInterval(playNextInQueue, 200);
+        playNextInQueue(); // 立即执行一次
 
-        // 🔥 关键防护：如果有音频正在播放，不处理
-        if (currentAudio && !currentAudio.paused) return;
+        return () => clearInterval(interval);
+    }, [isPlaying, audioQueue]); // 仅依赖 isPlaying 和 queue，移除其他不必要的依赖以防止重启
 
-        // 🔥 如果 currentAudio 存在但已暂停（可能是播放完毕），清理它
-        // 不要尝试恢复，因为会触发 NotAllowedError
 
-        // 处理队列第一个项目
-        if (audioQueue.length > 0) {
-            const item = audioQueue[0];
-
-            // 🔥 Resume Logic: 如果 ID 匹配，说明是暂停后继续，恢复播放而不重新开始
-            if (currentItemIdRef.current === item.id) {
-                const audio = sharedAudioRef.current || currentAudio;
-                if (audio && audio.paused) {
-                    audio.play().catch(() => { });
-                    // 恢复计时器
-                    if (!elapsedTimerRef.current) {
-                        elapsedTimerRef.current = setInterval(() => {
-                            setElapsedSeconds(prev => prev + 1);
-                        }, 1000);
-                    }
-                }
-                return;
-            }
-
-            // 🔥 设置锁，防止并发处理
-            isProcessingRef.current = true;
-            currentItemIdRef.current = item.id;
-
-            // 跳过错误的
-            if (item.type === 'audio' && item.status === 'error') {
-                setAudioQueue(prev => prev.slice(1));
-                isProcessingRef.current = false;
-                currentItemIdRef.current = null;
-                return;
-            }
-
-            // 等待加载
-            if (item.type === 'audio' && item.status === 'loading') {
-                setIsBuffering(true);
-                isProcessingRef.current = false;
-                currentItemIdRef.current = null;
-                return;
-            }
-
-            setIsBuffering(false);
-
-            if (item.type === 'pause') {
-                const silenceUrl = createSilenceWavURL(item.duration / 1000);
-
-                // 🔥 [iOS Strict Fix] 强制复用 sharedAudioRef
-                if (!sharedAudioRef.current) {
-                    sharedAudioRef.current = new Audio();
-                    (sharedAudioRef.current as any).playsInline = true;
-                }
-                const audio = sharedAudioRef.current;
-
-                audio.volume = 1;
-                audio.src = silenceUrl;
-
-                const cleanup = () => {
-                    if (sharedAudioRef.current === audio) {
-                        audio.onended = null;
-                        audio.onerror = null;
-                    }
-                    URL.revokeObjectURL(silenceUrl);
-                    setAudioQueue(prev => prev.slice(1));
-                    setCurrentAudio(null);
-                    currentItemIdRef.current = null;
-                    isProcessingRef.current = false;
-                };
-
-                audio.onended = cleanup;
-                audio.onerror = cleanup;
-                setCurrentAudio(audio);
-
-                (async () => {
-                    try {
-                        await ensureAudioContext();
-                        await audio.play();
-                    } catch (e) {
-                        console.error('[Meditate] Silence playback failed', e);
-                        cleanup();
-                    }
-                })();
-            } else if (item.type === 'audio' && item.url) {
-                // 🔥 [iOS Strict Fix] 强制复用 sharedAudioRef
-                let audio = sharedAudioRef.current;
-                if (!audio) {
-                    audio = new Audio();
-                    sharedAudioRef.current = audio;
-                    (audio as any).playsInline = true;
-                }
-
-                // 停止之前的静音循环（如果有）
-                audio.loop = false;
-                audio.volume = 1;
-                audio.src = item.url;
-
-                // 💬 设置当前正在朗读的句子
-                if (item.text) {
-                    setCurrentSpokenText(item.text);
-                }
-
-                // ⏱️ 更新已播放段落计数
-                setPlayedCount(prev => prev + 1);
-
-                // ⏱️ 启动计时器（如果尚未启动）
-                if (!elapsedTimerRef.current) {
-                    elapsedTimerRef.current = setInterval(() => {
-                        setElapsedSeconds(prev => prev + 1);
-                    }, 1000);
-                }
-
-                // 设置 Media Session
-                try {
-                    if ('mediaSession' in navigator) {
-                        navigator.mediaSession.metadata = new MediaMetadata({
-                            title: activeCard ? (customTopics.find(t => t.id === activeCard)?.title || 'Rain 冥想') : 'Rain 冥想',
-                            artist: 'Rain Meditation',
-                            artwork: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }]
-                        });
-                        navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
-                        navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
-                    }
-                } catch { }
-
-                const cleanup = () => {
-                    // 🔥 [BUG FIX] 移除 500ms 延迟，立即重置锁，防止队列卡住
-                    console.log(`[Meditate] 🔄 Audio cleanup for item, resetting locks`);
-                    if (sharedAudioRef.current === audio) {
-                        audio.onended = null;
-                        audio.onerror = null;
-                    }
-                    if (item.url && item.url.startsWith('blob:')) URL.revokeObjectURL(item.url);
-                    setAudioQueue(prev => prev.slice(1));
-                    setCurrentAudio(null);
-                    currentItemIdRef.current = null;
-                    isProcessingRef.current = false;
-                };
-
-                audio.onended = cleanup;
-                audio.onerror = cleanup;
-                setCurrentAudio(audio);
-
-                (async () => {
-                    try {
-                        await ensureAudioContext();
-                        await audio.play();
-                    } catch (e) {
-                        console.error('[Meditate] Audio playback failed', e);
-                        cleanup();
-                    }
-                })();
-            } else if (item.type === 'audio' && item.buffer) {
-                // WebAudio fallback
-                (async () => {
-                    await ensureAudioContext();
-                    const ctx = audioContextRef.current;
-                    if (!ctx) {
-                        setAudioQueue(prev => prev.slice(1));
-                        // 🔥 [BUG FIX] 必须重置锁
-                        currentItemIdRef.current = null;
-                        isProcessingRef.current = false;
-                        return;
-                    }
-                    const source = ctx.createBufferSource();
-                    source.buffer = item.buffer || null;
-                    source.connect(ctx.destination);
-                    source.onended = () => {
-                        setAudioQueue(prev => prev.slice(1));
-                        currentSourceRef.current = null;
-                        // 🔥 [BUG FIX] 必须重置锁
-                        currentItemIdRef.current = null;
-                        isProcessingRef.current = false;
-                    };
-                    currentSourceRef.current = source;
-                    try {
-                        await ctx.resume();
-                        source.start();
-                    } catch (e) {
-                        console.error('[Meditate] WebAudio play failed', e);
-                        setAudioQueue(prev => prev.slice(1));
-                        // 🔥 [BUG FIX] 必须重置锁
-                        currentItemIdRef.current = null;
-                        isProcessingRef.current = false;
-                    }
-                })();
-            } else {
-                // 跳过无法播放的
-                console.log('[Meditate] ⚠️ Skipping unplayable item:', item);
-                setAudioQueue(prev => prev.slice(1));
-                // 🔥 [BUG FIX] 必须重置锁
-                currentItemIdRef.current = null;
-                isProcessingRef.current = false;
-            }
-        }
-    }, [isPlaying, audioQueue, currentAudio, isGenerating]);
 
     // Handle Stop / Reset
     // 🎵 后台音频 Hook
@@ -1070,11 +872,23 @@ export default function MeditatePage() {
                 } catch { }
             }
 
+            // 🔥 开始/继续播放
+            // [iOS Resume Fix] 如果有暂停的音频，优先恢复它
+            const audio = sharedAudioRef.current;
+            // 检查：有音频对象、处于暂停、有源、未播放结束、且之前播放过（currentTime > 0）
+            if (audio && audio.paused && audio.src && !audio.ended && audio.currentTime > 0) {
+                console.log("[Meditate] ⏯️ Resuming paused audio directly");
+                audio.play().catch(e => console.error("[Meditate] Resume failed", e));
+                // 继续启动轮询，以防当前音频很快结束
+            }
+
             // 🔥 移除了队列停滞检测，因为新的简单播放器会自动处理
         }, 3000);
 
         return () => clearInterval(watchdog);
     }, [isPlaying]);
+
+
 
     const generateMeditation = async (prompt: string) => {
         // 1. Start new generation session
