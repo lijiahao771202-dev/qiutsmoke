@@ -97,7 +97,7 @@ export default function ImmersiveMeditationPlayer({
     const containerVariants = {
         hidden: { opacity: 0 },
         visible: { opacity: 1, transition: { duration: 0.4 } },
-        exit: { opacity: 0, transition: { duration: 0.3 } },
+        exit: { opacity: 0, y: "100%", transition: { duration: 0.4 } },
     };
 
     const cardVariants = {
@@ -160,9 +160,8 @@ export default function ImmersiveMeditationPlayer({
                         </button>
                     </div>
 
-                    {/* Main Content */}
-                    <motion.div
-                        variants={cardVariants}
+                    {/* Main Content - No animation to prevent flash */}
+                    <div
                         className="flex-1 relative z-10 flex flex-col items-center justify-center px-6 pb-8"
                     >
                         <div className="relative w-full max-w-sm aspect-[3/4.5]">
@@ -173,7 +172,12 @@ export default function ImmersiveMeditationPlayer({
                             <div className="absolute inset-0 bg-white/20 backdrop-blur-2xl border border-white/30 rounded-[2.5rem] flex flex-col p-6 items-center justify-between shadow-2xl ring-1 ring-white/40">
 
                                 {/* Vinyl Record */}
-                                <div className="relative w-64 h-64 mt-4 group">
+                                <motion.div
+                                    initial={{ opacity: 0, scale: 0.8 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    transition={{ delay: 0.1, duration: 0.4, ease: "easeOut" }}
+                                    className="relative w-64 h-64 mt-4 group"
+                                >
                                     <div className="absolute inset-4 bg-black/20 rounded-full blur-xl transform translate-y-4" />
                                     <div
                                         className={cn(
@@ -182,7 +186,6 @@ export default function ImmersiveMeditationPlayer({
                                         )}
                                         style={{
                                             animationPlayState: isPlaying && !isBuffering ? "running" : "paused",
-                                            transform: "translateZ(0)" // 开启硬件加速
                                         }}
                                     >
                                         <div className="w-full h-full rounded-full overflow-hidden relative">
@@ -209,7 +212,7 @@ export default function ImmersiveMeditationPlayer({
                                             <img
                                                 alt="Abstract colorful swirls representing the album cover"
                                                 className="w-full h-full object-cover"
-                                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuA9_pXl9bqD51mN1Rvyx3elHQYg63CjIinI5FmdYx-09SGDuU2F2awqq79OFz55Pqn9nfMmb26Q3MrtHxs5kCauTv5o8F2npuuZgQiasxRQJqBkBXBWUUWWloE4trcxD4OPCrWUpt2uu8jpRjWj4Too_2ivYlT2qgY6DuPqAaK7GbpyTCJ526x2AuTSzu4uEYeGBp8kn4b3JYXgAWXsIOGjwnnRsV0_Uv2ttRI5DbyRjM9AyjWav_5kO717c5t4GYAAp2z01vVH6VI"
+                                                src="/vinyl-cover.png"
                                             />
 
                                             {/* Center Label - Corrected Size w-16 h-16 */}
@@ -218,10 +221,15 @@ export default function ImmersiveMeditationPlayer({
                                             </div>
                                         </div>
                                     </div>
-                                </div>
+                                </motion.div>
 
                                 {/* Title & Info */}
-                                <div className="text-center w-full mt-6 mb-2">
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.2, duration: 0.4, ease: "easeOut" }}
+                                    className="text-center w-full mt-6 mb-2"
+                                >
                                     <div className="flex items-center justify-between mb-1">
                                         <button className="text-dusty-rose-brown/40 hover:text-dusty-rose-brown transition-colors">
                                             <span className="material-symbols-outlined">add_circle</span>
@@ -240,40 +248,64 @@ export default function ImmersiveMeditationPlayer({
                                     <p className="text-lg font-medium text-dusty-rose-brown/70">
                                         {isBuffering ? "Buffering..." : "Inner Peace"}
                                     </p>
+                                </motion.div>
+
+                                {/* Waveform Visualization (Static 17-bar Layout) */}
+                                <div aria-label="Audio Waveform Visualization" className="h-8 flex items-end justify-center gap-[3px] w-full px-2 opacity-80 mb-4 cursor-pointer" onClick={() => {
+                                    if (onToggleTrack && ambientSounds.length > 0) {
+                                        onToggleTrack(ambientSounds[0].id);
+                                    }
+                                }}>
+                                    {[
+                                        { h: "h-3", op: 0.3 },
+                                        { h: "h-5", op: 0.4 },
+                                        { h: "h-4", op: 0.3 },
+                                        { h: "h-6", op: 0.5 },
+                                        { h: "h-3", op: 0.3 },
+                                        { h: "h-5", op: 0.6 },
+                                        { h: "h-7", op: 1.0 },
+                                        { h: "h-4", op: 0.8 },
+                                        { h: "h-6", op: 1.0 },
+                                        { h: "h-8", op: 1.0 }, // Center
+                                        { h: "h-5", op: 0.8 },
+                                        { h: "h-7", op: 1.0 },
+                                        { h: "h-4", op: 0.6 },
+                                        { h: "h-3", op: 0.4 },
+                                        { h: "h-5", op: 0.3 },
+                                        { h: "h-2", op: 0.3 },
+                                        { h: "h-4", op: 0.3 },
+                                    ].map((bar, index) => (
+                                        <motion.div
+                                            key={index}
+                                            className={cn("w-1.5 bg-dusty-rose-brown rounded-full", bar.h)}
+                                            style={{ opacity: bar.op }}
+                                            animate={isPlaying && !isBuffering ? {
+                                                scaleY: [1, 1.2, 0.9, 1.1, 1],
+                                            } : { scaleY: 1 }}
+                                            transition={{
+                                                repeat: Infinity,
+                                                duration: 1.5 + (Math.random() * 0.5), // Slight random variation
+                                                ease: "easeInOut",
+                                                delay: index * 0.1,
+                                                repeatType: "mirror"
+                                            }}
+                                        />
+                                    ))}
                                 </div>
 
-                                {/* Waveform Visualization (Animated) */}
-                                {/* Waveform Visualization (Smoother "Breathing" Animation) */}
-                                <div aria-label="Audio Waveform Visualization" className="h-10 flex items-center justify-center gap-[4px] w-full px-4 mb-3">
-                                    {Array.from({ length: 21 }).map((_, index) => {
-                                        // Calculate distance from center (approx index 10)
-                                        const center = 10;
-                                        const dist = Math.abs(index - center);
-                                        // Base height reduced for outer bars
-                                        const baseHeight = Math.max(0.3, 1 - (dist * 0.08));
 
-                                        return (
-                                            <motion.div
-                                                key={index}
-                                                className="w-1 bg-dusty-rose-brown/60 rounded-full origin-bottom"
-                                                style={{
-                                                    height: `${baseHeight * 24}px`,
-                                                    opacity: Math.max(0.4, 1 - (dist * 0.05))
-                                                }}
-                                                animate={isPlaying && !isBuffering ? {
-                                                    scaleY: [1, 1.5, 0.9, 1.3, 1],
-                                                    opacity: [Math.max(0.4, 1 - (dist * 0.05)), 1, Math.max(0.4, 1 - (dist * 0.05))]
-                                                } : { scaleY: 1 }}
-                                                transition={{
-                                                    repeat: Infinity,
-                                                    duration: 1.8, // Slower, more breathing-like
-                                                    ease: "easeInOut",
-                                                    delay: dist * 0.05, // Wave ripples out from center
-                                                    repeatType: "mirror"
-                                                }}
-                                            />
-                                        );
-                                    })}
+                                {/* Fragment Progress Bar */}
+                                <div className="w-full px-4 mb-2 mt-[-8px]">
+                                    <div className="w-full h-1 bg-dusty-rose-brown/20 rounded-full overflow-hidden">
+                                        <motion.div
+                                            className="h-full bg-dusty-rose-brown/80 rounded-full"
+                                            initial={{ width: 0 }}
+                                            animate={{
+                                                width: `${queueTotal > 0 ? (Math.min(queueCurrent, queueTotal) / Math.max(queueTotal, 1)) * 100 : 0}%`
+                                            }}
+                                            transition={{ duration: 0.5, ease: "easeOut" }}
+                                        />
+                                    </div>
                                 </div>
 
                                 {/* Time & Progress */}
@@ -283,7 +315,12 @@ export default function ImmersiveMeditationPlayer({
                                 </div>
 
                                 {/* Controls */}
-                                <div className="flex items-center justify-between w-full px-4">
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.3, duration: 0.4, ease: "easeOut" }}
+                                    className="flex items-center justify-between w-full px-4"
+                                >
                                     <button className="text-dusty-rose-brown/60 hover:text-dusty-rose-brown transition-colors p-2">
                                         <span className="material-symbols-outlined text-[28px]">shuffle</span>
                                     </button>
@@ -318,7 +355,7 @@ export default function ImmersiveMeditationPlayer({
                                     <button className="text-dusty-rose-brown/60 hover:text-dusty-rose-brown transition-colors p-2">
                                         <span className="material-symbols-outlined text-[28px]">repeat</span>
                                     </button>
-                                </div>
+                                </motion.div>
                             </div>
                         </div>
 
@@ -338,7 +375,7 @@ export default function ImmersiveMeditationPlayer({
                             <span className="material-symbols-outlined text-sm">speaker_group</span>
                             <span className="text-xs font-bold tracking-wide uppercase">AirPods Pro</span>
                         </div>
-                    </motion.div>
+                    </div>
 
                     {/* Ambient Panel Overlay (Optional for Mix) */}
                     <AnimatePresence>
@@ -433,8 +470,9 @@ export default function ImmersiveMeditationPlayer({
                     </AnimatePresence>
 
                 </motion.div>
-            )}
-        </AnimatePresence>,
+            )
+            }
+        </AnimatePresence >,
         document.body
     );
 }

@@ -641,6 +641,7 @@ export default function MeditatePage() {
                     if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
                     setAudioQueue(prev => prev.filter(q => q.id !== item.id));
                     scheduledIdsRef.current.delete(item.id);
+                    setPlayedCount(prev => prev + 1); // ✅ Increment progress
                     // 🔥 不要 setCurrentAudio(null)，保持 sharedAudioRef 可复用
                     // 🔥 播放完成后解锁，让 useEffect 触发下一个
                     isPlayingNextRef.current = false;
@@ -650,6 +651,7 @@ export default function MeditatePage() {
                     if (item.url!.startsWith('blob:')) URL.revokeObjectURL(item.url!);
                     setAudioQueue(prev => prev.filter(q => q.id !== item.id));
                     scheduledIdsRef.current.delete(item.id);
+                    setPlayedCount(prev => prev + 1); // ✅ Increment progress (even on error)
                     isPlayingNextRef.current = false;
                 };
 
@@ -663,17 +665,31 @@ export default function MeditatePage() {
 
                 (async () => {
                     try {
+                        const delayMs = Math.max(0, (start - ctx.currentTime) * 1000);
+                        if (delayMs > 10) {
+                            console.log(`[Meditate] ⏳ Waiting ${delayMs}ms for pause...`);
+                            await new Promise(r => setTimeout(r, delayMs));
+                        }
+
                         await ensureAudioContext();
                         await audio.play();
-                    } catch (e) {
+                    } catch (e: any) {
+                        // 忽略 AbortError，因为这通常意味着被新的播放打断（或者我们修复锁之后不应该发生）
+                        if (e.name === 'AbortError') {
+                            console.warn('[Meditate] Play aborted', e);
+                            return;
+                        }
+
                         console.error('[Meditate] HTMLAudio play failed', e);
-                        // 播放失败时也要触发下一个
+                        // 播放失败时清理并触发下一个
+                        setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+                        scheduledIdsRef.current.delete(item.id);
                         isPlayingNextRef.current = false;
                     }
                 })();
 
-                // 🔥 HTMLAudioElement 只调度一个，跳出循环
-                break;
+                // 🔥 HTMLAudioElement 只调度一个，并且保持锁定状态直到播放结束
+                return;
 
             } else if (item.type === 'audio' && item.buffer) {
                 // WebAudio 作为 fallback（用于没有 URL 的情况）
@@ -688,6 +704,7 @@ export default function MeditatePage() {
                     setAudioQueue(prev => prev.filter(q => q.id !== item.id));
                     scheduledIdsRef.current.delete(item.id);
                     sourceNodesRef.current.delete(item.id);
+                    setPlayedCount(prev => prev + 1); // ✅ Increment progress
                 }, endTimeMs);
 
                 source.start(start);
@@ -745,7 +762,12 @@ export default function MeditatePage() {
         if (audio && audio.paused && audio.src && !audio.ended && audio.currentTime > 0) {
             console.log("[Meditate] ⏯️ Resuming paused audio in main loop");
             audio.volume = 1;
-            audio.play().catch(e => console.error("[Meditate] Resume failed", e));
+            // 🔥 LOCK IT immediately so playNextInQueue doesn't interrupt
+            isPlayingNextRef.current = true;
+            audio.play().catch(e => {
+                console.error("[Meditate] Resume failed", e);
+                isPlayingNextRef.current = false;
+            });
         }
 
         // 启动轮询调度下一首
@@ -780,6 +802,7 @@ export default function MeditatePage() {
         setAudioQueue([]);
         currentItemIdRef.current = null;
         processingBuffer.current = "";
+        setElapsedSeconds(0); // Reset timer
 
         // 🎵 停用后台音频
         await backgroundAudio.deactivate();
@@ -860,6 +883,17 @@ export default function MeditatePage() {
         }
     }, [isPlaying, backgroundAudio]);
 
+    // ⏱️ 播放计时器
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (isPlaying && !isBuffering) {
+            interval = setInterval(() => {
+                setElapsedSeconds(prev => prev + 1);
+            }, 1000);
+        }
+        return () => clearInterval(interval);
+    }, [isPlaying, isBuffering]);
+
     // === P1: AudioContext 看门狗 - 仅用于恢复挂起的音频上下文 === //
     useEffect(() => {
         if (!isPlaying) return;
@@ -898,6 +932,7 @@ export default function MeditatePage() {
         setText("");
         setAudioQueue([]);
         setCurrentAudio(null);
+        setElapsedSeconds(0); // Reset timer
         processingBuffer.current = "";
         currentRate.current = "0%"; // Reset rate
         currentItemIdRef.current = null; // Reset processing tracker

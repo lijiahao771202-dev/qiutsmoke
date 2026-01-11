@@ -14,6 +14,7 @@ import { getApiUrl } from "@/lib/config";
 import { useBinauralBeats, BINAURAL_PRESETS } from "@/lib/hooks/useBinauralBeats";
 import { useLocalNotifications } from "@/lib/hooks/useLocalNotifications";
 import { unlockAudio, playCompletionSound } from "@/lib/audioUnlock";
+import { useWhiteNoise, AMBIENT_SOUNDS } from "@/hooks/useWhiteNoise";
 
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
@@ -311,6 +312,9 @@ function PracticeContent({ router }: { router: any }) {
         return "alpha";
     });
     const { start: startBinaural, stop: stopBinaural, isPlaying: isBinauralPlaying } = useBinauralBeats();
+
+    // --- White Noise / Ambient Sounds ---
+    const { activeTracks, toggleTrack, stopAll: stopAllAmbient } = useWhiteNoise();
 
     // --- Local Notifications (for auto habit reminder) ---
     const { scheduleBreakReminder } = useLocalNotifications();
@@ -2002,6 +2006,7 @@ function PracticeContent({ router }: { router: any }) {
 
         // 🎵 Stop Binaural Beats
         stopBinaural();
+        stopAllAmbient();
 
         if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
@@ -2073,6 +2078,7 @@ function PracticeContent({ router }: { router: any }) {
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
         clearHapticTimers();
         stopBinaural(); // Ensure audio stops on exit
+        stopAllAmbient();
     };
 
     const handleExit = () => {
@@ -2106,10 +2112,21 @@ function PracticeContent({ router }: { router: any }) {
             />
             <div
                 className="fixed inset-0 z-[99999] text-white font-sans overflow-hidden animate-in fade-in duration-500"
+                style={{
+                    bottom: 'calc(-1 * env(safe-area-inset-bottom, 0px))',
+                    height: 'calc(100% + env(safe-area-inset-bottom, 0px))'
+                }}
             >
 
-                {/* Canvas */}
-                <canvas ref={canvasRef} className="absolute inset-0 block touch-none" />
+                {/* Canvas - also extend to cover safe area */}
+                <canvas
+                    ref={canvasRef}
+                    className="absolute inset-0 block touch-none"
+                    style={{
+                        bottom: 'calc(-1 * env(safe-area-inset-bottom, 0px))',
+                        height: 'calc(100% + env(safe-area-inset-bottom, 0px))'
+                    }}
+                />
 
                 <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-safe">
 
@@ -2124,25 +2141,79 @@ function PracticeContent({ router }: { router: any }) {
                         {/* Right Side Controls - Only show in IDLE */}
                         {phase === "IDLE" && (
                             <div className="flex gap-2 items-center">
-                                {/* Binaural Beats Toggle - Icon Only */}
-                                <button
-                                    onClick={() => {
-                                        const newValue = !binauralEnabled;
-                                        setBinauralEnabled(newValue);
-                                        localStorage.setItem("binauralEnabled", String(newValue));
-                                        triggerLight();
-                                    }}
-                                    className={`w-11 h-11 flex items-center justify-center rounded-full backdrop-blur-md transition-all border ${binauralEnabled ? 'bg-red-500/30 text-red-300 border-red-400/30' : 'bg-white/5 text-white/50 border-white/5 hover:bg-white/10'}`}
-                                >
-                                    <span className="text-xl">🎧</span>
-                                </button>
+                                {/* 🎵 Sound Selection Button + Dropdown */}
+                                <div className="relative">
+                                    <button
+                                        onClick={() => {
+                                            const menu = document.getElementById('sound-menu');
+                                            if (menu) menu.classList.toggle('hidden');
+                                            triggerLight();
+                                        }}
+                                        title="音效设置"
+                                        className={`w-11 h-11 flex items-center justify-center rounded-full backdrop-blur-md transition-all border ${(binauralEnabled || activeTracks.size > 0)
+                                            ? 'bg-emerald-500/30 text-emerald-300 border-emerald-400/30'
+                                            : 'bg-white/5 text-white/50 border-white/5 hover:bg-white/10'
+                                            }`}
+                                    >
+                                        <span className="text-xl">🎵</span>
+                                    </button>
+
+                                    {/* Dropdown Menu - Liquid Glass Style */}
+                                    <div
+                                        id="sound-menu"
+                                        className="hidden absolute right-0 top-14 min-w-[200px] rounded-2xl overflow-hidden z-50"
+                                        style={{
+                                            background: 'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.05) 100%)',
+                                            backdropFilter: 'blur(40px) saturate(180%)',
+                                            WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+                                            border: '1px solid rgba(255,255,255,0.18)',
+                                            boxShadow: '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)',
+                                        }}
+                                    >
+                                        {/* Binaural Option */}
+                                        <button
+                                            onClick={() => {
+                                                setBinauralEnabled(!binauralEnabled);
+                                                localStorage.setItem("binauralEnabled", String(!binauralEnabled));
+                                                triggerLight();
+                                            }}
+                                            className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/10 active:bg-white/15 transition-colors"
+                                            style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+                                        >
+                                            <span className="text-xl">🧠</span>
+                                            <span className="text-white/90 text-[15px] flex-1 font-medium">双耳节拍</span>
+                                            {binauralEnabled && <span className="text-cyan-400 text-lg">✓</span>}
+                                        </button>
+
+                                        {/* Ambient Sound Options */}
+                                        {AMBIENT_SOUNDS.map((sound, idx) => (
+                                            <button
+                                                key={sound.id}
+                                                onClick={() => {
+                                                    toggleTrack(sound.id);
+                                                    triggerLight();
+                                                }}
+                                                className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/10 active:bg-white/15 transition-colors"
+                                                style={idx < AMBIENT_SOUNDS.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.08)' } : {}}
+                                            >
+                                                <span className="text-xl">{sound.icon}</span>
+                                                <span className="text-white/90 text-[15px] flex-1 font-medium">{sound.name}</span>
+                                                {activeTracks.has(sound.id) && <span className="text-cyan-400 text-lg">✓</span>}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
 
                                 {/* Breathing Pattern Button - Icon Only */}
                                 <div className="relative">
-                                    <button className="w-11 h-11 flex items-center justify-center rounded-full bg-white/5 backdrop-blur-md border border-white/5 text-white/50 hover:bg-white/10 transition-all">
+                                    <button
+                                        title="呼吸模式"
+                                        className="w-11 h-11 flex items-center justify-center rounded-full bg-white/5 backdrop-blur-md border border-white/5 text-white/50 hover:bg-white/10 transition-all"
+                                    >
                                         <Wind size={20} />
                                     </button>
                                     <select
+                                        title="选择呼吸模式"
                                         value={selectedPattern}
                                         onChange={(e) => {
                                             setSelectedPattern(e.target.value as BreathingPatternId);
