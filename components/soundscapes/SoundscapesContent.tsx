@@ -51,7 +51,7 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
         exit: {
             opacity: 0,
             transition: {
-                duration: 0.4,
+                duration: 1,
                 ease: [0.4, 0, 1, 1] as const  // easeIn cubic-bezier
             }
         }
