@@ -38,25 +38,21 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
         }
     };
 
-    // 1. Modal Slide Animation (Container)
+    // 1. Modal Fade Animation (Container) - 淡入淡出
     const modalVariants = {
-        hidden: { y: "100%" },
+        hidden: { opacity: 0 },
         visible: {
-            y: 0,
+            opacity: 1,
             transition: {
-                type: "spring" as const,
-                stiffness: 300,
-                damping: 30,
-                mass: 1
+                duration: 0.3,
+                ease: [0.4, 0, 0.2, 1] as const  // easeOut cubic-bezier
             }
         },
         exit: {
-            y: "100%",
+            opacity: 0,
             transition: {
-                type: "spring" as const,
-                stiffness: 300,
-                damping: 30,
-                mass: 1
+                duration: 0.4,
+                ease: [0.4, 0, 1, 1] as const  // easeIn cubic-bezier
             }
         }
     };

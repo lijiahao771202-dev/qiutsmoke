@@ -2066,7 +2066,7 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                         {/* Control Bar */}
                         <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
                             <motion.button
-                                onClick={(e) => { e.stopPropagation(); triggerLight(); togglePlay(); }}
+                                onClick={(e) => { e.stopPropagation(); triggerMedium(); onView(card); }}
                                 disabled={isBuffering || isSynthesizing || !hasCachedAudio}
                                 whileTap={{ scale: 0.9 }}
                                 className={cn(

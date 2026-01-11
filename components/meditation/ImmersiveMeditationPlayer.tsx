@@ -434,10 +434,10 @@ export default function ImmersiveMeditationPlayer({
                     <AnimatePresence>
                         {showSoundscapes && (
                             <motion.div
-                                initial={{ y: "100%" }}
-                                animate={{ y: 0 }}
-                                exit={{ y: "100%" }}
-                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.3, ease: "easeOut" }}
                                 className="fixed inset-0 z-[10000] bg-black"
                             >
                                 <SoundscapesContent onClose={() => setShowSoundscapes(false)} />
