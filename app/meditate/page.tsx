@@ -568,19 +568,59 @@ export default function MeditatePage() {
             const start = Math.max(ctx.currentTime, nextStartTimeRef.current);
 
             if (item.type === 'pause') {
-                // 调度静默
-                const pauseSeconds = item.duration / 1000;
-                nextStartTimeRef.current = start + pauseSeconds;
-                scheduledIdsRef.current.add(item.id);
+                // iOS/PWA: use real silent audio playback instead of timer-based pauses.
+                // Background timers can be throttled/suspended after screen lock.
+                isPlayingNextRef.current = true;
+                const pauseUrl = createSilenceWavURL(item.duration / 1000);
 
+                let audio = sharedAudioRef.current;
+                if (!audio) {
+                    audio = new Audio();
+                    sharedAudioRef.current = audio;
+                }
 
-                // 在暂停结束后移除
-                setTimeout(() => {
+                audio.onended = null;
+                audio.onerror = null;
+                audio.onpause = null;
+                (audio as any).playsInline = true;
+                audio.preload = 'auto';
+                audio.loop = false;
+                audio.volume = 1;
+                audio.src = pauseUrl;
+
+                audio.onended = () => {
+                    URL.revokeObjectURL(pauseUrl);
                     setAudioQueue(prev => prev.filter(q => q.id !== item.id));
                     scheduledIdsRef.current.delete(item.id);
-                }, (nextStartTimeRef.current - ctx.currentTime) * 1000 + 100);
+                    isPlayingNextRef.current = false;
+                };
+                audio.onerror = () => {
+                    URL.revokeObjectURL(pauseUrl);
+                    setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+                    scheduledIdsRef.current.delete(item.id);
+                    isPlayingNextRef.current = false;
+                };
+                audio.onpause = () => {
+                    console.log(`[Meditate] Pause-segment audio paused by system: ${item.id}, isPlaying: ${isPlaying}`);
+                };
 
-                scheduledCount++;
+                scheduledIdsRef.current.add(item.id);
+                setCurrentAudio(audio);
+
+                (async () => {
+                    try {
+                        await ensureAudioContext();
+                        await audio.play();
+                    } catch (e) {
+                        console.error('[Meditate] Pause-segment play failed', e);
+                        URL.revokeObjectURL(pauseUrl);
+                        setAudioQueue(prev => prev.filter(q => q.id !== item.id));
+                        scheduledIdsRef.current.delete(item.id);
+                        isPlayingNextRef.current = false;
+                    }
+                })();
+
+                return;
 
             } else if (item.type === 'audio' && item.url) {
                 // 🔥 使用 HTMLAudioElement - 支持后台播放

@@ -89,6 +89,9 @@ export default function RootLayout({
             </div>
           </WhiteNoiseProvider>
         </AppWrapper>
+        <div className="fixed left-3 bottom-3 z-[9999] rounded bg-black/55 px-2 py-1 text-[10px] leading-none text-white/85 pointer-events-none">
+          v3.17
+        </div>
       </body>
     </html>
   );
