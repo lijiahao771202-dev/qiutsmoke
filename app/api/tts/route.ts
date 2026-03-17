@@ -1,101 +1,24 @@
-import { NextResponse } from 'next/server';
-
 /**
- * TTS API Route - Edge Runtime Version
- * 
- * This route runs on Edge Runtime for Cloudflare compatibility.
- * - On Vercel: It should proxy to a Node.js serverless function
- * - On Cloudflare: It proxies to the Vercel backend
- * 
- * The actual TTS implementation is in /api/tts-impl (Node.js only)
+ * TTS edge entrypoint.
+ * Always forward to same-origin /api/tts-impl to avoid stale hardcoded backend URLs.
  */
-
-const VERCEL_BACKEND = 'https://qiutsmoke-mwgvt09fr-lijiahaos-projects-210f5ddd.vercel.app';
 
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { text, voice, rate } = body;
-
-        // Check environment
-        const isVercel = !!process.env.VERCEL;
-        const isProxied = req.headers.get('x-tts-proxy') === 'true';
-
-        console.log(`[TTS Edge] Request: vercel=${isVercel}, proxied=${isProxied}`);
-
-        // If we're on Vercel and this is a proxied request, use the implementation
-        if (isVercel && isProxied) {
-            // Forward to the Node.js implementation internally
-            const implUrl = new URL('/api/tts-impl', req.url);
-            const implResponse = await fetch(implUrl.toString(), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-
-            return new Response(implResponse.body, {
-                status: implResponse.status,
-                headers: {
-                    'Content-Type': implResponse.headers.get('Content-Type') || 'audio/mpeg',
-                    'Access-Control-Allow-Origin': '*',
-                    'X-TTS-Handler': 'vercel-impl',
-                },
-            });
-        }
-
-        // Otherwise, proxy to Vercel backend
-        const vercelUrl = `${VERCEL_BACKEND}/api/tts`;
-
-        // Safety: prevent loop if we're already on Vercel
-        // Safety: prevent loop if we're already on Vercel or Localhost
-        const url = new URL(req.url);
-        if ((url.hostname.includes('vercel.app') || url.hostname.includes('localhost') || url.hostname.includes('127.0.0.1')) && !isProxied) {
-            // We're on Vercel or Localhost, forward to implementation
-            const implUrl = new URL('/api/tts-impl', req.url);
-            console.log(`[TTS Edge] Local/Vercel detected. Forwarding to: ${implUrl.toString()}`);
-
-            const implResponse = await fetch(implUrl.toString(), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-
-            return new Response(implResponse.body, {
-                status: implResponse.status,
-                headers: {
-                    'Content-Type': implResponse.headers.get('Content-Type') || 'audio/mpeg',
-                    'Access-Control-Allow-Origin': '*',
-                    'X-TTS-Handler': 'local-impl',
-                },
-            });
-        }
-
-        console.log(`[TTS Edge] Proxying to: ${vercelUrl}`);
-
-        const response = await fetch(vercelUrl, {
+        const implUrl = new URL('/api/tts-impl', req.url);
+        const response = await fetch(implUrl.toString(), {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-TTS-Proxy': 'true',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[TTS Edge] Backend error ${response.status}: ${errorText}`);
-            return new Response(JSON.stringify({
-                error: `Backend error: ${response.status}`,
-                details: errorText
-            }), { status: response.status });
-        }
-
         return new Response(response.body, {
-            status: 200,
+            status: response.status,
             headers: {
-                'Content-Type': 'audio/mpeg',
+                'Content-Type': response.headers.get('Content-Type') || 'audio/mpeg',
                 'Access-Control-Allow-Origin': '*',
-                'X-TTS-Handler': 'edge-proxy',
+                'X-TTS-Handler': 'edge-forward',
             },
         });
     } catch (error) {
