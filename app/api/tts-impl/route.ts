@@ -1,18 +1,26 @@
-// IMPORTANT: This file MUST use 'nodejs' runtime because it uses node-edge-tts
-// which depends on Node.js native modules (fs, path, os).
+// IMPORTANT: This route must run in Node.js runtime.
 export const runtime = 'nodejs';
+
+const DEFAULT_VOICE = 'zh-CN-XiaoxiaoNeural';
+const DEFAULT_RATE = '0%';
+const DEFAULT_TIMEOUT_MS = 15000;
 
 const GOOGLE_TTS_UA =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-const toLang = (voice?: string): string => {
-    if (!voice || typeof voice !== 'string') return 'zh-CN';
-    const m = voice.match(/^([a-z]{2,3}-[A-Z]{2})/);
-    return m?.[1] || 'zh-CN';
+type TTSRequest = {
+    text?: string;
+    voice?: string;
+    rate?: string;
 };
 
-const splitForGoogleTTS = (input: string, maxLen = 180): string[] => {
-    const text = (input || '').trim();
+function getLangFromVoice(voice: string): string {
+    const m = voice.match(/^([a-z]{2,3}-[A-Z]{2})/);
+    return m?.[1] || 'zh-CN';
+}
+
+function splitForGoogleTTS(input: string, maxLen = 180): string[] {
+    const text = input.trim();
     if (!text) return [];
     if (text.length <= maxLen) return [text];
 
@@ -32,13 +40,13 @@ const splitForGoogleTTS = (input: string, maxLen = 180): string[] => {
     }
     if (rest) out.push(rest);
     return out.filter(Boolean);
-};
+}
 
-const googleTTS = async (text: string, lang: string): Promise<Buffer> => {
+async function synthesizeGoogleTTS(text: string, lang: string): Promise<Buffer> {
     const chunks = splitForGoogleTTS(text);
-    if (chunks.length === 0) throw new Error('Empty text for Google TTS');
+    if (chunks.length === 0) throw new Error('Empty text for Google fallback');
 
-    const results: Buffer[] = [];
+    const parts: Buffer[] = [];
     for (const chunk of chunks) {
         const qs = new URLSearchParams({
             ie: 'UTF-8',
@@ -52,153 +60,158 @@ const googleTTS = async (text: string, lang: string): Promise<Buffer> => {
         });
         if (!res.ok) {
             const txt = await res.text();
-            throw new Error(`Google TTS failed: ${res.status} ${txt.slice(0, 120)}`);
+            throw new Error(`Google fallback failed: ${res.status} ${txt.slice(0, 120)}`);
         }
         const ab = await res.arrayBuffer();
         const buf = Buffer.from(ab);
-        if (buf.length < 100) throw new Error('Google TTS returned empty audio');
-        results.push(buf);
+        if (buf.length < 100) throw new Error('Google fallback returned empty audio');
+        parts.push(buf);
     }
 
-    return Buffer.concat(results);
-};
+    return Buffer.concat(parts);
+}
 
 export async function POST(req: Request) {
     try {
-        const body = await req.json();
-        const { text, voice, rate } = body;
-        const normalizedText = String(text || '').trim();
-        if (!normalizedText) {
+        let body: TTSRequest;
+        try {
+            body = await req.json();
+        } catch {
+            return new Response(
+                JSON.stringify({
+                    error: 'Invalid JSON body',
+                    details: 'Request body must be valid JSON',
+                }),
+                {
+                    status: 400,
+                    headers: { 'Content-Type': 'application/json' },
+                }
+            );
+        }
+
+        const text = String(body.text || '').trim();
+        if (!text) {
             return new Response(JSON.stringify({ error: 'Missing text' }), {
                 status: 400,
                 headers: { 'Content-Type': 'application/json' },
             });
         }
 
-        console.log(`[TTS Impl] Generating audio for: "${normalizedText.substring(0, 20)}..." | Voice: ${voice} | Rate: ${rate}`);
+        const voice = String(body.voice || DEFAULT_VOICE).trim() || DEFAULT_VOICE;
+        const rate = String(body.rate || DEFAULT_RATE).trim() || DEFAULT_RATE;
+        const lang = getLangFromVoice(voice);
+        const timeout = Number(process.env.TTS_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
+        const proxy =
+            process.env.TTS_PROXY ||
+            process.env.HTTPS_PROXY ||
+            process.env.HTTP_PROXY ||
+            '';
+        const enableGoogleFallback = process.env.ENABLE_GOOGLE_TTS_FALLBACK === 'true';
 
-        // Dynamic import to be safe, though this file is nodejs runtime
         const { EdgeTTS } = await import('node-edge-tts');
         const fs = await import('fs');
         const path = await import('path');
         const os = await import('os');
 
-        // Extract language from voice ID (e.g., "zh-CN-XiaoxiaoNeural" -> "zh-CN")
-        // Default to "zh-CN" if parsing fails
-        const lang = toLang(voice);
-
-        const tts = new EdgeTTS({
-            voice: voice || "zh-CN-XiaohanNeural",
-            lang: lang,
-            outputFormat: "audio-24khz-48kbitrate-mono-mp3",
-            rate: rate || "0%",
-        });
-
         const tempDir = os.tmpdir();
-        const tempFile = path.join(tempDir, `tts-${Date.now()}-${Math.random().toString(36).substring(7)}.mp3`);
+        const tempFile = path.join(
+            tempDir,
+            `tts-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`
+        );
 
-        // Backend Retry Logic for edge-tts
+        const minExpectedBytes = Math.max(100, text.length * 80);
+        const maxRetries = 2;
         let audioBuffer: Buffer | null = null;
-        let lastError: any = null;
-        const maxRetries = 3;
+        let edgeErr: string | null = null;
 
-        // Estimate min bytes: 1500 bytes per char is a safe rough estimate for high quality mp3
-        // or just ensure it's not basically empty. 
-        // 48kbps = 6KB/s. 
-        // Relaxed check: 200 bytes per char or 100 bytes absolute min
-        const minExpectedBytes = Math.max(normalizedText.length * 120, 100);
+        const tryVoices = voice === DEFAULT_VOICE ? [voice] : [voice, DEFAULT_VOICE];
+        for (const tryVoice of tryVoices) {
+            for (let i = 0; i <= maxRetries; i++) {
+                try {
+                    const tts = new EdgeTTS({
+                        voice: tryVoice,
+                        lang: getLangFromVoice(tryVoice),
+                        outputFormat: 'audio-24khz-48kbitrate-mono-mp3',
+                        rate,
+                        timeout,
+                        proxy,
+                    });
 
-        for (let i = 0; i <= maxRetries; i++) {
-            try {
-                if (i > 0) console.log(`[TTS Impl] Retry ${i}/${maxRetries}...`);
+                    await tts.ttsPromise(text, tempFile);
+                    if (!fs.existsSync(tempFile)) throw new Error('No output file generated');
 
-                await tts.ttsPromise(normalizedText, tempFile);
+                    const size = fs.statSync(tempFile).size;
+                    if (size < minExpectedBytes) {
+                        throw new Error(`Audio too short: ${size} bytes`);
+                    }
 
-                if (fs.existsSync(tempFile)) {
-                    const stats = fs.statSync(tempFile);
-                    if (stats.size >= minExpectedBytes) {
-                        audioBuffer = fs.readFileSync(tempFile);
-                        console.log(`[TTS Impl] Success: ${stats.size} bytes`);
-                        break;
-                    } else {
-                        console.warn(`[TTS Impl] Audio too short: ${stats.size} bytes`);
+                    audioBuffer = fs.readFileSync(tempFile);
+                    break;
+                } catch (e) {
+                    edgeErr = e instanceof Error ? e.message : String(e);
+                    if (i < maxRetries) {
+                        await new Promise((r) => setTimeout(r, 700 * (i + 1)));
+                    }
+                } finally {
+                    if (fs.existsSync(tempFile)) {
+                        try {
+                            fs.unlinkSync(tempFile);
+                        } catch {}
                     }
                 }
-            } catch (e) {
-                lastError = e;
-                console.warn(`[TTS Impl] Attempt ${i} failed:`, e);
-
-                // If last attempt and failed, try fallback voice (Xiaoxiao) if not already using it
-                if (i === maxRetries && voice !== 'zh-CN-XiaoxiaoNeural') {
-                    console.log(`[TTS Impl] Fallback to safe voice: zh-CN-XiaoxiaoNeural`);
-                    try {
-                        const fallbackTts = new EdgeTTS({
-                            voice: 'zh-CN-XiaoxiaoNeural',
-                            lang: 'zh-CN',
-                            outputFormat: "audio-24khz-48kbitrate-mono-mp3",
-                            rate: rate || "0%",
-                        });
-                        await fallbackTts.ttsPromise(normalizedText, tempFile);
-                        if (fs.existsSync(tempFile)) {
-                            const stats = fs.statSync(tempFile);
-                            if (stats.size >= minExpectedBytes) {
-                                audioBuffer = fs.readFileSync(tempFile);
-                                console.log(`[TTS Impl] Fallback Success: ${stats.size} bytes`);
-                                break;
-                            }
-                        }
-                    } catch (fbError) {
-                        console.error(`[TTS Impl] Fallback failed too:`, fbError);
-                    }
-                }
-            } finally {
-                if (fs.existsSync(tempFile)) {
-                    try { fs.unlinkSync(tempFile); } catch (e) { }
-                }
             }
-
-            if (i < maxRetries) await new Promise(r => setTimeout(r, 1000));
+            if (audioBuffer) break;
         }
 
-        if (!audioBuffer) {
-            const edgeErr = lastError instanceof Error ? lastError.message : String(lastError || 'unknown');
-            console.warn(`[TTS Impl] EdgeTTS failed, trying Google fallback: ${edgeErr}`);
-            try {
-                const googleAudio = await googleTTS(normalizedText, lang);
-                return new Response(googleAudio, {
-                    status: 200,
-                    headers: {
-                        'Content-Type': 'audio/mpeg',
-                        'Access-Control-Allow-Origin': '*',
-                        'Cache-Control': 'no-cache',
-                        'X-TTS-Impl': 'google-fallback',
-                    },
-                });
-            } catch (gErr) {
-                const gMsg = gErr instanceof Error ? gErr.message : String(gErr);
-                throw new Error(`EdgeTTS failed: ${edgeErr}; Google fallback failed: ${gMsg}`);
-            }
+        if (audioBuffer) {
+            return new Response(audioBuffer, {
+                status: 200,
+                headers: {
+                    'Content-Type': 'audio/mpeg',
+                    'Access-Control-Allow-Origin': '*',
+                    'Cache-Control': 'no-cache',
+                    'X-TTS-Impl': 'edge',
+                },
+            });
         }
 
-        return new Response(audioBuffer, {
-            status: 200,
-            headers: {
-                'Content-Type': 'audio/mpeg',
-                'Access-Control-Allow-Origin': '*',
-                'Cache-Control': 'no-cache',
-                'X-TTS-Impl': 'success'
-            },
-        });
+        if (enableGoogleFallback) {
+            const googleAudio = await synthesizeGoogleTTS(text, lang);
+            return new Response(googleAudio, {
+                status: 200,
+                headers: {
+                    'Content-Type': 'audio/mpeg',
+                    'Access-Control-Allow-Origin': '*',
+                    'Cache-Control': 'no-cache',
+                    'X-TTS-Impl': 'google-fallback',
+                },
+            });
+        }
 
+        return new Response(
+            JSON.stringify({
+                error: 'TTS Implementation failure',
+                details: edgeErr || 'EdgeTTS failed',
+                provider: 'edge',
+                fallback: 'disabled',
+                hint: 'Set TTS_PROXY in Vercel env if your network cannot reach Edge TTS.',
+            }),
+            {
+                status: 502,
+                headers: { 'Content-Type': 'application/json' },
+            }
+        );
     } catch (error) {
-        console.error("[TTS Impl Error]", error);
-        return new Response(JSON.stringify({
-            error: 'TTS Implementation failure',
-            details: error instanceof Error ? error.message : String(error)
-        }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' }
-        });
+        return new Response(
+            JSON.stringify({
+                error: 'TTS Implementation failure',
+                details: error instanceof Error ? error.message : String(error),
+            }),
+            {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' },
+            }
+        );
     }
 }
 
@@ -211,3 +224,4 @@ export async function OPTIONS() {
         },
     });
 }
+
