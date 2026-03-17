@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useRef, useState, useEffect, useCallback } from "react";
 import { SOUND_DATA, SoundPreset } from "@/lib/data/soundscapes";
 import { useBinauralBeats, BinauralPreset } from "@/lib/hooks/useBinauralBeats";
+import { useBackgroundAudio } from "@/hooks/useBackgroundAudio";
 import { Howl, Howler } from "howler";
 
 // -----------------------------------------------------------------------------
@@ -40,6 +41,8 @@ export function WhiteNoiseProvider({ children }: { children: React.ReactNode }) 
     const [isPlaying, setIsPlaying] = useState(false);
     const [activeTracks, setActiveTracks] = useState<Map<string, ActiveTrack>>(new Map());
     const [masterVolume, setMasterVolume] = useState(0.8);
+    const backgroundAudio = useBackgroundAudio();
+    const backgroundSessionActiveRef = useRef(false);
 
     // Dynamic Binaural Hook
     const { start: startBinaural, stop: stopBinaural, setVolume: setBinauralVolume, isPlaying: isBinauralPlaying } = useBinauralBeats();
@@ -48,6 +51,11 @@ export function WhiteNoiseProvider({ children }: { children: React.ReactNode }) 
     const activeTracksRef = useRef<Map<string, ActiveTrack>>(new Map());
     const masterVolumeRef = useRef(0.8);
     const isPlayingRef = useRef(false);
+
+    // iOS/PWA: prevent Howler from suspending audio context automatically.
+    useEffect(() => {
+        Howler.autoSuspend = false;
+    }, []);
 
     // Helper to calculate target volume
     const getTargetVolume = useCallback((trackVol: number) => {
@@ -194,7 +202,7 @@ export function WhiteNoiseProvider({ children }: { children: React.ReactNode }) 
 
                 const sound = new Howl({
                     src: [soundInfo.src],
-                    html5: false,
+                    html5: true,
                     loop: true,
                     volume: 0, // Start silent for fade in
                     preload: true,
@@ -270,6 +278,75 @@ export function WhiteNoiseProvider({ children }: { children: React.ReactNode }) 
         setIsPlaying(prev => !prev);
     }, []);
 
+    // Keep a MediaSession + keep-alive channel for PWA background playback.
+    useEffect(() => {
+        let cancelled = false;
+
+        const syncBackgroundSession = async () => {
+            const hasTracks = activeTracksRef.current.size > 0;
+
+            if (isPlayingRef.current && hasTracks) {
+                if (!backgroundSessionActiveRef.current) {
+                    const firstTrack = Array.from(activeTracksRef.current.values())[0];
+                    const title = activeTracksRef.current.size === 1
+                        ? `White Noise · ${firstTrack?.id || 'Track'}`
+                        : `White Noise · ${activeTracksRef.current.size} tracks`;
+
+                    try {
+                        await backgroundAudio.activate({
+                            title,
+                            artist: 'Rain',
+                            album: 'Soundscapes',
+                            onPlay: () => setIsPlaying(true),
+                            onPause: () => setIsPlaying(false),
+                            onStop: () => stopAll(),
+                        });
+                        if (!cancelled) {
+                            backgroundSessionActiveRef.current = true;
+                        }
+                    } catch (e) {
+                        console.warn('[WhiteNoise] background session activate failed', e);
+                    }
+                }
+
+                backgroundAudio.setPlaybackState('playing');
+            } else if (backgroundSessionActiveRef.current) {
+                if (hasTracks) {
+                    backgroundAudio.setPlaybackState('paused');
+                } else {
+                    try {
+                        await backgroundAudio.deactivate();
+                    } catch (e) {
+                        console.warn('[WhiteNoise] background session deactivate failed', e);
+                    }
+                    backgroundSessionActiveRef.current = false;
+                }
+            }
+        };
+
+        syncBackgroundSession();
+        return () => {
+            cancelled = true;
+        };
+    }, [isPlaying, activeTracks, backgroundAudio, stopAll]);
+
+    // Recover tracks when page becomes visible again (common iOS/PWA case).
+    useEffect(() => {
+        const onVisibilityChange = () => {
+            if (document.visibilityState !== 'visible' || !isPlayingRef.current) return;
+
+            activeTracksRef.current.forEach((track) => {
+                if (track.sound && !track.sound.playing()) {
+                    track.sound.play();
+                    track.sound.volume(track.volume * masterVolumeRef.current);
+                }
+            });
+        };
+
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    }, []);
+
     // Global unload on unmount (cleanup)
     useEffect(() => {
         return () => {
@@ -277,8 +354,12 @@ export function WhiteNoiseProvider({ children }: { children: React.ReactNode }) 
             activeTracksRef.current.forEach(track => {
                 if (track.sound) track.sound.unload();
             });
+            if (backgroundSessionActiveRef.current) {
+                backgroundAudio.deactivate().catch(() => { });
+                backgroundSessionActiveRef.current = false;
+            }
         };
-    }, []);
+    }, [backgroundAudio]);
 
     return (
         <WhiteNoiseContext.Provider value={{
