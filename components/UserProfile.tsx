@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { LogOut, ChevronDown, Image as ImageIcon, Check, Shuffle, User, Pencil, Trash2, Bell } from "lucide-react";
+import { LogOut, ChevronDown, Image as ImageIcon, Check, Shuffle, User, Pencil, Trash2, Bell, Bot, Cpu, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useBackground, WALLPAPERS } from "./BackgroundContext";
@@ -11,6 +11,17 @@ import { AVATAR_PRESETS, getAvatarById } from "@/lib/avatars";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { getApiUrl } from "@/lib/config";
 import ReminderSettings from "./ReminderSettings";
+import {
+    AI_MODEL_FAMILY_OPTIONS,
+    AI_MODEL_OPTIONS,
+    AI_PROVIDER_LABELS,
+    DEFAULT_AI_MODEL_BY_PROVIDER,
+    getAIModelFamilies,
+    getAIModelFamilyByModel,
+    getDefaultAIModelFamily,
+    type AIModelFamily,
+    type AIProvider,
+} from "@/lib/ai-models";
 
 export default function UserProfile() {
     const [user, setUser] = useState<any>(null);
@@ -19,6 +30,7 @@ export default function UserProfile() {
     const [showWallpaperPicker, setShowWallpaperPicker] = useState(false);
     const [showProfileEditor, setShowProfileEditor] = useState(false);
     const [showReminderSettings, setShowReminderSettings] = useState(false);
+    const [showAISettings, setShowAISettings] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
@@ -26,6 +38,13 @@ export default function UserProfile() {
     const [nickname, setNickname] = useState("");
     const [avatarId, setAvatarId] = useState("cat");
     const [isSaving, setIsSaving] = useState(false);
+    const [aiProvider, setAIProvider] = useState<AIProvider>("deepseek");
+    const [aiModel, setAIModel] = useState(DEFAULT_AI_MODEL_BY_PROVIDER.deepseek);
+    const [aiFamily, setAIFamily] = useState<AIModelFamily>(getDefaultAIModelFamily("deepseek"));
+    const [isLoadingAISettings, setIsLoadingAISettings] = useState(true);
+    const [isSavingAISettings, setIsSavingAISettings] = useState(false);
+    const [isTestingAISettings, setIsTestingAISettings] = useState(false);
+    const [aiTestResult, setAITestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
     const router = useRouter();
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -45,6 +64,7 @@ export default function UserProfile() {
             }
         };
         getInitialSession();
+        void loadAISettings();
 
         // 监听认证状态变化
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -57,6 +77,32 @@ export default function UserProfile() {
 
         return () => subscription.unsubscribe();
     }, []);
+
+    const loadAISettings = async () => {
+        try {
+            const res = await fetch(getApiUrl("/api/ai-settings"), {
+                method: "GET",
+                cache: "no-store",
+            });
+            if (!res.ok) return;
+
+            const data = await res.json();
+            if (data?.provider === "deepseek" || data?.provider === "nvidia") {
+                setAIProvider(data.provider);
+            }
+            if (typeof data?.model === "string") {
+                setAIModel(data.model);
+                const family = getAIModelFamilyByModel(data.model);
+                if (family) {
+                    setAIFamily(family);
+                }
+            }
+        } catch (error) {
+            console.error("Load ai settings failed:", error);
+        } finally {
+            setIsLoadingAISettings(false);
+        }
+    };
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -130,12 +176,94 @@ export default function UserProfile() {
         }
     };
 
+    const handleProviderChange = (provider: AIProvider) => {
+        setAIProvider(provider);
+        setAIModel(DEFAULT_AI_MODEL_BY_PROVIDER[provider]);
+        setAIFamily(getDefaultAIModelFamily(provider));
+        setAITestResult(null);
+    };
+
+    const handleFamilyChange = (family: AIModelFamily) => {
+        setAIFamily(family);
+        setAITestResult(null);
+        const firstModel = AI_MODEL_OPTIONS.find((option) => option.provider === aiProvider && option.family === family);
+        if (firstModel) {
+            setAIModel(firstModel.id);
+        }
+    };
+
+    const handleTestAISettings = async () => {
+        setIsTestingAISettings(true);
+        setAITestResult(null);
+
+        try {
+            const deepseekApiKey =
+                aiProvider === "deepseek" && typeof window !== "undefined"
+                    ? localStorage.getItem("deepseek_api_key") || undefined
+                    : undefined;
+
+            const res = await fetch(getApiUrl("/api/ai-settings/test"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    provider: aiProvider,
+                    model: aiModel,
+                    apiKey: deepseekApiKey,
+                }),
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data?.ok) {
+                setAITestResult({
+                    ok: false,
+                    message: data?.error || data?.details || `HTTP ${res.status}`,
+                });
+                return;
+            }
+
+            setAITestResult({
+                ok: true,
+                message: data?.preview ? `测试成功：${String(data.preview).slice(0, 120)}` : "测试成功，接口可用。",
+            });
+        } catch (error: any) {
+            setAITestResult({
+                ok: false,
+                message: error?.message || "测试失败",
+            });
+        } finally {
+            setIsTestingAISettings(false);
+        }
+    };
+
+    const handleSaveAISettings = async () => {
+        setIsSavingAISettings(true);
+        try {
+            const res = await fetch(getApiUrl("/api/ai-settings"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ provider: aiProvider, model: aiModel }),
+            });
+            if (res.ok) {
+                setShowAISettings(false);
+            }
+        } catch (error) {
+            console.error("Save ai settings failed:", error);
+        } finally {
+            setIsSavingAISettings(false);
+        }
+    };
+
     const { triggerLight } = useHaptics();
 
     if (!user) return null;
 
     const currentAvatar = getAvatarById(avatarId);
     const displayName = nickname || user.email?.split("@")[0] || "用户";
+    const visibleFamilies = getAIModelFamilies(aiProvider);
+    const visibleModels = AI_MODEL_OPTIONS.filter((option) => option.provider === aiProvider && option.family === aiFamily);
+    const selectedModelMeta = AI_MODEL_OPTIONS.find((option) => option.id === aiModel);
+    const selectedFamilyMeta = AI_MODEL_FAMILY_OPTIONS.find((family) => family.provider === aiProvider && family.id === aiFamily);
+    const canSubmitAISettings = visibleModels.length > 0;
 
     return (
         <>
@@ -226,6 +354,24 @@ export default function UserProfile() {
                                         <Bell className="w-4 h-4" />
                                     </div>
                                     <span className="font-light">提醒设置</span>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        setIsOpen(false);
+                                        setShowAISettings(true);
+                                    }}
+                                    className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-white/10 text-fuchsia-400 hover:text-fuchsia-300 transition-colors text-sm text-left group"
+                                >
+                                    <div className="p-1.5 rounded-lg bg-fuchsia-500/10 group-hover:bg-fuchsia-500/20 transition-colors">
+                                        <Bot className="w-4 h-4" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="font-light">AI 模型</div>
+                                        <div className="text-xs text-white/35 truncate">
+                                            {isLoadingAISettings ? "加载中..." : `${selectedFamilyMeta?.label || AI_PROVIDER_LABELS[aiProvider]} · ${selectedModelMeta?.label || aiModel}`}
+                                        </div>
+                                    </div>
                                 </button>
 
                                 {/* Delete Meditation Data */}
@@ -372,6 +518,183 @@ export default function UserProfile() {
                         onClick={() => setShowReminderSettings(false)}
                     >
                         <ReminderSettings onClose={() => setShowReminderSettings(false)} />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {showAISettings && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+                        onClick={() => setShowAISettings(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full max-w-xl max-h-[85vh] overflow-hidden glass-panel rounded-3xl border border-white/10 shadow-2xl"
+                        >
+                            <div className="px-6 py-4 border-b border-white/10">
+                                <h2 className="text-lg font-medium text-white/90">AI 模型选择</h2>
+                                <p className="text-sm text-white/45 mt-1">
+                                    这里的选择会直接作用到冥想生成和 TTS Studio 的 `/api/generate`。
+                                </p>
+                            </div>
+
+                            <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(85vh-140px)]">
+                                <div>
+                                    <label className="block text-sm text-white/60 mb-3">服务提供方</label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {(["deepseek", "nvidia"] as AIProvider[]).map((provider) => {
+                                            const active = aiProvider === provider;
+                                            return (
+                                                <button
+                                                    key={provider}
+                                                    type="button"
+                                                    onClick={() => handleProviderChange(provider)}
+                                                    className={cn(
+                                                        "rounded-2xl border px-4 py-4 text-left transition-all",
+                                                        active
+                                                            ? "border-fuchsia-400/70 bg-fuchsia-500/10 shadow-lg shadow-fuchsia-500/10"
+                                                            : "border-white/10 bg-white/5 hover:bg-white/10"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={cn(
+                                                            "flex h-10 w-10 items-center justify-center rounded-xl",
+                                                            active ? "bg-fuchsia-500/20 text-fuchsia-300" : "bg-white/10 text-white/60"
+                                                        )}>
+                                                            {provider === "deepseek" ? <Bot className="w-5 h-5" /> : <Cpu className="w-5 h-5" />}
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-white/90 text-sm">{AI_PROVIDER_LABELS[provider]}</div>
+                                                            <div className="text-xs text-white/45 mt-1">
+                                                                {provider === "deepseek" ? "保持当前默认链路" : "走 NVIDIA OpenAI 兼容接口"}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm text-white/60 mb-3">模型系列</label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {visibleFamilies.map((family) => {
+                                            const active = aiFamily === family.id;
+                                            const familyCount = AI_MODEL_OPTIONS.filter(
+                                                (option) => option.provider === aiProvider && option.family === family.id
+                                            ).length;
+
+                                            return (
+                                                <button
+                                                    key={family.id}
+                                                    type="button"
+                                                    onClick={() => handleFamilyChange(family.id)}
+                                                    className={cn(
+                                                        "rounded-2xl border px-4 py-4 text-left transition-all",
+                                                        active
+                                                            ? "border-amber-400/70 bg-amber-500/10 shadow-lg shadow-amber-500/10"
+                                                            : "border-white/10 bg-white/5 hover:bg-white/10"
+                                                    )}
+                                                >
+                                                    <div className="text-sm text-white/90">{family.label}</div>
+                                                    <div className="text-xs text-white/45 mt-1">{family.description}</div>
+                                                    <div className="text-[11px] text-white/35 mt-2">
+                                                        {familyCount > 0 ? `${familyCount} 个可选模型` : "当前暂无可选模型"}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm text-white/60 mb-3">具体模型</label>
+                                    {visibleModels.length === 0 && (
+                                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/60">
+                                            {selectedFamilyMeta?.emptyMessage || "当前这个系列下没有可用模型。"}
+                                        </div>
+                                    )}
+                                    <div className="space-y-3">
+                                        {visibleModels.map((option) => {
+                                            const active = aiModel === option.id;
+                                            return (
+                                                <button
+                                                    key={option.id}
+                                                    type="button"
+                                                    onClick={() => setAIModel(option.id)}
+                                                    className={cn(
+                                                        "w-full rounded-2xl border px-4 py-4 text-left transition-all",
+                                                        active
+                                                            ? "border-cyan-400/70 bg-cyan-500/10 shadow-lg shadow-cyan-500/10"
+                                                            : "border-white/10 bg-white/5 hover:bg-white/10"
+                                                    )}
+                                                >
+                                                    <div className="flex items-start gap-3">
+                                                        <div className={cn(
+                                                            "mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border",
+                                                            active ? "border-cyan-400 bg-cyan-400/20" : "border-white/20"
+                                                        )}>
+                                                            {active && <Check className="w-3.5 h-3.5 text-cyan-300" />}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="text-sm text-white/90">{option.label}</div>
+                                                            <div className="text-xs text-white/45 mt-1 break-all">{option.id}</div>
+                                                            <div className="text-xs text-white/55 mt-2">{option.description}</div>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {aiTestResult && (
+                                    <div
+                                        className={cn(
+                                            "rounded-2xl border px-4 py-3 text-sm",
+                                            aiTestResult.ok
+                                                ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                                                : "border-rose-400/30 bg-rose-500/10 text-rose-200"
+                                        )}
+                                    >
+                                        {aiTestResult.message}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="px-6 py-4 border-t border-white/10 flex gap-3">
+                                <button
+                                    onClick={() => setShowAISettings(false)}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 text-sm transition-colors"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={handleTestAISettings}
+                                    disabled={isTestingAISettings || !canSubmitAISettings}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isTestingAISettings && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    <span>{isTestingAISettings ? "测试中..." : "测试连通性"}</span>
+                                </button>
+                                <button
+                                    onClick={handleSaveAISettings}
+                                    disabled={isSavingAISettings || !canSubmitAISettings}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 hover:from-fuchsia-400 hover:to-cyan-400 text-white text-sm font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isSavingAISettings && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    <span>{isSavingAISettings ? "保存中..." : "保存"}</span>
+                                </button>
+                            </div>
+                        </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>

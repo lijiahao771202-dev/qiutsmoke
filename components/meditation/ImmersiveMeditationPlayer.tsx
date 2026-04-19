@@ -8,9 +8,21 @@ import { useHaptics } from "@/lib/hooks/useHaptics";
 import { cn } from "@/lib/utils";
 import { SoundscapesContent } from "@/components/soundscapes/SoundscapesContent";
 
-// -----------------------------------------------------------------------------
-// Types
-// -----------------------------------------------------------------------------
+import {
+    ChevronDown,
+    SlidersHorizontal,
+    PlusCircle,
+    Heart,
+    Shuffle,
+    SkipBack,
+    Play,
+    Pause,
+    SkipForward,
+    Repeat,
+    ScrollText,
+    Headphones,
+    X
+} from "lucide-react";
 
 interface ImmersiveMeditationPlayerProps {
     isOpen: boolean;
@@ -143,9 +155,24 @@ export default function ImmersiveMeditationPlayer({
                     className="fixed inset-0 z-[9999] flex flex-col font-display overflow-hidden bg-gradient-to-br from-rosewater to-lemon-yellow"
                 >
                     {/* Background Blobs - Optimized for iOS (removed mix-blend-multiply, reduced blur) */}
-                    <div className="absolute top-0 -left-4 w-96 h-96 bg-rosewater/40 rounded-full filter blur-2xl opacity-60 will-change-transform" />
-                    <div className="absolute top-0 -right-4 w-96 h-96 bg-lemon-yellow/40 rounded-full filter blur-2xl opacity-60 will-change-transform" />
-                    <div className="absolute -bottom-8 left-20 w-96 h-96 bg-vibrant-rose-pink/40 rounded-full filter blur-2xl opacity-60 will-change-transform" />
+                    <motion.div 
+                        initial={{ opacity: 0.6, scale: 1 }}
+                        animate={{ opacity: [0.6, 0.8, 0.6], scale: [1, 1.05, 1] }}
+                        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+                        className="absolute -top-10 -left-10 w-96 h-96 bg-rosewater/40 rounded-full filter blur-3xl will-change-transform" 
+                    />
+                    <motion.div 
+                        initial={{ opacity: 0.5, scale: 1 }}
+                        animate={{ opacity: [0.5, 0.7, 0.5], scale: [1, 1.08, 1] }}
+                        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+                        className="absolute top-10 -right-10 w-96 h-96 bg-lemon-yellow/40 rounded-full filter blur-3xl will-change-transform" 
+                    />
+                    <motion.div 
+                        initial={{ opacity: 0.4, scale: 1 }}
+                        animate={{ opacity: [0.4, 0.6, 0.4], scale: [1, 1.05, 1] }}
+                        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+                        className="absolute -bottom-10 left-20 w-[30rem] h-[30rem] bg-vibrant-rose-pink/30 rounded-full filter blur-3xl will-change-transform" 
+                    />
 
                     {/* Top Bar */}
                     <div className="relative z-20 flex items-center justify-between p-6 pt-safe">
@@ -154,13 +181,18 @@ export default function ImmersiveMeditationPlayer({
                                 triggerMedium();
                                 onClose();
                             }}
-                            className="flex items-center justify-center w-10 h-10 rounded-full glass-panel hover:bg-white/20 transition-colors text-dusty-rose-brown"
+                            className="flex items-center justify-center w-10 h-10 rounded-full glass-panel hover:bg-white/20 transition-colors text-dusty-rose-brown focus:outline-none"
                         >
-                            <span className="material-symbols-outlined text-2xl">keyboard_arrow_down</span>
+                            <ChevronDown className="w-6 h-6" />
                         </button>
 
-                        <div className="flex flex-col items-center">
+                        <div className="flex flex-col items-center gap-1">
                             <h2 className="text-dusty-rose-brown font-bold text-xs uppercase tracking-[0.2em] opacity-80">Now Meditating</h2>
+                            <div className="flex gap-1 items-center">
+                                <span className="w-1 h-1 bg-vibrant-rose-pink rounded-full animate-pulse" />
+                                <span className="w-1 h-1 bg-vibrant-rose-pink rounded-full animate-pulse delay-75" />
+                                <span className="w-1 h-1 bg-vibrant-rose-pink rounded-full animate-pulse delay-150" />
+                            </div>
                         </div>
 
                         <button
@@ -168,219 +200,199 @@ export default function ImmersiveMeditationPlayer({
                                 triggerMedium();
                                 setShowSoundscapes(true);
                             }}
-                            className="flex items-center justify-center w-10 h-10 rounded-full glass-panel hover:bg-white/20 transition-colors text-dusty-rose-brown"
+                            className="flex items-center justify-center w-10 h-10 rounded-full glass-panel hover:bg-white/20 transition-colors text-dusty-rose-brown focus:outline-none"
                         >
-                            <span className="material-symbols-outlined text-xl">tune</span>
+                            <SlidersHorizontal className="w-5 h-5" />
                         </button>
                     </div>
 
-                    {/* Main Content - No animation to prevent flash */}
-                    <div
-                        className="flex-1 relative z-10 flex flex-col items-center justify-center px-6 pb-8"
-                    >
-                        <div className="relative w-full max-w-sm aspect-[3/4.5]">
-                            {/* Deep Glass Layer - Simplified for iOS */}
-                            <div className="absolute top-4 left-4 right-4 -bottom-4 bg-white/10 backdrop-blur-md border border-white/10 rounded-[2.5rem] transform scale-95 opacity-60 shadow-2xl will-change-transform" />
-
-                            {/* Main Glass Card - Reduced blur for iOS */}
-                            <div className="absolute inset-0 bg-white/25 backdrop-blur-lg border border-white/30 rounded-[2.5rem] flex flex-col p-6 items-center justify-between shadow-2xl ring-1 ring-white/40 will-change-transform">
-
-                                <motion.div
-                                    variants={cardContentVariants}
-                                    className="relative w-64 h-64 mt-4 group"
+                    {/* Main Content - Completely full-bleed premium redesign */}
+                    <div className="flex-1 relative z-10 w-full max-w-xl mx-auto flex flex-col px-6 pb-10">
+                        {/* Artwork Area (Top half) */}
+                        <div className="flex-1 w-full flex flex-col items-center justify-center min-h-[350px]">
+                            <motion.div
+                                variants={cardContentVariants}
+                                className="relative w-72 h-72 md:w-80 md:h-80 xl:w-[400px] xl:h-[400px] group"
+                            >
+                                {/* Massive deep shadow for the record */}
+                                <div className="absolute inset-4 bg-black/30 rounded-full blur-2xl transform translate-y-8 scale-90" />
+                                <div className="absolute inset-4 bg-vibrant-rose-pink/20 rounded-full blur-3xl transform -translate-y-4 scale-105" />
+                                
+                                <div
+                                    className={cn(
+                                        "w-full h-full rounded-full bg-black p-1 shadow-2xl relative overflow-hidden ring-4 ring-white/10 transition-all duration-[2s] ease-linear will-change-transform border border-black/50",
+                                        isPlaying && !isBuffering ? "animate-[spin_10s_linear_infinite]" : ""
+                                    )}
+                                    style={{
+                                        animationPlayState: isPlaying && !isBuffering ? "running" : "paused",
+                                    }}
                                 >
-                                    <div className="absolute inset-4 bg-black/20 rounded-full blur-xl transform translate-y-4" />
-                                    <div
-                                        className={cn(
-                                            "w-full h-full rounded-full bg-black p-1 shadow-2xl relative overflow-hidden border-4 border-gray-900/10 transition-all duration-[2s] ease-linear will-change-transform",
-                                            isPlaying && !isBuffering ? "animate-[spin_10s_linear_infinite]" : ""
-                                        )}
-                                        style={{
-                                            animationPlayState: isPlaying && !isBuffering ? "running" : "paused",
-                                        }}
-                                    >
-                                        <div className="w-full h-full rounded-full overflow-hidden relative">
-                                            {/* Vinyl Groove Texture - Exact from prototype */}
-                                            <div
-                                                className="absolute inset-0 z-10 pointer-events-none"
-                                                style={{
-                                                    background: `radial-gradient(
-                                                        circle, 
-                                                        transparent 45%, 
-                                                        rgba(0,0,0,0.1) 46%, 
-                                                        transparent 47%,
-                                                        transparent 50%,
-                                                        rgba(0,0,0,0.1) 51%,
-                                                        transparent 52%,
-                                                        transparent 55%,
-                                                        rgba(0,0,0,0.1) 56%,
-                                                        transparent 57%
-                                                    )`
-                                                }}
-                                            />
+                                    <div className="w-full h-full rounded-full overflow-hidden relative">
+                                        {/* Vinyl Groove Texture */}
+                                        <div
+                                            className="absolute inset-0 z-10 pointer-events-none mix-blend-overlay"
+                                            style={{
+                                                background: `radial-gradient(
+                                                    circle, 
+                                                    transparent 45%, 
+                                                    rgba(255,255,255,0.05) 46%, 
+                                                    transparent 47%,
+                                                    transparent 50%,
+                                                    rgba(255,255,255,0.05) 51%,
+                                                    transparent 52%,
+                                                    transparent 55%,
+                                                    rgba(255,255,255,0.05) 56%,
+                                                    transparent 57%
+                                                )`
+                                            }}
+                                        />
 
-                                            {/* Album Art (Using exact image from prototype) */}
-                                            <img
-                                                alt="Abstract colorful swirls representing the album cover"
-                                                className="w-full h-full object-cover"
-                                                src="/vinyl-cover.png"
-                                            />
+                                        {/* Album Art */}
+                                        <img
+                                            alt="Meditation Art"
+                                            className="w-full h-full object-cover opacity-90 transition-opacity duration-700"
+                                            src="/vinyl-cover.png"
+                                        />
 
-                                            {/* Center Label - Corrected Size w-16 h-16 */}
-                                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-gradient-to-br from-gray-800 to-black rounded-full border-4 border-gray-700 z-20 flex items-center justify-center shadow-lg">
-                                                <div className="w-2 h-2 bg-black rounded-full" />
+                                        {/* Center Label */}
+                                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 md:w-24 md:h-24 bg-gradient-to-br from-neutral-800 to-black rounded-full border-[6px] border-[#1a1a1a] z-20 flex items-center justify-center shadow-inner">
+                                            <div className="w-3 h-3 bg-white/10 rounded-full flex items-center justify-center">
+                                                <div className="w-1.5 h-1.5 bg-black rounded-full" />
                                             </div>
                                         </div>
                                     </div>
-                                </motion.div>
+                                </div>
+                            </motion.div>
+                        </div>
 
-                                {/* Title & Info */}
-                                <motion.div
-                                    variants={cardContentVariants}
-                                    className="text-center w-full mt-6 mb-2"
-                                >
-                                    <div className="flex items-center justify-between mb-1">
-                                        <button className="text-dusty-rose-brown/40 hover:text-dusty-rose-brown transition-colors">
-                                            <span className="material-symbols-outlined">add_circle</span>
+                        {/* Player Information (Bottom half) */}
+                        <div className="w-full flex flex-col justify-end">
+                            {/* Title & Metadata */}
+                            <motion.div variants={cardContentVariants} className="w-full mb-6 mt-4">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex-1 flex flex-col min-w-0 pr-4">
+                                        <h1 className="text-3xl md:text-[40px] font-extrabold text-dusty-rose-brown tracking-tight truncate leading-tight drop-shadow-sm pb-1">
+                                            {title || "Meditation"}
+                                        </h1>
+                                        <p className="text-lg text-dusty-rose-brown/70 font-semibold truncate pt-1 tracking-wide">
+                                            {isBuffering ? "Buffering..." : "Inner Peace"}
+                                        </p>
+                                    </div>
+
+                                    <div className="flex items-center gap-3 pt-2">
+                                        <button className="p-3 rounded-full bg-white/30 hover:bg-white/50 active:scale-95 transition-all text-dusty-rose-brown/80 hover:text-dusty-rose-brown backdrop-blur-md shadow-sm border border-white/30">
+                                            <PlusCircle className="w-6 h-6" strokeWidth={2} />
                                         </button>
-
-                                        <div className="flex-1 px-4 overflow-hidden">
-                                            <h1 className="text-3xl font-bold text-dusty-rose-brown truncate leading-tight text-shadow-sm">
-                                                {title || "Meditation"}
-                                            </h1>
-                                        </div>
-
-                                        <button className="text-dusty-rose-brown hover:text-vibrant-rose-pink transition-colors">
-                                            <span className="material-symbols-outlined font-variation-FILL-1">favorite</span>
+                                        <button className="p-3 rounded-full bg-white/30 hover:bg-white/50 active:scale-95 transition-all text-dusty-rose-brown/80 hover:text-vibrant-rose-pink backdrop-blur-md shadow-sm border border-white/30">
+                                            <Heart className="w-6 h-6 hover:fill-vibrant-rose-pink transition-colors" strokeWidth={2} />
                                         </button>
                                     </div>
-                                    <p className="text-lg font-medium text-dusty-rose-brown/70">
-                                        {isBuffering ? "Buffering..." : "Inner Peace"}
-                                    </p>
-                                </motion.div>
+                                </div>
+                            </motion.div>
 
-                                {/* Waveform Visualization (Static 17-bar Layout) */}
-                                <div aria-label="Audio Waveform Visualization" className="h-8 flex items-end justify-center gap-[3px] w-full px-2 opacity-80 mb-4 cursor-pointer" onClick={() => {
+                            {/* Scrubber Area */}
+                            <motion.div variants={cardContentVariants} className="w-full mb-10">
+                                {/* Waveform Header (Moved inside the scrubber logic seamlessly) */}
+                                <div aria-label="Audio Waveform Visualization" className="h-10 flex items-end justify-start gap-[4px] w-full mb-3 cursor-pointer select-none" onClick={() => {
                                     if (onToggleTrack && ambientSounds.length > 0) {
                                         onToggleTrack(ambientSounds[0].id);
                                     }
                                 }}>
                                     {[
-                                        { h: "h-3", op: 0.3 },
-                                        { h: "h-5", op: 0.4 },
-                                        { h: "h-4", op: 0.3 },
-                                        { h: "h-6", op: 0.5 },
-                                        { h: "h-3", op: 0.3 },
-                                        { h: "h-5", op: 0.6 },
-                                        { h: "h-7", op: 1.0 },
-                                        { h: "h-4", op: 0.8 },
-                                        { h: "h-6", op: 1.0 },
-                                        { h: "h-8", op: 1.0 }, // Center
-                                        { h: "h-5", op: 0.8 },
-                                        { h: "h-7", op: 1.0 },
-                                        { h: "h-4", op: 0.6 },
-                                        { h: "h-3", op: 0.4 },
-                                        { h: "h-5", op: 0.3 },
-                                        { h: "h-2", op: 0.3 },
-                                        { h: "h-4", op: 0.3 },
+                                        { h: "h-3", op: 0.3 }, { h: "h-5", op: 0.4 }, { h: "h-4", op: 0.3 },
+                                        { h: "h-7", op: 0.6 }, { h: "h-4", op: 0.4 }, { h: "h-6", op: 0.7 },
+                                        { h: "h-8", op: 0.9 }, { h: "h-5", op: 0.5 }, { h: "h-10", op: 1.0 },
+                                        { h: "h-6", op: 0.6 }, { h: "h-8", op: 0.8 }, { h: "h-4", op: 0.4 },
+                                        { h: "h-5", op: 0.5 }, { h: "h-3", op: 0.3 }
                                     ].map((bar, index) => (
                                         <motion.div
                                             key={index}
-                                            className={cn("w-1.5 bg-dusty-rose-brown rounded-full", bar.h)}
+                                            className={cn("w-[6px] bg-dusty-rose-brown/80 rounded-full pointer-events-none", bar.h)}
                                             style={{ opacity: bar.op }}
                                             animate={isPlaying && !isBuffering ? {
-                                                scaleY: [1, 1.2, 0.9, 1.1, 1],
+                                                scaleY: [1, 1.3, 0.8, 1.1, 1],
                                             } : { scaleY: 1 }}
                                             transition={{
                                                 repeat: Infinity,
-                                                duration: 1.5 + (Math.random() * 0.5), // Slight random variation
+                                                duration: 1.2 + (index * 0.1),
                                                 ease: "easeInOut",
-                                                delay: index * 0.1,
                                                 repeatType: "mirror"
                                             }}
                                         />
                                     ))}
                                 </div>
 
-
-                                {/* Fragment Progress Bar */}
-                                <div className="w-full px-4 mb-2 mt-[-8px]">
-                                    <div className="w-full h-1 bg-dusty-rose-brown/20 rounded-full overflow-hidden">
-                                        <motion.div
-                                            className="h-full bg-dusty-rose-brown/80 rounded-full"
-                                            initial={{ width: 0 }}
-                                            animate={{
-                                                width: `${queueTotal > 0 ? (Math.min(queueCurrent, queueTotal) / Math.max(queueTotal, 1)) * 100 : 0}%`
-                                            }}
-                                            transition={{ duration: 0.5, ease: "easeOut" }}
-                                        />
-                                    </div>
+                                <div className="w-full h-[6px] bg-white/40 backdrop-blur-md rounded-full overflow-hidden shadow-inner ring-1 ring-white/30">
+                                    <motion.div
+                                        className="h-full bg-gradient-to-r from-rose-400 to-vibrant-rose-pink rounded-full shadow-[0_0_10px_rgba(251,113,133,0.8)]"
+                                        initial={{ width: 0 }}
+                                        animate={{
+                                            width: `${queueTotal > 0 ? (Math.min(queueCurrent, queueTotal) / Math.max(queueTotal, 1)) * 100 : 0}%`
+                                        }}
+                                        transition={{ duration: 0.5, ease: "easeOut" }}
+                                    />
                                 </div>
-
-                                {/* Time & Progress */}
-                                <div className="w-full flex justify-between text-xs font-bold text-dusty-rose-brown/60 px-1 mb-4">
+                                <div className="w-full flex justify-between text-[13px] font-bold text-dusty-rose-brown/70 mt-3 tracking-widest px-1">
                                     <span>{formatTime(elapsedSeconds)}</span>
                                     <span>{queueTotal > 0 ? `${queueCurrent}/${queueTotal}` : formatTime(queueTotal * 30)}</span>
                                 </div>
+                            </motion.div>
 
-                                {/* Controls */}
-                                <motion.div
-                                    variants={cardContentVariants}
-                                    className="flex items-center justify-between w-full px-4"
-                                >
-                                    <button className="text-dusty-rose-brown/60 hover:text-dusty-rose-brown transition-colors p-2">
-                                        <span className="material-symbols-outlined text-[28px]">shuffle</span>
+                            {/* Core Controls */}
+                            <motion.div variants={cardContentVariants} className="flex items-center justify-between w-full mb-8 px-2">
+                                <button className="text-dusty-rose-brown/60 hover:text-dusty-rose-brown transition-all p-3 hover:scale-110 active:scale-95 hover:bg-white/20 rounded-full focus:outline-none">
+                                    <Shuffle className="w-7 h-7 stroke-[2]" />
+                                </button>
+
+                                <div className="flex items-center gap-6 md:gap-10">
+                                    <button className="group relative flex items-center justify-center w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/30 backdrop-blur-xl border border-white/50 hover:bg-white/50 transition-all active:scale-95 shadow-lg focus:outline-none">
+                                        <SkipBack className="w-7 h-7 md:w-8 md:h-8 text-dusty-rose-brown fill-dusty-rose-brown" />
                                     </button>
 
-                                    <div className="flex items-center gap-6">
-                                        <button className="group relative flex items-center justify-center w-12 h-12 rounded-full glass-panel hover:bg-white/30 transition-all active:scale-95">
-                                            <span className="material-symbols-outlined text-dusty-rose-brown text-[32px] ml-[-2px]">skip_previous</span>
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                triggerSuccess();
-                                                onPlayPause();
-                                            }}
-                                            className="relative flex items-center justify-center w-20 h-20 rounded-full bg-vibrant-rose-pink shadow-lg shadow-vibrant-rose-pink/30 hover:scale-105 active:scale-95 transition-all group"
-                                        >
-                                            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-vibrant-rose-pink to-dusty-rose-brown opacity-100" />
-                                            {isBuffering ? (
-                                                <div className="relative w-8 h-8 border-3 border-white border-t-transparent rounded-full animate-spin" />
+                                    <button
+                                        onClick={() => {
+                                            triggerSuccess();
+                                            onPlayPause();
+                                        }}
+                                        className="relative flex items-center justify-center w-24 h-24 md:w-28 md:h-28 rounded-full bg-white/95 backdrop-blur-2xl shadow-[0_20px_40px_-10px_rgba(0,0,0,0.15)] hover:scale-105 active:scale-95 transition-all focus:outline-none group border border-white/60"
+                                    >
+                                        <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-rose-100 to-white/70 pointer-events-none opacity-50" />
+                                        {isBuffering ? (
+                                            <div className="relative w-8 h-8 md:w-10 md:h-10 border-t-4 border-r-4 border-dusty-rose-brown rounded-full animate-spin" />
+                                        ) : (
+                                            isPlaying ? (
+                                                <Pause className="w-10 h-10 md:w-12 md:h-12 text-dusty-rose-brown fill-dusty-rose-brown stroke-[0]" />
                                             ) : (
-                                                <span className="relative material-symbols-outlined text-white text-[48px] font-variation-FILL-1">
-                                                    {isPlaying ? "pause" : "play_arrow"}
-                                                </span>
-                                            )}
-                                        </button>
-
-                                        <button className="group relative flex items-center justify-center w-12 h-12 rounded-full glass-panel hover:bg-white/30 transition-all active:scale-95">
-                                            <span className="material-symbols-outlined text-dusty-rose-brown text-[32px] mr-[-2px]">skip_next</span>
-                                        </button>
-                                    </div>
-
-                                    <button className="text-dusty-rose-brown/60 hover:text-dusty-rose-brown transition-colors p-2">
-                                        <span className="material-symbols-outlined text-[28px]">repeat</span>
+                                                <Play className="w-10 h-10 md:w-12 md:h-12 text-dusty-rose-brown fill-dusty-rose-brown ml-2 stroke-[0]" />
+                                            )
+                                        )}
                                     </button>
-                                </motion.div>
-                            </div>
-                        </div>
 
-                        {/* Lyrics/Script Button */}
-                        <div className="mt-8">
-                            <button
-                                onClick={toggleFullText}
-                                className="flex items-center gap-2 px-6 py-3 rounded-full glass-panel hover:bg-white/30 transition-all group shadow-lg shadow-dusty-rose-brown/10"
-                            >
-                                <span className="material-symbols-outlined text-dusty-rose-brown text-lg group-hover:scale-110 transition-transform">lyrics</span>
-                                <span className="text-dusty-rose-brown font-bold text-sm tracking-wide">Script</span>
-                            </button>
-                        </div>
+                                    <button className="group relative flex items-center justify-center w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/30 backdrop-blur-xl border border-white/50 hover:bg-white/50 transition-all active:scale-95 shadow-lg focus:outline-none">
+                                        <SkipForward className="w-7 h-7 md:w-8 md:h-8 text-dusty-rose-brown fill-dusty-rose-brown" />
+                                    </button>
+                                </div>
 
-                        {/* Audio Output */}
-                        <div className="mt-6 flex items-center gap-2 text-dusty-rose-brown/50">
-                            <span className="material-symbols-outlined text-sm">speaker_group</span>
-                            <span className="text-xs font-bold tracking-wide uppercase">AirPods Pro</span>
+                                <button className="text-dusty-rose-brown/60 hover:text-dusty-rose-brown transition-all p-3 hover:scale-110 active:scale-95 hover:bg-white/20 rounded-full focus:outline-none">
+                                    <Repeat className="w-7 h-7 stroke-[2]" />
+                                </button>
+                            </motion.div>
+
+                            {/* Footer Options */}
+                            <motion.div variants={cardContentVariants} className="flex flex-row items-center justify-center gap-6 w-full pt-6 border-t border-dusty-rose-brown/10">
+                                <button
+                                    onClick={toggleFullText}
+                                    className="flex items-center gap-2 px-8 py-4 rounded-full bg-white/40 backdrop-blur-2xl border border-white/60 hover:bg-white/60 hover:shadow-xl transition-all group focus:outline-none active:scale-95 shadow-md"
+                                >
+                                    <ScrollText className="w-5 h-5 text-dusty-rose-brown group-hover:scale-110 transition-transform stroke-[2.5]" />
+                                    <span className="text-dusty-rose-brown font-extrabold text-[13px] tracking-[0.25em] uppercase">Script</span>
+                                </button>
+
+                                <div className="flex items-center gap-2 px-6 py-4 rounded-full bg-dusty-rose-brown/10 backdrop-blur-xl border border-dusty-rose-brown/10">
+                                    <Headphones className="w-5 h-5 text-dusty-rose-brown/80 stroke-[2.5]" />
+                                    <span className="text-[12px] font-extrabold tracking-[0.3em] text-dusty-rose-brown/80 uppercase">AirPods Pro</span>
+                                </div>
+                            </motion.div>
                         </div>
                     </div>
 
@@ -407,9 +419,9 @@ export default function ImmersiveMeditationPlayer({
                                         <h3 className="text-lg font-bold text-dusty-rose-brown">Meditation Script</h3>
                                         <button
                                             onClick={() => setShowFullText(false)}
-                                            className="w-8 h-8 flex items-center justify-center bg-dusty-rose-brown/10 rounded-full text-dusty-rose-brown hover:bg-dusty-rose-brown/20 transition-colors"
+                                            className="w-8 h-8 flex items-center justify-center bg-dusty-rose-brown/10 rounded-full text-dusty-rose-brown hover:bg-dusty-rose-brown/20 transition-colors focus:outline-none"
                                         >
-                                            <span className="material-symbols-outlined text-sm">close</span>
+                                            <X className="w-4 h-4" />
                                         </button>
                                     </div>
                                     <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">

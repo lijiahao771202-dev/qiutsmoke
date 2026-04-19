@@ -9,6 +9,48 @@ const handler = require('serve-handler');
 
 let mainWindow;
 
+function buildElectronSystemPrompt(systemPrompt = "") {
+    const basePrompt = "你是一个专业的冥想引导师。请用舒缓、温柔、自然的中文语调创作冥想脚本。脚本应该包含适当的停顿指示。请直接输出冥想内容，不要包含任何开场白或结束语。你可以使用标签来控制节奏：使用 [pause Ns] 来插入 N 秒的停顿，使用 [rate +/-N%] 来调整语速，并建议在开始时使用 [rate -10%] 营造舒缓氛围。";
+    const userPrompt = typeof systemPrompt === 'string' && systemPrompt.trim()
+        ? `\n\n额外风格偏好：\n${systemPrompt.trim()}`
+        : "";
+
+    return `${basePrompt}${userPrompt}`;
+}
+
+function getElectronUpstreamConfig(provider, model, key) {
+    if (provider === 'nvidia') {
+        return {
+            url: 'https://integrate.api.nvidia.com/v1/chat/completions',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'text/event-stream',
+                Authorization: `Bearer ${key}`,
+            },
+            body: (messages) => JSON.stringify({
+                model,
+                messages,
+                temperature: 0.5,
+                stream: true,
+            }),
+        };
+    }
+
+    return {
+        url: 'https://api.deepseek.com/chat/completions',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+            Authorization: `Bearer ${key}`,
+        },
+        body: (messages) => JSON.stringify({
+            model,
+            messages,
+            stream: true,
+        }),
+    };
+}
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200,
@@ -72,36 +114,43 @@ ipcMain.handle('generate-tts', async (event, { text, voice, rate }) => {
     }
 });
 
-ipcMain.on('generate-meditation', async (event, { prompt, apiKey }) => {
-    const key = apiKey || process.env.DEEPSEEK_API_KEY;
+ipcMain.on('generate-meditation', async (event, payload) => {
+    const provider = payload?.provider === 'nvidia' ? 'nvidia' : 'deepseek';
+    const model = typeof payload?.model === 'string' && payload.model
+        ? payload.model
+        : provider === 'nvidia'
+            ? 'moonshotai/kimi-k2-instruct'
+            : 'deepseek-chat';
+    const key = provider === 'nvidia'
+        ? process.env.NVIDIA_API_KEY
+        : payload?.apiKey || process.env.DEEPSEEK_API_KEY;
 
     try {
-        const response = await fetch("https://api.deepseek.com/chat/completions", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Accept": "text/event-stream",
-                "Authorization": `Bearer ${key}`,
+        if (!key) {
+            event.reply('meditation-error', provider === 'nvidia' ? 'Missing NVIDIA_API_KEY' : 'Missing DeepSeek API key');
+            return;
+        }
+
+        const upstream = getElectronUpstreamConfig(provider, model, key);
+        const messages = [
+            {
+                role: "system",
+                content: buildElectronSystemPrompt(payload?.systemPrompt)
             },
-            body: JSON.stringify({
-                model: "deepseek-chat",
-                messages: [
-                    {
-                        role: "system",
-                        content: "你是一个专业的冥想引导师。请用舒缓、温柔、自然的中文语调创作冥想脚本。脚本应该包含适当的停顿指示（如...）。请直接输出冥想内容，不要包含任何开场白或结束语。确保语言优美、充满意境。\n\n你可以使用标签来控制节奏：\n- 使用 [pause Ns] 来插入 N 秒的停顿（例如 [pause 5s]）。\n- 使用 [rate +/-N%] 来调整语速（例如 [rate -10%] 表示慢 10%，[rate +10%] 表示快 10%）。\n\n请在脚本中合理使用这些标签，特别是建议在开始时使用 [rate -10%] 来营造舒缓的氛围，并在段落之间插入适当的 [pause]。"
-                    },
-                    {
-                        role: "user",
-                        content: prompt
-                    }
-                ],
-                stream: true,
-            }),
+            {
+                role: "user",
+                content: payload?.prompt || ""
+            }
+        ];
+        const response = await fetch(upstream.url, {
+            method: "POST",
+            headers: upstream.headers,
+            body: upstream.body(messages),
         });
 
         if (!response.ok) {
             const error = await response.text();
-            console.error("DeepSeek API Error:", error);
+            console.error("Meditation API Error:", { provider, model, error });
             event.reply('meditation-error', `API Error: ${response.status}`);
             return;
         }

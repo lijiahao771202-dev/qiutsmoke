@@ -14,7 +14,7 @@ import { useMeditationTopics } from "@/lib/hooks/useData";
 import { useBackgroundAudio } from "@/hooks/useBackgroundAudio";
 import { useWhiteNoise } from "@/hooks/useWhiteNoise";
 import { getApiUrl } from "@/lib/config";
-import ImmersiveMeditationPlayer from "@/components/meditation/ImmersiveMeditationPlayer";
+import ProMeditationPlayer from "@/components/meditation/ProMeditationPlayer";
 
 // 🚀 引导模式常量
 
@@ -310,6 +310,7 @@ export default function MeditatePage() {
     const [playedCount, setPlayedCount] = useState(0); // 已播放的段落数
     const [totalSegments, setTotalSegments] = useState(0); // 总段落数
     const [elapsedSeconds, setElapsedSeconds] = useState(0); // 已播放时间（秒）
+    const [hasStarted, setHasStarted] = useState(false); // 是否已经真正开始播放（控制计时器）
     const elapsedTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     // Refs for processing
@@ -545,6 +546,7 @@ export default function MeditatePage() {
                 return;
             }
             hasStartedRef.current = true;
+            setHasStarted(true); // 触发给 Timer 的状态
         }
 
         setIsBuffering(false);
@@ -926,13 +928,13 @@ export default function MeditatePage() {
     // ⏱️ 播放计时器
     useEffect(() => {
         let interval: NodeJS.Timeout;
-        if (isPlaying && !isBuffering) {
+        if (isPlaying && !isBuffering && hasStarted) {
             interval = setInterval(() => {
                 setElapsedSeconds(prev => prev + 1);
             }, 1000);
         }
         return () => clearInterval(interval);
-    }, [isPlaying, isBuffering]);
+    }, [isPlaying, isBuffering, hasStarted]);
 
     // === P1: AudioContext 看门狗 - 仅用于恢复挂起的音频上下文 === //
     useEffect(() => {
@@ -996,6 +998,10 @@ export default function MeditatePage() {
 
             setIsPlaying(true);
 
+            const currentCardSettings = cardSettings[activeCard || 'default'];
+            const cardDuration = currentCardSettings?.duration ?? meditationDuration;
+            const cardGuidance = currentCardSettings?.guidanceLevel ?? guidanceLevel;
+
             if (typeof window !== 'undefined' && (window as any).electron) {
                 (window as any).electron.onMeditationChunk(async (chunk: string) => {
                     if (currentGenerationIdRef.current !== generationId) return; // 🛑 Stale check
@@ -1017,13 +1023,29 @@ export default function MeditatePage() {
                     setIsGenerating(false);
                 });
 
-                (window as any).electron.generateMeditation(prompt, apiKey);
-            } else {
-                // 🚀 使用当前卡片的独立设置
-                const currentCardSettings = cardSettings[activeCard || 'default'];
-                const cardDuration = currentCardSettings?.duration ?? meditationDuration;
-                const cardGuidance = currentCardSettings?.guidanceLevel ?? guidanceLevel;
+                let aiSettings = { provider: "deepseek", model: "deepseek-chat" };
+                try {
+                    const settingsRes = await fetch(getApiUrl("/api/ai-settings"), {
+                        method: "GET",
+                        cache: "no-store"
+                    });
+                    if (settingsRes.ok) {
+                        aiSettings = await settingsRes.json();
+                    }
+                } catch (error) {
+                    console.warn("[Meditate] Failed to load AI settings for Electron:", error);
+                }
 
+                (window as any).electron.generateMeditation({
+                    prompt,
+                    apiKey,
+                    provider: aiSettings.provider,
+                    model: aiSettings.model,
+                    systemPrompt: globalSystemPrompt,
+                    duration: cardDuration,
+                    guidanceLevel: cardGuidance
+                });
+            } else {
                 const res = await fetch(getApiUrl('/api/generate'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1883,8 +1905,8 @@ export default function MeditatePage() {
                     )}
                 </AnimatePresence>
 
-                {/* 🧘 全屏沉浸式冥想播放器 */}
-                <ImmersiveMeditationPlayer
+                {/* 🧘 全屏沉浸式冥想播放器 (全新设计) */}
+                <ProMeditationPlayer
                     isOpen={!!activeCard}
                     title={activeCard ? (DEFAULT_TOPICS.find(t => t.id === activeCard)?.title || customTopics.find(t => t.id === activeCard)?.title || '冥想') : ''}
                     text={currentSpokenText}
@@ -1914,8 +1936,6 @@ export default function MeditatePage() {
                             elapsedTimerRef.current = null;
                         }
                         hasStartedSpeakingRef.current = false;
-                        // 关闭时停止所有环境音
-                        stopAll();
                     }}
                     cardId={activeCard || undefined}
                     activeTracks={activeTracks as Set<string>}

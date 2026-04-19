@@ -13,8 +13,12 @@ export async function ensureTables() {
     user_id text PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     system_prompt text,
     quit_date date,
+    ai_provider text,
+    ai_model text,
     updated_at timestamptz DEFAULT now()
   )`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ai_provider text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ai_model text`;
   await sql`CREATE TABLE IF NOT EXISTS user_prompts (
     user_id text REFERENCES users(id) ON DELETE CASCADE,
     topic_id text,

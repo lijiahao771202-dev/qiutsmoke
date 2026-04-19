@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useMemo } from 'react';
 
 /**
  * 🎵 后台音频播放 Hook
@@ -305,10 +305,10 @@ export function useBackgroundAudio(): BackgroundAudioReturn {
         };
     }, [stopKeepAlive, releaseWakeLock]);
 
-    return {
+    return useMemo(() => ({
         activate,
         deactivate,
         setPlaybackState,
         setPositionState
-    };
+    }), [activate, deactivate, setPlaybackState, setPositionState]);
 }

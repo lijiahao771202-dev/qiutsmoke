@@ -1,26 +1,26 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit, Cherry, Star, Flower, Globe, Wind } from "lucide-react";
+import { X, Play, RefreshCw, CheckCircle2, Sparkles, Waves, Flower2, CircleDot, Flame, Gem, Orbit, Cherry, Star, Flower, Globe, Wind, Activity } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { useHeartRate } from "@/lib/hooks/useHeartRate";
 import HeartRateIndicator from "@/components/HeartRateGraph";
 import PracticeCompletionView from "@/components/PracticeCompletionView";
-import { KeepAwake } from "@capacitor-community/keep-awake";
 import { getApiUrl } from "@/lib/config";
 import { useBinauralBeats, BINAURAL_PRESETS } from "@/lib/hooks/useBinauralBeats";
 import { useLocalNotifications } from "@/lib/hooks/useLocalNotifications";
-import { unlockAudio, playCompletionSound } from "@/lib/audioUnlock";
+import { unlockAudio, playCompletionSound, getSharedAudioContext } from "@/lib/audioUnlock";
 import { useGlobalWhiteNoise } from "@/contexts/WhiteNoiseContext";
 import { SoundscapesContent } from "@/components/soundscapes/SoundscapesContent";
+import { usePracticeKeepAwake } from "@/hooks/usePracticeKeepAwake";
 
 // --- Types ---
-type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "PRACTICING" | "COMPLETED" | "SUMMARY";
+type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "COUNTDOWN" | "PREP_SURF" | "PRACTICING" | "COMPLETED" | "SUMMARY";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
-type Theme = "SPHERE" | "LIQUID" | "ROSE" | "AURORA" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
+type Theme = "SPHERE" | "SURF" | "LIQUID" | "ROSE" | "AURORA" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
 type BreathingPatternId = "478" | "box" | "focus" | "sigh" | "energy";
 
 interface BreathingPattern {
@@ -43,6 +43,7 @@ const BREATHING_PATTERNS: BreathingPattern[] = [
 // --- Theme Config ---
 const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
     SPHERE: { name: "Sphere", icon: Globe, color: "text-blue-400" },
+    SURF: { name: "Surfing", icon: Waves, color: "text-blue-500" },
     LIQUID: { name: "Liquid", icon: Gem, color: "text-slate-200" },
     ROSE: { name: "Rose", icon: Flower2, color: "text-pink-400" },
     AURORA: { name: "Aurora", icon: Sparkles, color: "text-purple-400" },
@@ -236,8 +237,10 @@ function PracticeContent() {
     }, [durationMinutes]);
 
     const [timeLeft, setTimeLeft] = useState(0);
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
     const [breathPhase, setBreathPhase] = useState<BreathPhase>("INHALE");
     const [countdown, setCountdown] = useState(3);
+    const [isChatOpen, setIsChatOpen] = useState(false);
     const [selectedTheme, setSelectedTheme] = useState<Theme>(() => {
         // Load saved theme from localStorage
         if (typeof window !== "undefined") {
@@ -246,6 +249,14 @@ function PracticeContent() {
         }
         return "ROSE";
     });
+
+    // Surf Pre-boarding Form Data
+    const [surfIntensity, setSurfIntensity] = useState<number>(5);
+    const [surfTrigger, setSurfTrigger] = useState<string>("");
+    const [surfLocation, setSurfLocation] = useState<string>("");
+    const [surfAbstinence, setSurfAbstinence] = useState<string>("");
+    const [surfMentalTrap, setSurfMentalTrap] = useState<string>("");
+    const surfDiagnosisRef = useRef<string>(""); // useRef to avoid stale closure in heartbeat useEffect
     const [selectedPattern, setSelectedPattern] = useState<BreathingPatternId>(() => {
         if (typeof window !== "undefined") {
             const saved = localStorage.getItem("breathingPattern") as BreathingPatternId | null;
@@ -253,8 +264,34 @@ function PracticeContent() {
         }
         return "478";
     });
-    const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess } = useHaptics();
 
+    const [guidanceMode, setGuidanceMode] = useState<'off' | 'light' | 'medium' | 'heavy' | 'ai'>(() => {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("practiceGuidanceMode");
+            if (saved === 'light' || saved === 'medium' || saved === 'heavy' || saved === 'ai' || saved === 'off') return saved as any;
+        }
+        return 'off';
+    });
+    const [surfFrequency, setSurfFrequency] = useState<number>(() => {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("surfFrequency");
+            return saved ? parseInt(saved, 10) : 45;
+        }
+        return 45;
+    });
+
+    useEffect(() => {
+        localStorage.setItem("practiceGuidanceMode", guidanceMode);
+    }, [guidanceMode]);
+
+    // AI Smart Reminder States
+    const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+    const [aiMood, setAiMood] = useState('平静');
+    const [aiMode, setAiMode] = useState('常规正念');
+    const [aiFrequency, setAiFrequency] = useState<'light' | 'medium' | 'heavy'>('medium');
+    const [activeSkillMetadata, setActiveSkillMetadata] = useState<{file: string, stage: string, toolCalled?: boolean, functionName?: string} | null>(null);
+
+    const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess } = useHaptics();
     // --- Time Selector Visibility ---
     const [isSelectorVisible, setIsSelectorVisible] = useState(false); // Default hidden
     const [showSoundscapes, setShowSoundscapes] = useState(false);
@@ -301,7 +338,556 @@ function PracticeContent() {
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
     const router = useRouter(); // Use App Router
-    const { activeTracks, stopAll } = useGlobalWhiteNoise();
+    const { activeTracks } = useGlobalWhiteNoise();
+    const { activate: activateKeepAwake, deactivate: deactivateKeepAwake } = usePracticeKeepAwake();
+
+    // --- Guidance TTS ---
+    const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            ttsAudioRef.current = new Audio();
+        }
+    }, []);
+
+    const ttsQueueRef = useRef<{
+        jobs: { text: string; blobUrl?: string; isReady: boolean }[];
+        isFetching: boolean;
+        isPlaying: boolean;
+    }>({ jobs: [], isFetching: false, isPlaying: false });
+
+    // The Queue Processor Engine
+    const processTTSQueue = async () => {
+        const queue = ttsQueueRef.current;
+        
+        // Worker 1: Fetching
+        if (!queue.isFetching) {
+            const nextUnfetched = queue.jobs.find(j => !j.blobUrl && !j.isReady);
+            if (nextUnfetched) {
+                queue.isFetching = true;
+                try {
+                    const ttsRes = await fetch(getApiUrl("/api/tts"), {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            text: nextUnfetched.text,
+                            voice: "zh-CN-XiaoxiaoNeural",
+                            rate: "-15%"
+                        })
+                    });
+                    if (ttsRes.ok) {
+                        const blob = await ttsRes.blob();
+                        nextUnfetched.blobUrl = URL.createObjectURL(blob);
+                        nextUnfetched.isReady = true;
+                    } else {
+                        nextUnfetched.isReady = true; 
+                    }
+                } catch (e) {
+                    console.error("TTS pipeline fetch failed", e);
+                    nextUnfetched.isReady = true;
+                } finally {
+                    queue.isFetching = false;
+                    processTTSQueue(); 
+                }
+            }
+        }
+
+        // Worker 2: Playing
+        if (!queue.isPlaying) {
+            const nextToPlay = queue.jobs[0];
+            if (nextToPlay && nextToPlay.isReady) {
+                if (nextToPlay.blobUrl && ttsAudioRef.current) {
+                    queue.isPlaying = true;
+                    const audio = ttsAudioRef.current;
+                    audio.src = nextToPlay.blobUrl;
+                    audio.volume = 0.8;
+                    console.log("[TTS Pipeline] Playing chunk:", nextToPlay.text);
+                    
+                    const onEnded = () => {
+                        audio.removeEventListener('ended', onEnded);
+                        audio.removeEventListener('error', onEnded);
+                        queue.jobs.shift(); // remove played
+                        queue.isPlaying = false;
+                        processTTSQueue();
+                    };
+                    audio.addEventListener('ended', onEnded);
+                    audio.addEventListener('error', onEnded);
+                    
+                    audio.play().catch(e => {
+                        console.error("[TTS Pipeline] play failed", e);
+                        onEnded();
+                    });
+                } else {
+                    // Blob failed, skip
+                    queue.jobs.shift();
+                    processTTSQueue();
+                }
+            }
+        }
+    };
+
+    const enqueueTTSChunk = (text: string) => {
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        ttsQueueRef.current.jobs.push({ text: trimmed, isReady: false });
+        processTTSQueue();
+    };
+
+    const clearTTSQueue = () => {
+        ttsQueueRef.current.jobs = [];
+        ttsQueueRef.current.isPlaying = false;
+        ttsQueueRef.current.isFetching = false;
+        if (ttsAudioRef.current) {
+            ttsAudioRef.current.pause();
+            ttsAudioRef.current.src = "";
+        }
+    };
+
+    // Keep playVoicePrompt for simple random fixed prompts
+    const playVoicePrompt = async (text: string): Promise<void> => {
+        enqueueTTSChunk(text);
+        return Promise.resolve(); // Resolves instantly so we don't block the caller
+    };
+
+    // Guidance Prompt Pools (Longer, deeper start prompts)
+    const START_PROMPTS = [
+        "欢迎来到今天的正式冥想练习。在这段完全属于你的时间里，没有任何人会来打扰你，也没有任何急需处理的任务。请慢慢找一个最安稳舒适的姿势，轻轻地、毫无保留地闭上双眼。跟随着你下一次深长的呼吸，感受身体一点一点地沉入当下的宁静之中。",
+        "很高兴你愿意为自己腾出这段无比珍贵的时光。此刻，你可以把全世界暂时隔离在门外。无论今天奔波了多久，在接下来的时间里，让身体的每一寸肌肉都逐渐松弛下来。深吸一口气，感受清凉的空气充满胸腔，再缓缓吐出，卸下肩颈所有的疲惫与紧绷。",
+        "请为自己终于停下了脚步而感到自豪。先把所有的期待、评判以及待办事项，通通放在一旁。此刻，没有任何你要去的地方，也没有任何你要做的事情。试着把觉知轻轻收回来，放在自己一上一下、连绵不断的呼吸声中。",
+        "慢慢地，让眼皮自然地下垂、闭拢。你的头脑此刻可能依然有些吵闹，甚至思绪纷飞，这都非常正常。请像一位慈悲的旁观者一样，允许内心的喧嚣发生、又自己散去。你只需要把最轻柔的注意力，维系在鼻尖进出的那一缕空气上。"
+    ];
+
+    const MIDDLE_PROMPTS = [
+        "如果你发现此刻思绪飘远了，没关系，这正是大脑最擅长做的事。微笑着，重新把心意带回到呼吸上。",
+        "注意此时此刻，你的心跑去了哪里？不管去得有多远，借由一呼一吸的手，你就能立刻回来。",
+        "发现自己走神，其实一次完美的觉知复苏。现在，轻轻牵起注意力的手，像牵着一个迷路的孩子一样，把它带回这里。",
+        "无论你的心正在追逐未来，还是反复咀嚼过去，都不必自责。只需在下一次吸气时，把一切拉回当下。",
+        "当你听到我的声音，这就是生命在提醒你：回到现在。感受空气划过鼻尖的那一点微末清凉。",
+        "不用立刻斩断杂念，只需要把注意力的探照灯，温柔且缓慢地转回到胸腔的一起一伏上。",
+        "分心是冥想路上的必经风景，而不是障碍。看见了风景后，现在，我们继续回归宁静的旅程。",
+        "别在乎你刚才已经发呆了多久，在时间的长河里，只要你愿意，呼出的这一秒就是全新的起点。",
+        "如果有很多声音在争夺你的注意力，没关系。挑出呼吸的声音，把它作为你此刻唯一的锚点。",
+        "最深刻的专注，往往伴随着无数次的偏离。每一次温和的拉回，都在一次次强化你的内在力量。",
+        "试着在心里退后一步。看着脑海里浮现的念头，就像坐在河谷旁，静静看着水面上漂过的一片落叶。",
+        "念头只是大脑分泌的产物，它们不是你，更不是事实。允许它们出现，也允许它们自然消散。",
+        "如果大脑向你抛出焦虑、情绪或是画面，不要去抓取。做一个天空般的旁观者，任凭云卷云舒。",
+        "那些纷沓至来的想法，就像是在屏幕上播放的无声电影。你只需要安坐在观众席里，不参与，不点评。",
+        "试着只是看见你在想什么，而不是陷入其中。看见之后，轻轻放下，把空间留给接下来的呼吸。",
+        "念头就像路过的列车，你站在站台上，看着它们呼啸而过，但你不需要上车。",
+        "你无法让海滩上的波浪停止拍打，但你可以选择不去冲浪。面对涌来的思绪，也是如此。",
+        "有些想法会非常喧闹，带着强烈的情绪。把它当作一阵吹过树林的急风，风过之后，树林依旧宁静。",
+        "不需要强求清空大脑。试着在这所有的思绪之中，凿出一个只属于你和呼吸的宁静小房间。",
+        "每一个念头的寿命其实都很短，只要你不去给它添柴加火，它就会自己慢慢熄灭。",
+        "不论你刚刚内心多么烦躁或混乱，这都无妨。冥想没有好坏之分，此刻发生的一切，就是它该有的样子。",
+        "放下你要变得专注或者立刻平静的企图心。允许此时的你就是紧绷的，只要你去觉察这个事实就好。",
+        "不要评价你刚才的表现。我们不用打分，在这个时间段里，只要你还坐在这里，这就已经是最完美的修行。",
+        "如果周围有噪音甚至打扰，不要把它们当作敌人。试着将这些声音也纳入你的禅定中，成为环境的一部分。",
+        "也许你觉得大脑很乱、做得不够好，那只是大脑的评判机制在运作罢了。轻轻告诉自己：我已经做得很好了。",
+        "去接纳内心的每一个低谷，每一次急躁。用如同对待最好朋友般的温柔，来对待此刻自己内心的任何一面。",
+        "冥想没有必须到达的境界。此时、此刻、此地，你只需要纯粹地坐在这里。",
+        "我们平时总是习惯解决问题。但在这一刻，你不是一个需要被修复的机器，不用解决任何事。",
+        "当某种情绪像浪潮涌来，不去迎面撞击它。让自己化作一片无边无际的沙滩，去承载所有涌上来的海浪。",
+        "给自己允许，允许自己无所事事，允许自己在这个时刻一事无成。存在本身，就是最高的目的。",
+        "把极其微小的注意力，轻轻放在你的肩膀和脖颈上。如果在那里感到了紧绷，随着一声悠长的呼气，让它融化掉。",
+        "感受你身体此时的重量。让椅子或垫子完全稳稳地托住你，你不需要用任何力气去支撑你自己。",
+        "将觉知带到你的面部。是否不知不觉皱起了眉，或者咬紧了牙？现在，让面部肌肉像冰雪消融一样慢慢松开。",
+        "你能感觉到胸腔深处、心脏的跳动吗？无论它快或慢，试着只是陪伴着这股温热的生命节奏。",
+        "把空气想象成一道流动的水。吸气时，水流滋养你的内脏；呼气时，水流带走你一整天的疲惫与不适。",
+        "如果感觉到身体某处有酸痛或麻木，不要抗拒。把深长的呼吸送向那里，温柔地包裹住它。",
+        "从头顶，到肩膀，到指尖，再到脚趾。允许每一寸皮肤都进入休眠状态。你已经做得足够好了。",
+        "注意双手相交或者放在腿上的温度。这种微小而确定的触感，就是我们与当下最深切的连接。",
+        "让眼皮再沉重一点。切断大量的视觉信息后，去体会这只有听觉、触觉，绝对纯粹而安全的内在庇护所。",
+        "让每一次呼气都比以往更加彻底一点。在一呼一出之间，把积聚的浑浊，统统排向地心。",
+        "放松对所有事情的控制权。深吸一口气，然后任凭身体自己呼出它。让呼吸去完成它自己，你只负责体会。",
+        "想象你原本背负的沉重包袱，正一个接一个地掉落在周围的地上。现在的你，无比轻盈。",
+        "随着每一次起伏的波浪，感受自己正在越来越深地沉入一个宁静的无底空间，这里毫无防备，却充满了绝对的安全。",
+        "在这短暂的停顿中，什么都不去期待。过去的已经沉没，未来的还没到来，你能抓住的，只有此时、此地。",
+        "所有你要背负的责任，在这一刻都被彻底豁免了。这是一个没有任务、没有目标、哪怕闭着眼浪费光阴也极其合理的港湾。",
+        "去试着聆听两口呼吸之间，那段极其微小的停顿。在那短暂的零点几秒钟里，整个世界是绝对静止的。",
+        "把心安顿在当下这一秒钟里。这一秒里没有未还的债务，没有待回的邮件，也没有任何人苛刻的期待。",
+        "感受自己像是一棵扎进深土里的巨树。无论外界的风雨如何喧嚣流转，你的根基始终稳固、深沉、寂静。",
+        "把这个时刻，当作大自然赠予你的一个小小的生命空隙。躲在这个纯净的空隙里，不用再做大人，找回你自己。",
+        "无论房间外面正在发生什么，在这个只属于你的微小宇宙里，此刻，一切安好。"
+    ];
+
+    const END_PROMPTS = [
+        "我们今天的练习马上就要结束了。你可以开始稍微活动一下手指和脚趾，在准备好的时候，缓缓睁开双眼。",
+        "带着这份你刚刚为自己寻回的宁静，轻轻动一动身体。无论何时觉得准备好了，按你的节奏，重新看见这个世界。",
+        "在结束之前，在心里默默感谢自己拨出的这段时间。慢慢地，唤醒你的身体，温柔地睁开眼睛。",
+        "练习接近尾声。让外界的声音、光线重新进入你的觉知。动动肩膀，带着这份踏实，慢慢睁开眼。",
+        "深深地吸气，让这份清澈流向全身；缓缓地呼气。把现在的放松感带入接下来的生活，慢慢睁开双眼。",
+        "记住这种回归平静的感觉，它随时都在你心里。动动脚尖，伸一个小懒腰，缓缓地，睁开眼。"
+    ];
+
+    // Guidance Preloader Logic (Zero Latency & Autoplay Policy Bypassing)
+    const preloadedStartUrlRef = useRef<string | null>(null);
+    const preloadedStartTextRef = useRef<string | null>(null);
+    const aiHistoryRef = useRef<{ role: string; content: string }[]>([]);
+    const [chatHistory, setChatHistory] = useState<{role: string; content: string}[]>([]);
+    
+    // Helper to keep ref and state in sync
+    const pushAiLog = useCallback((role: string, content: string) => {
+        aiHistoryRef.current.push({ role, content });
+        setChatHistory([...aiHistoryRef.current]);
+    }, []);
+
+    // Helper for streaming chat log updates
+    const startAiStreamLog = () => {
+        aiHistoryRef.current.push({ role: 'assistant', content: '' });
+        setChatHistory([...aiHistoryRef.current]);
+        return aiHistoryRef.current.length - 1;
+    };
+    
+    const appendAiStreamLog = (index: number, chunk: string) => {
+        if (aiHistoryRef.current[index]) {
+            aiHistoryRef.current[index].content += chunk;
+            setChatHistory([...aiHistoryRef.current]);
+        }
+    };
+
+    // Common Generic Stream Fetch helper
+    const streamAiReminder = async (bodyPayload: any, disableAutoQueue = false) => {
+        const r = await fetch("/api/generate-reminder", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(bodyPayload)
+        });
+
+        if (!r.body) throw new Error("No body from backend");
+
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let metaParsed = false;
+        let buffer = "";
+        let unplayedSentenceBuffer = "";
+        
+        const logIndex = startAiStreamLog();
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            
+            if (!metaParsed) {
+                if (buffer.startsWith('__META__=')) {
+                    const newlineIdx = buffer.indexOf('\n');
+                    if (newlineIdx !== -1) {
+                        const metaStr = buffer.substring(9, newlineIdx);
+                        try {
+                            const meta = JSON.parse(metaStr);
+                            if (meta.activeSkill) setActiveSkillMetadata({ file: meta.activeSkill, stage: meta.rainStage, toolCalled: meta.toolCalled, functionName: meta.functionName });
+                        } catch(e) {}
+                        metaParsed = true;
+                        
+                        const textChunk = buffer.substring(newlineIdx + 1);
+                        buffer = "";
+                        if (textChunk) {
+                            appendAiStreamLog(logIndex, textChunk);
+                            unplayedSentenceBuffer += textChunk;
+                        }
+                    }
+                } else {
+                    metaParsed = true; // Fallback, no meta
+                    appendAiStreamLog(logIndex, buffer);
+                    unplayedSentenceBuffer += buffer;
+                    buffer = "";
+                }
+            } else {
+                appendAiStreamLog(logIndex, buffer);
+                unplayedSentenceBuffer += buffer;
+                buffer = "";
+            }
+
+            // Chunk Splitter check for punctuation
+            const sentenceMatch = unplayedSentenceBuffer.match(/([^。！？；,;]+[。！？；,;])/);
+            if (sentenceMatch) {
+                const sentence = sentenceMatch[0];
+                if (!disableAutoQueue) enqueueTTSChunk(sentence);
+                unplayedSentenceBuffer = unplayedSentenceBuffer.substring(sentence.length);
+            }
+        }
+        
+        // Flush remaining
+        if (unplayedSentenceBuffer) {
+            if (!disableAutoQueue) enqueueTTSChunk(unplayedSentenceBuffer);
+        }
+        
+        return aiHistoryRef.current[logIndex].content; // return full accumulated text
+    };
+
+    const bowlBufferRef = useRef<AudioBuffer | null>(null);
+
+    const preloadAudioAssets = async () => {
+        if (guidanceMode === 'off' && selectedTheme !== 'SURF') return;
+        
+        // 1. Preload TTS Blob
+        try {
+            let text = START_PROMPTS[Math.floor(Math.random() * START_PROMPTS.length)];
+            
+            if (guidanceMode === 'ai' || selectedTheme === 'SURF') {
+                try {
+                    const fullText = await streamAiReminder({
+                        mood: aiMood,
+                        mode: selectedTheme === 'SURF' ? 'urge_surfing' : aiMode,
+                        elapsedTime: 0,
+                        totalTime: durationMinutes,
+                        sessionPhase: 'start',
+                        practiceCount: selectedTheme === 'SURF' && typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0
+                    }, true); // preloads without auto-playing queue
+                    if (fullText) text = fullText;
+                } catch (e) {
+                    console.error("AI Start preload failed stream generation, fallback to fixed text", e);
+                }
+            }
+            
+            preloadedStartTextRef.current = text;
+
+            const ttsRes = await fetch(getApiUrl("/api/tts"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text, voice: "zh-CN-XiaoxiaoNeural", rate: "-15%" })
+            });
+            if (ttsRes.ok) {
+                const blob = await ttsRes.blob();
+                if (preloadedStartUrlRef.current) URL.revokeObjectURL(preloadedStartUrlRef.current);
+                preloadedStartUrlRef.current = URL.createObjectURL(blob);
+            }
+        } catch (e) {
+            console.error("Preload TTS failed", e);
+        }
+
+        // 2. Preload Singing Bowl into Web Audio API (bypasses HTML5 Autoplay rules)
+        try {
+            if (!bowlBufferRef.current) {
+                const bowlRes = await fetch("/bowl.wav");
+                const arrayBuffer = await bowlRes.arrayBuffer();
+                const ctx = getSharedAudioContext();
+                bowlBufferRef.current = await ctx.decodeAudioData(arrayBuffer);
+            }
+        } catch (e) {
+            console.error("Preload bowl failed", e);
+        }
+    };
+
+    // Guidance Triggers Tracker
+    const playedTriggersRef = useRef<Set<number>>(new Set());
+    const guidanceTimestampsRef = useRef<{ start: number, middles: number[], end: number }>({ start: -1, middles: [], end: -1 });
+
+    // Compute Triggers & Preload on start or mode change
+    useEffect(() => {
+        const totalSeconds = durationMinutes * 60;
+        
+        let middles: number[] = [];
+        
+        // Dynamic algorithm adjusting frequency proportionally to selected duration
+        if (totalSeconds >= 180) { // Require at least 3 mins to insert middle prompts
+            const effectiveMode = guidanceMode === 'ai' ? aiFrequency : guidanceMode;
+            if (effectiveMode === 'light') {
+                // 1 reminder exactly at 50% marking
+                middles = [Math.floor(totalSeconds / 2)];
+            } else if (effectiveMode === 'medium') {
+                // Dynamically split into thirds (33%, 66%), creating 2 gentle midway anchors
+                middles = [
+                    Math.floor(totalSeconds / 3),
+                    Math.floor((totalSeconds * 2) / 3)
+                ];
+            } else if (effectiveMode === 'heavy') {
+                // High frequency: Cap minimum interval to 2 minutes, but smoothly scale for long sessions 
+                // e.g. 10m -> hits at 2.5m, 5m, 7.5m (3 reminders). 60m -> hits every 5m (11 reminders).
+                const interval = Math.max(120, Math.floor(totalSeconds / 6)); 
+                for (let t = interval; t < totalSeconds - 60; t += interval) {
+                    middles.push(t);
+                }
+            }
+        }
+
+        guidanceTimestampsRef.current = {
+            start: 2, // Play exactly at 2 seconds elapsed
+            middles,
+            end: totalSeconds >= 60 ? totalSeconds - 30 : -1 // Trigger 30s before end to give time for ending speech
+        };
+
+        // Transition handling & preloading
+        if (phase === "TRANSITION_TO_PRACTICE" || phase === "IDLE") {
+            playedTriggersRef.current.clear();
+            if (phase === "TRANSITION_TO_PRACTICE") {
+                aiHistoryRef.current = [];
+                setChatHistory([]);
+            }
+            if (ttsAudioRef.current) ttsAudioRef.current.pause();
+            
+            // Trigger seamless background preload
+            if (phase === "IDLE") preloadAudioAssets();
+        }
+    }, [phase, guidanceMode, aiFrequency, durationMinutes]);
+
+    useEffect(() => {
+        if (phase !== "PRACTICING" || (guidanceMode === 'off' && selectedTheme !== "SURF")) return; // Always process SURF theme pulses even if guidanceMode off
+
+        const totalSeconds = durationMinutes * 60;
+        const currentElapsed = elapsedSeconds;
+        const triggers = guidanceTimestampsRef.current;
+        const played = playedTriggersRef.current;
+
+        const playRandom = async (arr: string[]) => {
+            const text = arr[Math.floor(Math.random() * arr.length)];
+            await playVoicePrompt(text);
+        };
+
+        const playSingingBowl = () => {
+            try {
+                if (bowlBufferRef.current) {
+                    const ctx = getSharedAudioContext();
+                    
+                    if (ctx.state === 'suspended') {
+                        ctx.resume();
+                    }
+                    
+                    const source = ctx.createBufferSource();
+                    source.buffer = bowlBufferRef.current;
+                    const gainNode = ctx.createGain();
+                    gainNode.gain.value = 1.0;
+                    
+                    source.connect(gainNode);
+                    gainNode.connect(ctx.destination);
+                    source.start(0);
+                } else {
+                    const bowl = new window.Audio("/bowl.wav");
+                    bowl.volume = 1.0;
+                    bowl.play().catch(e => console.error("Bowl playback failed", e));
+                }
+            } catch (e) {
+                console.error("Audio object creation failed", e);
+            }
+        };
+
+        const fetchAiPrompt = async (sessionPhase: 'middle' | 'end', elapsed: number) => {
+            try {
+                if (selectedTheme === 'SURF') {
+                    pushAiLog('user', `(距开始已 ${elapsed} 秒) 我还在继续体验，请给出下一句旁白指引。`);
+                }
+
+                await streamAiReminder({
+                    mood: aiMood,
+                    mode: selectedTheme === 'SURF' ? 'urge_surfing' : aiMode,
+                    elapsedTime: elapsed,
+                    totalTime: durationMinutes * 60,
+                    sessionPhase,
+                    diagnosisProfile: selectedTheme === 'SURF' ? surfDiagnosisRef.current : undefined,
+                    practiceCount: selectedTheme === 'SURF' && typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0,
+                    history: aiHistoryRef.current
+                });
+            } catch (e) {
+                console.error(`AI ${sessionPhase} failed`, e);
+                const arr = sessionPhase === 'end' ? END_PROMPTS : MIDDLE_PROMPTS;
+                const fbText = arr[Math.floor(Math.random() * arr.length)];
+                pushAiLog('assistant', fbText);
+                await playVoicePrompt(fbText);
+            }
+        };
+
+        // 1. Start
+        if (currentElapsed === triggers.start && !played.has(triggers.start)) {
+            played.add(triggers.start);
+            playSingingBowl(); // Chime first
+            if (selectedTheme === 'SURF') {
+                // SURF mode uses its own specialized intro in PREP_SURF, do nothing.
+            } else if (guidanceMode === 'ai' && preloadedStartTextRef.current) {
+                pushAiLog('assistant', preloadedStartTextRef.current);
+                if (preloadedStartUrlRef.current && ttsAudioRef.current) {
+                    ttsAudioRef.current.src = preloadedStartUrlRef.current;
+                    ttsAudioRef.current.volume = 0.8;
+                    const audio = ttsAudioRef.current;
+                    // Wait 8000ms for the bowl's reverbs to fade naturally before speaking
+                    setTimeout(() => {
+                        audio.play().catch(e => console.error(e));
+                    }, 8000);
+                } else {
+                    setTimeout(() => playRandom(START_PROMPTS), 8000); // Fallback
+                }
+            } else {
+                setTimeout(() => playRandom(START_PROMPTS), 8000); // Fallback
+            }
+        }
+
+        // 2. Middle
+        if (selectedTheme !== 'SURF' && triggers.middles.includes(currentElapsed) && !played.has(currentElapsed)) {
+            played.add(currentElapsed);
+            if (guidanceMode === 'ai') {
+                fetchAiPrompt('middle', currentElapsed).catch(console.error);
+            } else {
+                playRandom(MIDDLE_PROMPTS).catch(console.error); // No chime for middles to keep it gentle
+            }
+        }
+
+        // 3. End
+        if (selectedTheme !== 'SURF' && currentElapsed === triggers.end && !played.has(triggers.end)) {
+            played.add(triggers.end);
+            const doEnd = async () => {
+                // Speech first, wait for completion, then chime the ending marking
+                if (guidanceMode === 'ai') {
+                    await fetchAiPrompt('end', currentElapsed);
+                } else {
+                    await playRandom(END_PROMPTS);
+                }
+                playSingingBowl();
+            };
+            doEnd().catch(console.error);
+        }
+
+        // 4. SURF Auto Pulse (every 45s) - OPTION A SELECTED: Keep heartbeat, but use Function Calling
+        if (selectedTheme === "SURF" && currentElapsed > 0 && currentElapsed % surfFrequency === 0 && !played.has(`surf_${currentElapsed}`)) {
+            played.add(`surf_${currentElapsed}`);
+            const doSurfPulse = async () => {
+                try {
+                    await streamAiReminder({
+                        mood: aiMood,
+                        mode: 'urge_surfing',
+                        elapsedTime: currentElapsed,
+                        totalTime: totalSeconds,
+                        sessionPhase: 'middle',
+                        diagnosisProfile: surfDiagnosisRef.current,
+                        history: aiHistoryRef.current,
+                        practiceCount: typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0
+                    });
+                } catch(e) { console.error(e); }
+            };
+            doSurfPulse();
+        }
+    }, [elapsedSeconds, phase, guidanceMode, durationMinutes, aiMood, aiMode, selectedTheme]);
+
+    // --- Urge Surfing Realtime Action ---
+    const handleUrgeSurfingAction = async (action: string) => {
+        triggerMedium();
+        const isFinish = action.includes('完成');
+        const count = typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0;
+        
+        try {
+            if (isFinish) {
+                if (typeof window !== 'undefined') localStorage.setItem('surfSuccessCount', (count + 1).toString());
+            }
+            pushAiLog('user', `我现在的感受是：${action}`);
+
+            clearTTSQueue();
+            
+            await streamAiReminder({
+                mood: aiMood,
+                mode: 'urge_surfing',
+                elapsedTime: elapsedSeconds,
+                totalTime: durationMinutes * 60,
+                sessionPhase: isFinish ? 'end' : 'middle',
+                history: aiHistoryRef.current,
+                userAction: action,
+                diagnosisProfile: surfDiagnosisRef.current,
+                practiceCount: count
+            });
+        } catch (e) {
+            console.error("SURF Action API Failed", e);
+        }
+
+        if (isFinish) {
+            completePractice();
+        }
+    };
 
     // --- Local Notifications (for auto habit reminder) ---
 
@@ -1413,6 +1999,92 @@ function PracticeContent() {
         });
     };
 
+    const renderSurf = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const elapsedSeconds = state.elapsedSeconds || 0;
+        const tMinutes = elapsedSeconds / 60;
+        
+        // Psychological Urge Curve: 0m->0, 1m->1, 3m->1, 5m->0.1, >5m->0.1
+        let urgeIntensity = 0;
+        if (tMinutes < 1) urgeIntensity = tMinutes; // Rising
+        else if (tMinutes < 3) urgeIntensity = 1; // Peak Urge
+        else if (tMinutes < 5) urgeIntensity = Math.max(0.05, 1 - (tMinutes - 3) / 2); // Receding
+        else urgeIntensity = 0.05; // Calm baseline
+        
+        // Extremely smooth, localized time
+        const speed = 0.0008;
+        const now = timestamp * speed;
+
+        const centerX = width / 2;
+        const horizonY = height * 0.7; // The base sea level is in the lower third
+
+        state.particles.forEach((p: any, i: number) => {
+            // Pseudorandom organic distribution
+            const hashU = Math.abs(Math.sin(i * 11.111)); // Horizontal scatter (0 to 1)
+            const u = hashU; 
+            
+            // Depth distribution (0 is surface, 1 is abyss). Cubing creates a thick "skin" near 0.
+            const depthHash = Math.abs(Math.sin(i * 99.123)); 
+            const depthFactor = depthHash * depthHash * depthHash; 
+            
+            // Absolutely NO horizontal scrolling. This cures the motion sickness entirely.
+            const xNormalized = u - 0.5; // -0.5 to 0.5
+            const targetX = centerX + xNormalized * width * 1.5; // Spread wider than screen
+            
+            // Asymmetric Gaussian Curve (steeper on right side) to mimic a "Breaking Wave" profile
+            const skew = 1 + xNormalized * 2.0; 
+            const skewedX = xNormalized * Math.max(0.2, skew);
+            const spread = 0.04 + urgeIntensity * 0.04; 
+            const hump = Math.exp(-(skewedX * skewedX) / spread);
+            
+            // Huge towering peak during intense urges
+            const amplitude = 30 + urgeIntensity * (height * 0.35); 
+            
+            // Vertical liquid ripple (adds organic life without shifting particle X position)
+            const ripple = Math.sin(u * Math.PI * 15 - now * 2) * (3 + urgeIntensity * 8);
+            
+            // Combine breath, hump, and ripple for the surface height
+            const surfaceY = horizonY - hump * amplitude * breathScale + ripple;
+            
+            // Drop particles downward into the deep water
+            const maxDepth = height * 0.4;
+            const targetY = surfaceY + depthFactor * maxDepth;
+
+            // Soft suspended floating orbit
+            const floatX = Math.sin(now + i) * (5 + hump * 5);
+            const floatY = Math.cos(now + i * 1.5) * (5 + hump * 5);
+
+            p.diffuseX = p.diffuseX || p.x;
+            p.diffuseY = p.diffuseY || p.y;
+            p.diffuseX += ((targetX + floatX) - p.diffuseX) * 0.03 * transitionProgress;
+            p.diffuseY += ((targetY + floatY) - p.diffuseY) * 0.03 * transitionProgress;
+            p.x = p.diffuseX;
+            p.y = p.diffuseY;
+
+            // Deep emotional coloring
+            const isSurface = depthFactor < 0.05;
+            
+            let hue = 210 - (1 - depthFactor) * 20; // Abyss is teal, surface is blue
+            if (isSurface) hue = 190 + hump * 15; // Wave crest is bright cyan
+            
+            let saturation = 40 + urgeIntensity * 40 + hump * 20;
+
+            let lightness = 8 + (1 - depthFactor) * 15; // Dark depths
+            if (isSurface) {
+                lightness += 15 + hump * 50 * urgeIntensity; // Glow at the crest
+            }
+            
+            const alpha = (0.2 + (1 - depthFactor) * 0.8) * (0.4 + bloomProgress * 0.6);
+            
+            // Crest particles are large and glowing, abyss particles are dust
+            const particleSize = p.size * (isSurface ? 1.5 + hump * urgeIntensity : 0.6 + (1 - depthFactor) * 0.6);
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, particleSize, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
+            ctx.fill();
+        });
+    };
+
     const renderPrism = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const centerX = width / 2;
         const centerY = height / 2;
@@ -1496,8 +2168,9 @@ function PracticeContent() {
     };
 
     const renderSphere = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
+        const isMobile = width <= 768;
         const centerX = width / 2;
-        const centerY = height / 2;
+        const centerY = height / 2 + (isMobile ? Math.min(height * 0.07, 68) : 0);
         const now = Date.now();
         const introElapsed = now - (state.themeStartTime || 0);
 
@@ -1536,7 +2209,7 @@ function PracticeContent() {
 
                 // Radius breathes heavily in idle
                 const idlePulse = Math.sin(time * 2) * 20;
-                let r = (160 + idlePulse) + chaoticNoise * 15;
+                let r = ((isMobile ? 186 : 160) + idlePulse) + chaoticNoise * 15;
 
                 // 3D Coords
                 let x = r * Math.sin(phi) * Math.cos(theta);
@@ -1580,7 +2253,7 @@ function PracticeContent() {
             const phi = Math.acos(1 - (2 * i) / PARTICLE_COUNT);
             const theta = Math.sqrt(PARTICLE_COUNT * Math.PI) * phi + rotY;
 
-            let r = 130 * breathScale;
+            let r = (isMobile ? 162 : 130) * breathScale;
 
             // Bloom Expansion
             if (bloomProgress > 0) {
@@ -1690,6 +2363,8 @@ function PracticeContent() {
 
         if (state.phase === "SUMMARY" && state.textTargets && state.textTargets.length > 0) {
             renderTextMorph(ctx, state, width, height, now);
+        } else if (state.theme === "SURF") {
+            renderSurf(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "LIQUID") {
             renderLiquid(ctx, state, width, height, timestamp, transitionProgress, bloomProgress, breathScale);
         } else if (state.theme === "AURORA") {
@@ -1820,15 +2495,18 @@ function PracticeContent() {
         const isPracticing = phase === "PRACTICING" || phase === "TRANSITION_TO_PRACTICE" || phase === "COUNTDOWN";
 
         if (isPracticing) {
-            KeepAwake.keepAwake().catch(console.error);
+            void activateKeepAwake();
         } else {
-            KeepAwake.allowSleep().catch(console.error);
+            void deactivateKeepAwake();
         }
 
+    }, [activateKeepAwake, deactivateKeepAwake, phase]);
+
+    useEffect(() => {
         return () => {
-            KeepAwake.allowSleep().catch(console.error);
+            void deactivateKeepAwake();
         };
-    }, [phase]);
+    }, [deactivateKeepAwake]);
 
     useEffect(() => {
         // Sync Ref for Animation Loop
@@ -1851,6 +2529,9 @@ function PracticeContent() {
     }, [breathPhase, phase, selectedTheme]); // Added selectedTheme
 
     const handleStart = () => {
+        // Start iOS PWA keep-awake fallback inside the direct user gesture.
+        void activateKeepAwake();
+
         // 🔥 CRITICAL: Unlock audio FIRST in the synchronous user click context
         // This must happen before any setTimeout/async breaks the interaction chain
         unlockAudio();
@@ -1862,8 +2543,12 @@ function PracticeContent() {
 
         // 2. Wait for transition (2s) then start countdown
         setTimeout(() => {
-            setPhase("COUNTDOWN");
-            setCountdown(3);
+            if (selectedTheme === "SURF") {
+                setPhase("PREP_SURF");
+            } else {
+                setPhase("COUNTDOWN");
+                setCountdown(3);
+            }
         }, 2000); // 2s transition matches animState.transitionDuration
     };
 
@@ -1911,8 +2596,14 @@ function PracticeContent() {
 
         // Timer
         setTimeLeft(durationMinutes * 60);
+        setElapsedSeconds(0);
+        animState.current.elapsedSeconds = 0;
         practiceTimerRef.current = setInterval(() => {
             setTimeLeft((prev) => prev - 1);
+            setElapsedSeconds((prev) => {
+                animState.current.elapsedSeconds = prev + 1;
+                return prev + 1;
+            });
         }, 1000);
     };
 
@@ -1981,9 +2672,6 @@ function PracticeContent() {
         // Stop Heart Rate Monitoring
         stopMonitoring();
 
-        // 🎵 Stop Binaural Beats
-        stopAll();
-
         if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
         clearHapticTimers();
@@ -2031,10 +2719,10 @@ function PracticeContent() {
 
     // Monitor for completion
     useEffect(() => {
-        if (phase === "PRACTICING" && timeLeft <= 0) {
+        if (phase === "PRACTICING" && timeLeft <= 0 && selectedTheme !== "SURF") {
             completePractice();
         }
-    }, [timeLeft, phase]);
+    }, [timeLeft, phase, selectedTheme]);
 
     // Countdown Logic
     useEffect(() => {
@@ -2053,7 +2741,6 @@ function PracticeContent() {
         if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
         clearHapticTimers();
-        stopAll(); // Ensure audio stops on exit
     };
 
     const handleExit = () => {
@@ -2074,6 +2761,19 @@ function PracticeContent() {
         return () => cleanup();
     }, []);
 
+    useEffect(() => {
+        const previousOverflow = document.body.style.overflow;
+        const previousPaddingBottom = document.body.style.paddingBottom;
+
+        document.body.style.overflow = "hidden";
+        document.body.style.paddingBottom = "0px";
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            document.body.style.paddingBottom = previousPaddingBottom;
+        };
+    }, []);
+
 
     return (
         <>
@@ -2090,6 +2790,10 @@ function PracticeContent() {
                 />
                 <div
                     className="absolute inset-0 text-white font-sans overflow-hidden"
+                    style={{
+                        bottom: 'calc(-1 * env(safe-area-inset-bottom, 0px))',
+                        height: 'calc(100% + env(safe-area-inset-bottom, 0px))'
+                    }}
                 >
 
                     {/* Canvas - also extend to cover safe area */}
@@ -2102,7 +2806,14 @@ function PracticeContent() {
                         }}
                     />
 
-                    <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-safe">
+                    <div
+                        className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between"
+                        style={{
+                            paddingTop: 'env(safe-area-inset-top)',
+                            paddingLeft: 'env(safe-area-inset-left)',
+                            paddingRight: 'env(safe-area-inset-right)',
+                        }}
+                    >
 
                         {/* Header */}
                         <header className="w-full p-6 flex justify-between items-start pointer-events-auto z-50">
@@ -2178,6 +2889,120 @@ function PracticeContent() {
                                         {countdown}
                                     </motion.div>
                                 )}
+                                {phase === "PREP_SURF" && (
+                                    <motion.div
+                                        key="prep"
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, scale: 1.1 }}
+                                        className="flex flex-col items-center pointer-events-auto space-y-6 bg-black/40 p-8 rounded-3xl backdrop-blur-xl border border-white/10 w-full max-w-sm"
+                                    >
+                                        <div className="text-xl text-white font-light tracking-widest text-center shadow-black drop-shadow-lg">
+                                            战前状况评估
+                                        </div>
+
+                                        <div className="w-full">
+                                            <div className="text-sm text-white/60 mb-2">渴望强度 ({surfIntensity}/10)</div>
+                                            <input 
+                                                type="range" min="1" max="10" step="1" 
+                                                value={surfIntensity} 
+                                                onChange={(e) => setSurfIntensity(parseInt(e.target.value))}
+                                                className="w-full accent-red-500" 
+                                            />
+                                        </div>
+
+                                        <div className="w-full">
+                                            <div className="text-sm text-white/60 mb-2">触发诱因</div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {['环境刺激', '压力', '无聊', '情绪波动', '无名火'].map(trigger => (
+                                                    <button 
+                                                        key={trigger}
+                                                        onClick={() => setSurfTrigger(trigger)}
+                                                        className={`px-3 py-1 text-sm rounded-full border transition-colors ${surfTrigger === trigger ? 'bg-red-500/40 border-red-500 text-white' : 'bg-white/5 border-white/20 text-white/60'}`}
+                                                    >
+                                                        {trigger}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="w-full">
+                                            <div className="text-sm text-white/60 mb-2">最强躯体锚点</div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {['胸口紧缩', '喉管发干', '大脑发麻', '腹部绷紧', '全身虚弱'].map(loc => (
+                                                    <button 
+                                                        key={loc}
+                                                        onClick={() => setSurfLocation(loc)}
+                                                        className={`px-3 py-1 text-sm rounded-full border transition-colors ${surfLocation === loc ? 'bg-red-500/40 border-red-500 text-white' : 'bg-white/5 border-white/20 text-white/60'}`}
+                                                    >
+                                                        {loc}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="w-full">
+                                            <div className="text-sm text-white/60 mb-2">已戒断时长</div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {['刚发作', '坚持了1天', '坚持了几天', '突破1周了'].map(t => (
+                                                    <button 
+                                                        key={t}
+                                                        onClick={() => setSurfAbstinence(t)}
+                                                        className={`px-3 py-1 text-sm rounded-full border transition-colors ${surfAbstinence === t ? 'bg-red-500/40 border-red-500 text-white' : 'bg-white/5 border-white/20 text-white/60'}`}
+                                                    >
+                                                        {t}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="w-full">
+                                            <div className="text-sm text-white/60 mb-2">当前思维旋涡（大脑的骗局）</div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {['“就抽这一口”', '“生活太累了想放松”', '“感觉空虚”', '“感觉快爆炸了”'].map(trap => (
+                                                    <button 
+                                                        key={trap}
+                                                        onClick={() => setSurfMentalTrap(trap)}
+                                                        className={`px-3 py-1 text-sm rounded-full border transition-colors ${surfMentalTrap === trap ? 'bg-red-500/40 border-red-500 text-white' : 'bg-white/5 border-white/20 text-white/60'}`}
+                                                    >
+                                                        {trap}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            onClick={async () => {
+                                                triggerMedium();
+                                                
+                                                const actionStr = `[临床接线档案] 当前渴望强度：${surfIntensity}/10。诱发原因：${surfTrigger || '未说明'}。最强躯体锚点：${surfLocation || '全身'}。已戒断时长：${surfAbstinence || '不明'}。思维诱惑骗局：${surfMentalTrap || '无'}。`;
+                                                surfDiagnosisRef.current = actionStr; // Lock it into the ref for the heartbeat
+                                                
+                                                startPractice();
+                                                
+                                                // Trigger AI with form data Start Phase 0
+                                                try {
+                                                    // Ensure the action is logged in chat history for context
+                                                    pushAiLog('user', actionStr);
+                                                    
+                                                    await streamAiReminder({
+                                                        mood: aiMood,
+                                                        mode: 'urge_surfing',
+                                                        elapsedTime: 0,
+                                                        totalTime: durationMinutes * 60,
+                                                        sessionPhase: 'start',
+                                                        diagnosisProfile: actionStr,
+                                                        history: aiHistoryRef.current,
+                                                        practiceCount: typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0
+                                                    });
+                                                } catch(e) { console.error(e); }
+                                            }}
+                                            className="w-full px-8 py-3 mt-4 bg-red-600/50 border border-red-500/50 rounded-full text-white text-lg font-medium hover:bg-red-500/70 transition-colors shadow-[0_0_20px_rgba(239,68,68,0.4)]"
+                                        >
+                                            开始冲浪
+                                        </button>
+                                    </motion.div>
+                                )}
 
                                 {phase === "PRACTICING" && (
                                     <motion.div
@@ -2189,9 +3014,19 @@ function PracticeContent() {
                                         className="text-center mix-blend-screen"
                                     >
                                         <span className="text-4xl md:text-5xl font-light tracking-[0.3em] uppercase text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-                                            {breathPhase === "INHALE" && "吸 气"}
-                                            {breathPhase === "HOLD" && "屏 气"}
-                                            {breathPhase === "EXHALE" && "呼 气"}
+                                            {selectedTheme === 'SURF' ? (
+                                                <>
+                                                    {breathPhase === "INHALE" && "感 受 浪 潮"}
+                                                    {breathPhase === "HOLD" && "立 于 浪 尖"}
+                                                    {breathPhase === "EXHALE" && "随 波 卸 力"}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    {breathPhase === "INHALE" && "吸 气"}
+                                                    {breathPhase === "HOLD" && "屏 气"}
+                                                    {breathPhase === "EXHALE" && "呼 气"}
+                                                </>
+                                            )}
                                         </span>
                                     </motion.div>
                                 )}
@@ -2248,50 +3083,55 @@ function PracticeContent() {
                                     >
                                         {/* Removed Ruler from Top */}
 
-                                        { /* Ruler Time Selector - Auto-hides on idle */}
+                                        {/* Ruler Time Selector / Surge Theme Indicator */}
                                         <div className="w-full mb-2 flex flex-col items-center justify-center min-h-[40px]">
-                                            <AnimatePresence mode="wait">
-                                                {isSelectorVisible ? (
-                                                    <motion.div
-                                                        key="selector"
-                                                        initial={{ opacity: 0, height: 0 }}
-                                                        animate={{ opacity: 1, height: "auto" }}
-                                                        exit={{ opacity: 0, height: 0 }}
-                                                        transition={{ duration: 0.3 }}
-                                                        className="w-full"
-                                                        onTouchStart={() => {
-                                                            // Keep alive on interaction
-                                                            if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
-                                                            selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
-                                                        }}
-                                                    >
-                                                        <RulerTimeSelector
-                                                            value={durationMinutes}
-                                                            onChange={(val) => {
-                                                                setDurationMinutes(val);
-                                                                // Keep alive while scrolling
+                                            {selectedTheme === "SURF" ? (
+                                                <div className="px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs tracking-widest font-medium flex items-center gap-2">
+                                                    <Waves size={14} />
+                                                    <span>冲浪急救模式 (无限时长)</span>
+                                                </div>
+                                            ) : (
+                                                <AnimatePresence mode="wait">
+                                                    {isSelectorVisible ? (
+                                                        <motion.div
+                                                            key="selector"
+                                                            initial={{ opacity: 0, height: 0 }}
+                                                            animate={{ opacity: 1, height: "auto" }}
+                                                            exit={{ opacity: 0, height: 0 }}
+                                                            transition={{ duration: 0.3 }}
+                                                            className="w-full"
+                                                            onTouchStart={() => {
                                                                 if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
                                                                 selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
                                                             }}
-                                                        />
-                                                    </motion.div>
-                                                ) : (
-                                                    <motion.button
-                                                        key="trigger"
-                                                        initial={{ opacity: 0 }}
-                                                        animate={{ opacity: 1 }}
-                                                        exit={{ opacity: 0 }}
-                                                        onClick={() => {
-                                                            setIsSelectorVisible(true);
-                                                            if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
-                                                            selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
-                                                        }}
-                                                        className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-white/50 text-xs tracking-widest font-light hover:bg-white/10 transition-colors"
-                                                    >
-                                                        {durationMinutes} MIN
-                                                    </motion.button>
-                                                )}
-                                            </AnimatePresence>
+                                                        >
+                                                            <RulerTimeSelector
+                                                                value={durationMinutes}
+                                                                onChange={(val) => {
+                                                                    setDurationMinutes(val);
+                                                                    if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
+                                                                    selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
+                                                                }}
+                                                            />
+                                                        </motion.div>
+                                                    ) : (
+                                                        <motion.button
+                                                            key="trigger"
+                                                            initial={{ opacity: 0 }}
+                                                            animate={{ opacity: 1 }}
+                                                            exit={{ opacity: 0 }}
+                                                            onClick={() => {
+                                                                setIsSelectorVisible(true);
+                                                                if (selectorTimeoutRef.current) clearTimeout(selectorTimeoutRef.current);
+                                                                selectorTimeoutRef.current = setTimeout(() => setIsSelectorVisible(false), 3000);
+                                                            }}
+                                                            className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-white/50 text-xs tracking-widest font-light hover:bg-white/10 transition-colors"
+                                                        >
+                                                            {durationMinutes} MIN
+                                                        </motion.button>
+                                                    )}
+                                                </AnimatePresence>
+                                            )}
                                         </div>
 
                                         {/* Theme Selector - Scrollable (Bottom) */}
@@ -2329,6 +3169,82 @@ function PracticeContent() {
 
                                         {/* Binaural section removed - toggle is now in header */}
 
+                                        {/* Guidance Toggle Segments */}
+                                        {selectedTheme !== 'SURF' && (
+                                            <div className="w-full flex flex-col mb-4 bg-white/5 rounded-2xl p-4 border border-white/10 gap-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`p-2 rounded-xl transition-colors ${guidanceMode !== 'off' ? 'bg-purple-500/20 text-purple-300' : 'bg-white/10 text-white/50'}`}>
+                                                        <Sparkles size={18} />
+                                                    </div>
+                                                    <div className="flex flex-col text-left">
+                                                        <span className="text-sm font-medium text-white/90">语音引导</span>
+                                                        <span className="text-[10px] text-white/50">在适当进度随机插入高阶疏导人声</span>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-5 gap-2 mt-1">
+                                                    {[
+                                                        { value: 'off', label: '关闭' },
+                                                        { value: 'light', label: '轻(偶有)' },
+                                                        { value: 'medium', label: '中(适度)' },
+                                                        { value: 'heavy', label: '多(频繁)' },
+                                                        { value: 'ai', label: 'AI 智能' }
+                                                    ].map((mode) => (
+                                                        <button
+                                                            key={mode.value}
+                                                            onClick={() => {
+                                                                setGuidanceMode(mode.value as any);
+                                                                triggerLight();
+                                                                if (mode.value === 'ai') {
+                                                                    setIsAiModalOpen(true);
+                                                                }
+                                                            }}
+                                                            className={`py-2 rounded-xl text-xs font-medium transition-all ${
+                                                                guidanceMode === mode.value 
+                                                                    ? 'bg-purple-500/30 text-purple-200 border border-purple-500/50' 
+                                                                    : 'bg-white/5 text-white/40 border border-transparent hover:bg-white/10 hover:text-white/70'
+                                                            }`}
+                                                        >
+                                                            {mode.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {selectedTheme === 'SURF' && (
+                                            <div className="w-full flex flex-col mb-4 bg-red-900/10 rounded-2xl p-4 border border-red-500/10 gap-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`p-2 rounded-xl transition-colors bg-red-500/20 text-red-400`}>
+                                                        <Activity size={18} />
+                                                    </div>
+                                                    <div className="flex flex-col text-left">
+                                                        <span className="text-sm font-medium text-white/90">教练心跳轮询频次</span>
+                                                        <span className="text-[10px] text-white/50">决定后台守护你的探针频率</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col gap-3 w-full mt-2">
+                                                    <div className="flex justify-between items-center text-xs text-red-300 font-medium px-1">
+                                                        <span>激进 (15s)</span>
+                                                        <span className="text-red-200">当前: {surfFrequency}秒/次</span>
+                                                        <span>独立 (60s)</span>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min="15"
+                                                        max="60"
+                                                        step="5"
+                                                        value={surfFrequency}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value, 10);
+                                                            setSurfFrequency(val);
+                                                            localStorage.setItem("surfFrequency", val.toString());
+                                                        }}
+                                                        className="w-full h-2 bg-red-950/50 rounded-lg appearance-none cursor-pointer accent-red-500 border border-red-500/20"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* Start Button */}
                                         <button
                                             onClick={handleStart}
@@ -2345,11 +3261,121 @@ function PracticeContent() {
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         exit={{ opacity: 0 }}
-                                        className="w-full py-5 text-center"
+                                        className="w-full py-5 flex flex-col items-center gap-4 pointer-events-auto"
                                     >
                                         <span className="text-2xl font-thin tracking-widest text-white/50 tabular-nums">
-                                            {formatTime(timeLeft)}
+                                            {formatTime(selectedTheme === "SURF" ? elapsedSeconds : timeLeft)}
                                         </span>
+                                        
+                                        {selectedTheme === "SURF" && (
+                                            <>
+                                            {activeSkillMetadata && (
+                                                <motion.div 
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    className="flex flex-col items-center mb-6 pb-2 border-b border-white/5 w-64"
+                                                >
+                                                    <span className="text-[9px] text-emerald-400 tracking-widest uppercase mb-1.5 flex items-center gap-1.5 shadow-sm">
+                                                        <Activity size={10} className="animate-pulse" /> {activeSkillMetadata.toolCalled ? "纯函数调用 (Function Calling) 执勤中" : "正在执行后台强行注入载荷"}
+                                                    </span>
+                                                    <div className="flex flex-col items-center gap-1 w-full relative">
+                                                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono break-all text-center w-full shadow-[0_0_8px_rgba(16,185,129,0.2)]">{activeSkillMetadata.file}</span>
+                                                        <span className="text-[10px] text-white/50">{activeSkillMetadata.stage}</span>
+                                                        {activeSkillMetadata.toolCalled && activeSkillMetadata.functionName && (
+                                                            <span className="text-[9px] text-[#facc15] bg-[#facc15]/10 px-2 py-0.5 rounded border border-[#facc15]/20 font-mono mt-1 w-full text-center">
+                                                                ƒ {activeSkillMetadata.functionName}(...)
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </motion.div>
+                                            )}
+                                            {/* Chat History Terminal Overlay */}
+                                            <div className="w-full max-w-[320px] flex flex-col items-center mb-2">
+                                                <button
+                                                    onClick={() => setIsChatOpen(!isChatOpen)}
+                                                    className="px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-[10px] text-white/50 hover:bg-white/10 transition-colors flex items-center gap-2 mb-2"
+                                                >
+                                                    <Activity size={12} />
+                                                    {isChatOpen ? '隐 藏 实 时 脑 波 交 互 记 录' : '展 开 实 时 脑 波 交 互 记 录'}
+                                                </button>
+                                                
+                                                {isChatOpen && chatHistory.length > 0 && (
+                                                    <div className="w-full max-h-[160px] overflow-y-auto flex flex-col gap-2 p-3 rounded-2xl bg-black/20 border border-white/5 backdrop-blur-md text-[11px] leading-relaxed [mask-image:linear-gradient(to_bottom,transparent,black_20%,black_100%)] scrollbar-hide">
+                                                        {chatHistory.map((msg, i) => (
+                                                            <div 
+                                                                key={i} 
+                                                                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+                                                            >
+                                                                <span className={`px-2 py-1.5 rounded-lg max-w-[85%] ${
+                                                                    msg.role === 'user' 
+                                                                        ? msg.content.includes('自动轮询') 
+                                                                            ? 'bg-blue-500/20 text-blue-200 border border-blue-500/20 text-[10px]' 
+                                                                            : 'bg-white/10 text-white/90 border border-white/10' 
+                                                                        : 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/20'
+                                                                }`}>
+                                                                    {msg.content}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                        {/* Auto-scroll anchor */}
+                                                        <div ref={(el) => { el?.scrollIntoView({ behavior: 'smooth' }) }} />
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="flex flex-col gap-3 w-full max-w-[320px] pb-4">
+                                                <div className="text-center text-white/50 text-[10px] font-medium tracking-widest uppercase mb-1">
+                                                    觉察身体：此刻成瘾感在哪里？
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {[
+                                                        { id: 'throat', label: '🫁 喉咙发紧', action: '我觉察到咽喉口有发干、发紧的感觉。' },
+                                                        { id: 'chest', label: '🫀 胸口沉闷', action: '我觉察到胸腔很闷，像有块石头压着。' },
+                                                        { id: 'racing', label: '💓 心跳加速', action: '我感觉心跳很快，血液在躁动。' },
+                                                        { id: 'restless', label: '🖐️ 坐立难安', action: '我手脚无处安放，浑身烦躁不安。' },
+                                                        { id: 'head', label: '🧠 头颈发木', action: '我感觉额头和后脑勺紧绷、发麻。' },
+                                                        { id: 'anxious', label: '🔥 极度焦灼', action: '我的情绪极度焦灼，很想抓取点什么。' }
+                                                    ].map(btn => (
+                                                        <button
+                                                            key={btn.id}
+                                                            onClick={() => handleUrgeSurfingAction(btn.action)}
+                                                            className="p-3 rounded-2xl text-xs font-medium backdrop-blur-md transition-all active:scale-95 flex items-center justify-center text-center leading-tight shadow-md bg-white/10 text-white/80 border border-white/10 hover:bg-white/20 hover:text-white"
+                                                        >
+                                                            {btn.label}
+                                                        </button>
+                                                    ))}
+                                                    <button
+                                                        onClick={() => handleUrgeSurfingAction('我彻底翻越了这座浪！它的能量已经完全瓦解。完成！')}
+                                                        className="col-span-2 p-3 mt-2 rounded-2xl text-xs font-medium backdrop-blur-md transition-all active:scale-95 flex items-center justify-center text-center leading-tight shadow-lg bg-emerald-500/20 text-emerald-200 border border-emerald-500/30 hover:bg-emerald-500/30"
+                                                    >
+                                                        🚩 渴望已消散，我驾驭了它 (完成)
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Dynamic Real-time Frequency Slider in Practice Phase */}
+                                            <div className="w-full max-w-[320px] flex flex-col p-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md gap-3 mb-4">
+                                                <div className="flex justify-between items-center text-[10px] text-white/50 font-medium px-1">
+                                                    <span>高频保护</span>
+                                                    <span className="text-white/80">心跳轮询: {surfFrequency}秒</span>
+                                                    <span>低频独立</span>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="15"
+                                                    max="60"
+                                                    step="5"
+                                                    value={surfFrequency}
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value, 10);
+                                                        setSurfFrequency(val);
+                                                        localStorage.setItem("surfFrequency", val.toString());
+                                                    }}
+                                                    className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                                                />
+                                            </div>
+                                            </>
+                                        )}
                                     </motion.div>
                                 )}
 
@@ -2406,13 +3432,89 @@ function PracticeContent() {
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
-        .p-safe {
-             padding-top: env(safe-area-inset-top);
-             padding-bottom: env(safe-area-inset-bottom);
-        }
       `}</style>
                 </div>
             </div>
+            <AnimatePresence>
+                {isAiModalOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[999999] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md"
+                        onClick={() => setIsAiModalOpen(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.95, y: 20 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full max-w-sm p-6 rounded-3xl bg-gray-900 border border-white/10 shadow-2xl flex flex-col gap-6"
+                        >
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-medium text-white/90">AI 智能向导配置</h3>
+                                <button onClick={() => setIsAiModalOpen(false)} className="text-white/40 hover:text-white"><X size={20}/></button>
+                            </div>
+                            
+                            <div className="flex flex-col gap-5">
+                                <div>
+                                    <label className="text-sm font-light text-white/60 mb-3 block">当前心境 / 关注点</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {['平静', '焦虑', '疲惫', '想要向外抓取/执念发挥', '睡前'].map(mood => (
+                                            <button
+                                                key={mood}
+                                                onClick={() => { setAiMood(mood); triggerLight(); }}
+                                                className={`px-4 py-2 rounded-xl text-xs transition-colors ${aiMood === mood ? 'bg-purple-500/40 text-purple-200 border border-purple-500/50' : 'bg-white/5 text-white/40 hover:bg-white/10 border border-transparent'}`}
+                                            >
+                                                {mood}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-light text-white/60 mb-3 block">特定潜意识模式</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {['常规正念', 'RAIN-察觉与允许', '身体沉降扫描', '纯粹存在留白'].map(mode => (
+                                            <button
+                                                key={mode}
+                                                onClick={() => { setAiMode(mode); triggerLight(); }}
+                                                className={`px-4 py-2 rounded-xl text-xs transition-colors ${aiMode === mode ? 'bg-purple-500/40 text-purple-200 border border-purple-500/50' : 'bg-white/5 text-white/40 hover:bg-white/10 border border-transparent'}`}
+                                            >
+                                                {mode}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-light text-white/60 mb-3 block">AI 动态频率</label>
+                                    <div className="flex gap-2">
+                                        {[
+                                            { value: 'light', label: '轻度' },
+                                            { value: 'medium', label: '适中' },
+                                            { value: 'heavy', label: '频繁' }
+                                        ].map(freq => (
+                                            <button
+                                                key={freq.value}
+                                                onClick={() => { setAiFrequency(freq.value as any); triggerLight(); }}
+                                                className={`flex-1 py-2 rounded-xl text-xs transition-colors ${aiFrequency === freq.value ? 'bg-purple-500/40 text-purple-200 border border-purple-500/50' : 'bg-white/5 text-white/40 hover:bg-white/10 border border-transparent'}`}
+                                            >
+                                                {freq.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button 
+                                onClick={() => { setIsAiModalOpen(false); triggerSuccess(); }} 
+                                className="w-full mt-2 py-3 rounded-xl bg-purple-500/20 text-purple-200 border border-purple-500/40 hover:bg-purple-500/30 transition-colors"
+                            >
+                                完成配置
+                            </button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </>
     );
 }
@@ -2663,5 +3765,3 @@ const renderTextMorph = (ctx: CanvasRenderingContext2D, state: any, width: numbe
         ctx.fill();
     });
 };
-
-

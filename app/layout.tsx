@@ -1,14 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Nunito } from "next/font/google";
 import "./globals.css";
 import AppWrapper from "@/components/AppWrapper";
 import { WhiteNoiseProvider } from "@/contexts/WhiteNoiseContext";
-
-const nunito = Nunito({
-  subsets: ["latin"],
-  variable: "--font-nunito",
-  display: "swap",
-});
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -74,12 +67,12 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet" />
       </head>
       <body
-        className={`${nunito.variable} antialiased`}
+        className="antialiased"
         style={{
           background: '#000000',
           overflowX: 'hidden',
           overscrollBehaviorY: 'none',
-          fontFamily: 'var(--font-nunito), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+          fontFamily: '"Be Vietnam Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
         }}
       >
         <AppWrapper>
