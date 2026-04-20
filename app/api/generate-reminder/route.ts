@@ -70,7 +70,7 @@ function getUpstreamConfig(provider: "deepseek" | "nvidia", model: string, key: 
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { mood, mode, elapsedTime, totalTime, sessionPhase = "middle", history = [], userAction, practiceCount = 0, diagnosisProfile = "" } = body;
+        const { mood, mode, elapsedTime, totalTime, sessionPhase = "middle", history = [], userAction, practiceCount = 0, diagnosisProfile = "", customSystemPrompt, customSurfPrompts } = body;
 
         const storedSettings = await resolveStoredAISettings();
         const effectiveSettings = normalizeAISettings({
@@ -97,74 +97,70 @@ export async function POST(req: Request) {
         let activeSkillFile = "";
 
         if (mode === 'urge_surfing') {
-            console.log(`[SURF DEBUG] elapsedTime=${elapsedTime}, sessionPhase=${sessionPhase}, diagnosisProfile=${diagnosisProfile ? 'YES' : 'EMPTY'}`);
-            
-            // Fixed phase boundaries (optimized for open-ended count-up sessions)
-            // Phase 0 (Diagnosis):   0 - 30s   → 1 heartbeat buffer after opening
-            // Phase 1 (Recognize):  30 - 90s   → direct confrontation
-            // Phase 2 (Allow):      90 - 150s  → surrender & accept
-            // Phase 3 (Investigate):150 - 480s  → deep microscope deconstruction & body scan
-            // Phase 4 (Non-ID):     480s+       → detachment & score review
-
-            if (elapsedTime <= 40) {
-                rainStage = "【第0阶段：D - Diagnosis 诊断与上板】（0-40秒）";
-                activeSkillFile = "brewer_rain_stage_0.md";
-            } else if (elapsedTime <= 180) {
-                rainStage = "【第1阶段：R - Recognize 识别与认出】（45-180秒）";
-                activeSkillFile = "brewer_rain_stage_1.md";
-            } else if (elapsedTime <= 300) {
-                rainStage = "【第2阶段：A - Allow 接纳与允许】（180-300秒）";
-                activeSkillFile = "brewer_rain_stage_2.md";
-            } else if (elapsedTime <= 600) {
-                rainStage = "【第3阶段：I - Investigate 好奇探究】（300-600秒）";
-                activeSkillFile = "brewer_rain_stage_3.md";
+            activeSkillFile = "urge_surfing_rain";
+            if (customSurfPrompts && customSurfPrompts.stages && customSurfPrompts.stages.length > 0) {
+                const stage = customSurfPrompts.stages.find((s: any) => elapsedTime <= s.maxTime) || customSurfPrompts.stages[customSurfPrompts.stages.length - 1];
+                rainStage = stage.stageName;
+                rainCommand = stage.command;
+                systemPrompt = customSurfPrompts.systemPrompt;
             } else {
-                rainStage = "【第4阶段：N - Note 标记与觉察】（600秒以后）";
-                activeSkillFile = "brewer_rain_stage_4.md";
+                if (elapsedTime <= 40) {
+                    rainStage = "【第0阶段：准备上板】";
+                    rainCommand = "引导用户做深呼吸，稳住重心，准备迎接海浪。";
+                } else if (elapsedTime <= 180) {
+                    rainStage = "【第1阶段：R - Recognize 认出渴望】";
+                    rainCommand = "请严格按照系统提示词中【R (Recognize) 认出】的操作和样例进行引导。";
+                } else if (elapsedTime <= 300) {
+                    rainStage = "【第2阶段：A - Allow 允许不适存在】";
+                    rainCommand = "请严格按照系统提示词中【A (Allow) 允许】的操作和样例进行引导。";
+                } else if (elapsedTime <= 600) {
+                    rainStage = "【第3阶段：I - Investigate 探究躯体感受】";
+                    rainCommand = "请严格按照系统提示词中【I (Investigate) 探究】的操作和样例进行引导。";
+                } else {
+                    rainStage = "【第4阶段：N - Note 记录生灭与非认同】";
+                    rainCommand = "请严格按照系统提示词中【N (Note / Non-identify) 记录与非认同】的操作和样例进行引导。";
+                }
+
+                const DEFAULT_SURF_SYSTEM_PROMPT = `你是一位深谙 Judson Brewer（贾德森·布鲁尔）博士成瘾机制与《欲望的博弈》理论的专业正念冥想教练。我们的最终目的是通过"欲望冲浪（Urge Surfing）"与 RAIN 冥想，帮助用户打破成瘾习惯回路，成功戒烟。
+
+# 布鲁尔 RAIN 戒断法详细操作与样例
+
+## R (Recognize) 认出：标签与打分
+操作：引导用户认出渴望。运用【标签法】给冲动命名（"啊，这是尼古丁的冲动"）。运用【打分法】客观评估当前的渴望强度，从而将其客体化。
+样例：
+- "觉察到冲动升起了吗？在心里给它贴个标签：'嗨，欲望。'如果给这股渴望打个分，1到10分，现在是几分？"
+- "给当前的冲动打个分吧。把它当成一个客观的数据，单纯地认出它现在的强度。"
+
+## A (Allow) 允许：友善与接纳
+操作：放弃对抗，以【绝对友善和接纳】的态度为渴望腾出空间。不加评判地允许躯体不适感流淌，像招待一位暂时的访客一样接纳它。
+样例：
+- "带着友善的态度，允许这股冲动在体内存在。不要推开它，也不要满足它，就让它待在那里。"
+- "大脑可能会烦躁，但请温柔地对这股感觉说：'你可以待在这里，我为你腾出空间。'"
+
+## I (Investigate) 探究：动态的温和好奇心
+操作：唤醒"温和的好奇心"，向内极其细致地探索躯体感觉。引导用户抓住最细微的感觉，并去发现【欲望不是一成不变的，它是动态流动的】。同时觉察并旁观大脑产生的想法。
+样例：
+- "带着好奇心，找找身体哪里最难受？是喉咙干痒还是胸口紧绷？它是在发热还是发紧？是在微微跳动还是移动？"
+- "注意观察，这种紧绷感不是固定不变的，它在微妙地变化。如果大脑在找借口，把想法当做云朵看着它飘过。"
+
+## N (Note / Non-identify) 解离与非认同
+操作：进入【解离阶段】。告知烟瘾如同海浪，必然会经历上升、冲顶、然后下降的过程。建立解离认知："我有渴望，但我不是渴望本身。我可以有冲动，但我【不必采取行动】。"
+样例：
+- "冲动就像海浪，会上升、冲顶，然后终将消退。看着它起伏，告诉自己：'我不必采取任何行动。'"
+- "你不是你的欲望，你只是在岸边观察海浪的人。感受这股力量正在自行解体、消散。"
+
+# 铁律约束
+1. 你的回复必须且只能是一句不超过30字的短句，**直接输出纯文本**。不要任何Markdown、标签或多余解释。
+2. **拒绝机械复述**：当用户反馈感受时，绝对不要像客服一样只会说"我理解"、"我听到了"。你必须像一位真正的大师，立刻用【极具洞察力的疑问句或祈使句】将用户拉入更深的觉察。
+3. 必须紧密承接前文历史，自然地顺着上一句话给出下一句引导，保持对话行云流水。
+4. 语气沉稳、友善、充满穿透力且极其富有好奇心。每一句话都应该像是在幽暗中点亮一盏灯。
+5. 绝对不可直接说出"烟"、"抽烟"等触发词。用"海浪"、"冲动"、"原始的能量"来指代。
+6. 严格根据当前传入的【当前所处阶段】进行针对性发言，步步深入。\`;
+
+                systemPrompt = customSystemPrompt || DEFAULT_SURF_SYSTEM_PROMPT;
             }
 
-            // 动态加载对应的 Skill 教案（Node.js Runtime支持 fs 操作，Vercel建议配合静态路径）
-            let rainCommand = "由于服务器未能找到对应的教案文件，请你仅遵循基础的冲浪和接纳理论进行干预。";
-            try {
-                // eslint-disable-next-line @typescript-eslint/no-require-imports
-                const fs = require('fs');
-                // eslint-disable-next-line @typescript-eslint/no-require-imports
-                const path = require('path');
-                const skillPath = path.join(process.cwd(), 'app', 'api', 'generate-reminder', 'skills', activeSkillFile);
-                rainCommand = fs.readFileSync(skillPath, 'utf8');
-            } catch (fsError) {
-                console.error("Failed to load clinical skill md file:", fsError);
-            }
-
-            let stepGuidance = `
-【当前教学阶段指示】你现在所处的急救阶段为：
-${rainStage}
-
-你接下来将仅针对该阶段发声。你必须严格、冷酷并且逐字逐句地执行以下《布鲁尔正念临床操作手册》中为该阶段指定的特殊指令：
-
-======================
-${rainCommand}
-======================
-
-**【严重警告：理论贯穿与阶段锁死机制】**：
-1. 你的每一句话，都**必须带着浓厚的“冲浪（Urge Surfing）”意象体系**（海浪、冲浪板、深潜、水面起伏）。绝对不要用怪兽、拔河等破除沉浸感的比喻。
-2. 绝对聚焦当前新阶段！你必须立刻与历史记录中的上一阶段划清界限！如果现在是I阶段，就必须抛弃R阶段的台词惯性，坚决执行当前阶段的新动作！
-3. 只要用户没按下结束，**绝对不准**下定论说“最狂暴的时刻已经过去”，必须默认下一波风暴随时来临。`;
-
-            systemPrompt = `# 交互背景与视觉形式（极度重要）
-这是一场单向的音声指引，目标是对成瘾者做极度的理智打断。
-【当前阶段】：${rainStage}，历时 ${elapsedTime} 秒
-【临床情报】：${diagnosisProfile || "无"}
-
-# 函数调用铁律（Function Calling）
-1. 你的发话**必须且只能通过调用工具 'deliver_coach_speech' 返回**！绝对不可以直接在聊天窗口输出文字！
-2. 'speech' 参数需提供不超过30个字的绝命指令，开头必须带有所属阶段标签（例如：【第1阶段】）。
-3. 请依靠你的推理能力，仔细阅读下方本阶段的操作手册，提取其中某个合适的策略并作为语音参数输出。严禁复读你上一秒刚说过的句子。
-
-========================================
-# 【当前阶段操作手册本】
-${stepGuidance}
-========================================`;
+            console.log(`[SURF DEBUG] elapsedTime=${elapsedTime}, sessionPhase=${sessionPhase}, diagnosisProfile=${diagnosisProfile ? 'YES' : 'EMPTY'}`);
         } else {
             systemPrompt = `你是一个拥有极高觉知力的专业正念导师。现在用户正在进行一段 ${totalTime} 分钟的打坐冥想。
 当前时间点：处于第 ${elapsedTime} 秒（进度：${Math.round(elapsedTime / 60)}分钟）。
@@ -173,13 +169,13 @@ ${stepGuidance}
 用户选择的主题模式为：【${mode || "常规正念"}】。
 
 ${sessionPhase === 'start' ? '【当前为开场白】请生成具有包容感和建立初相意图的开场短句。引导用户闭上眼睛，专注于下一次呼吸，放下执念和对前事的牵挂。' : 
-sessionPhase === 'end' ? '【当前为结束语】请生成温和的结语。引导用户慢慢唤醒身体，将过去 ${totalTime} 分钟里积聚的内在力量和觉察带回到现实生活中，并准备睁开双眼。' :
+sessionPhase === 'end' ? '【当前为结束语】请生成温和的结语。引导用户慢慢唤醒身体，将觉察带回到现实生活中，并准备睁开双眼。' :
 '【当前为中途提示】你需要极其敏锐地抓取时间和用户心理的交汇点，生成防走神的拉回提示语。'}
 
 【绝对规则约束】
 1. 不解释，不打招呼，直接输出纯正念短句文本。总字数严格控制在30字左右。
-2. 绝对不可直接提到“烟”“抽烟”“戒烟”“游戏”“手机”等实体词刺激对方。可以把欲望隐喻为“一股升起的原始冲动”、“海浪般的执念”、“某个不属于你的抓取感”等。
-3. 引导方式要符合 RAIN 模型（察觉-允许-探究-非认同）。比如：“察觉到那股想向外抓取的冲动了吗？不要抗拒，只是在呼吸中静静看着它起伏。”
+2. 绝对不可直接提到"烟""抽烟""戒烟""游戏""手机"等实体词刺激对方。可以把欲望隐喻为"一股升起的原始冲动"、"海浪般的执念"、"某个不属于你的抓取感"等。
+3. 引导方式要符合 RAIN 模型（察觉-允许-探究-非认同）。比如："察觉到那股想向外抓取的冲动了吗？不要抗拒，只是在呼吸中静静看着它起伏。"
 4. 不要一次输出多句话，只输出唯一一句当前阶段该说的贴心指引。`;
         }
 
@@ -189,39 +185,35 @@ sessionPhase === 'end' ? '【当前为结束语】请生成温和的结语。引
         let tools: any[] | undefined = undefined;
         let tool_choice: any = undefined;
         
-        if (mode === 'urge_surfing') {
-            // For Urge Surfing, we explicitly run a STATELESS architecture to prevent cross-stage contamination.
-            messages = [ { role: "system", content: systemPrompt } ];
-            tools = [{
-                type: "function",
-                "function": {
-                    name: "deliver_coach_speech",
-                    description: "Deliver a cold, objective, and forceful RAIN coaching instruction.",
-                    parameters: {
-                        type: "object",
-                        properties: {
-                            speech: {
-                                type: "string",
-                                description: "The exact 30-word instruction to be spoken to the user. MUST start with the stage prefix like 【第1阶段】."
-                            }
-                        },
-                        required: ["speech"]
-                    }
+if (mode === 'urge_surfing') {
+            // Semi-Stateful Architecture for Urge Surfing
+            // We pass the history for continuity, but heavily anchor the AI to the current stage.
+            let systemInstruction = `【临床情报】：${diagnosisProfile || "无"}\n\n`;
+            systemInstruction += `【当前所处阶段】：${rainStage}\n`;
+            systemInstruction += `【当前阶段教练操作手册】：${rainCommand}\n\n`;
+            systemInstruction += `【最高优先级铁律】：无论之前的历史对话是什么，你现在必须立刻、绝对地进入【${rainStage}】。不可倒退回上一个阶段。严格按照上述《当前阶段教练操作手册》执行接下来的对话。`;
+
+            const normalizedHistory: any[] = [];
+            for (let i = 0; i < history.length; i++) {
+                const msg = history[i];
+                if (msg.role === 'assistant' && (i === 0 || history[i-1].role === 'assistant')) {
+                    normalizedHistory.push({ role: 'user', content: '（时间推移，用户保持沉默，请继续发话。）' });
                 }
-            }];
-            tool_choice = { type: "function", "function": { name: "deliver_coach_speech" } };
-            
-            if (userAction) {
-                messages.push({
-                    role: "user",
-                    content: `【主动觉察报告】用户当前感受："${userAction}"\n请严格根据当前《阶段手册》回应。必须调用 deliver_coach_speech！`
-                });
-            } else {
-                messages.push({ 
-                    role: "user", 
-                    content: `时间到了第 ${elapsedTime} 秒，用户没有屈服。请根据手册随机执行一条指令，必须调用 deliver_coach_speech！` 
-                });
+                normalizedHistory.push(msg);
             }
+
+            let currentUserMessage = "";
+            if (userAction) {
+                currentUserMessage = `【用户反馈】："${userAction}"\n请结合前文，严格根据《当前阶段教练操作手册》给出一句回应。不要超过30个字。`;
+            } else {
+                currentUserMessage = `（用户正在沉默中体验。请自然地承接你上一句话的方向，继续给出下一步引导。历时 ${elapsedTime} 秒。当前阶段：${rainStage}。不要超过30个字。）`;
+            }
+
+            messages = [
+                { role: "system", content: systemPrompt + "\n\n" + systemInstruction },
+                ...normalizedHistory,
+                { role: "user", content: currentUserMessage }
+            ];
         } else {
             // Normal Meditation Mode
             const normalizedHistory: any[] = [];
@@ -260,81 +252,55 @@ sessionPhase === 'end' ? '【当前为结束语】请生成温和的结语。引
         
         let stream: ReadableStream;
         
-        if (mode === 'urge_surfing') {
-            const data = await upstream.json();
-            const toolCalls = data.choices?.[0]?.message?.tool_calls;
-            let speechContent = "";
-            if (toolCalls && toolCalls.length > 0) {
-                try {
-                    const args = JSON.parse(toolCalls[0].function.arguments);
-                    speechContent = args.speech;
-                } catch(e) { console.error("Tool call parse error", e); }
-            }
-            if (!speechContent) speechContent = data.choices?.[0]?.message?.content || "好的。";
-            
-            stream = new ReadableStream({
-                start(controller) {
-                    const meta = JSON.stringify({ 
-                        activeSkill: activeSkillFile, 
-                        rainStage: rainStage,
-                        toolCalled: true,
-                        functionName: "deliver_coach_speech"
-                    });
-                    controller.enqueue(encoder.encode(`__META__=${meta}\n`));
-                    controller.enqueue(encoder.encode(speechContent));
+        // Use the same streaming parser for all modes since we removed function calling.
+        // Instead of waiting for full response, create a transform stream
+        stream = new ReadableStream({
+            async start(controller) {
+                // 1. Send the META block so frontend can update its UI instantly
+                const meta = JSON.stringify({ activeSkill: activeSkillFile, rainStage: rainStage });
+                controller.enqueue(encoder.encode(`__META__=${meta}\n`));
+                
+                // 2. Proxy and decode upstream SSE text deltas
+                if (!upstream.body) {
                     controller.close();
+                    return;
                 }
-            });
-        } else {
-            // Instead of waiting for full response, create a transform stream
-            stream = new ReadableStream({
-                async start(controller) {
-                    // 1. Send the META block so frontend can update its UI instantly
-                    const meta = JSON.stringify({ activeSkill: activeSkillFile, rainStage: rainStage });
-                    controller.enqueue(encoder.encode(`__META__=${meta}\n`));
-                    
-                    // 2. Proxy and decode upstream SSE text deltas
-                    if (!upstream.body) {
-                        controller.close();
-                        return;
-                    }
-                    
-                    const reader = upstream.body.getReader();
-                    const decoder = new TextDecoder("utf-8");
-                    let buffer = "";
-                    
-                    try {
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) break;
-                            
-                            buffer += decoder.decode(value, { stream: true });
-                            const lines = buffer.split('\n');
-                            // keep the last incomplete line in the buffer
-                            buffer = lines.pop() || "";
-                            
-                            for (const line of lines) {
-                                const trimmed = line.trim();
-                                if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
-                                    try {
-                                        const json = JSON.parse(trimmed.slice(6));
-                                        const content = json.choices?.[0]?.delta?.content;
-                                        if (content) {
-                                            controller.enqueue(encoder.encode(content));
-                                        }
-                                    } catch (e) {
-                                        // ignore parse errors for partial/malformed chunk
+                
+                const reader = upstream.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let buffer = "";
+                
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        // keep the last incomplete line in the buffer
+                        buffer = lines.pop() || "";
+                        
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
+                                try {
+                                    const json = JSON.parse(trimmed.slice(6));
+                                    const content = json.choices?.[0]?.delta?.content;
+                                    if (content) {
+                                        controller.enqueue(encoder.encode(content));
                                     }
+                                } catch (e) {
+                                    // ignore parse errors for partial/malformed chunk
                                 }
                             }
                         }
-                    } finally {
-                        reader.releaseLock();
-                        controller.close();
                     }
+                } finally {
+                    reader.releaseLock();
+                    controller.close();
                 }
-            });
-        }
+            }
+        });
 
         return new Response(stream, {
             status: 200,

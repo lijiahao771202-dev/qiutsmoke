@@ -79,6 +79,51 @@ function formatTime(seconds: number): string {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+const DEFAULT_SURF_SYSTEM_PROMPT = `你是一位深谙 Judson Brewer（贾德森·布鲁尔）博士成瘾机制与《欲望的博弈》理论的专业正念冥想教练。我们的最终目的是通过“欲望冲浪（Urge Surfing）”与 RAIN 冥想，帮助用户打破成瘾习惯回路，成功戒烟。
+
+# 布鲁尔 RAIN 戒断法详细操作与样例
+
+## R (Recognize) 认出：标签与打分
+操作：引导用户认出渴望。运用【标签法】给冲动命名（“啊，这是尼古丁的冲动”）。运用【打分法】客观评估当前的渴望强度，从而将其客体化。
+样例：
+- “觉察到冲动升起了吗？在心里给它贴个标签：‘嗨，欲望。’如果给这股渴望打个分，1到10分，现在是几分？”
+- “给当前的冲动打个分吧。把它当成一个客观的数据，单纯地认出它现在的强度。”
+
+## A (Allow) 允许：友善与接纳
+操作：放弃对抗，以【绝对友善和接纳】的态度为渴望腾出空间。不加评判地允许躯体不适感流淌，像招待一位暂时的访客一样接纳它。
+样例：
+- “带着友善的态度，允许这股冲动在体内存在。不要推开它，也不要满足它，就让它待在那里。”
+- “大脑可能会烦躁，但请温柔地对这股感觉说：‘你可以待在这里，我为你腾出空间。’”
+
+## I (Investigate) 探究：动态的温和好奇心
+操作：唤醒“温和的好奇心”，向内极其细致地探索躯体感觉。引导用户抓住最细微的感觉，并去发现【欲望不是一成不变的，它是动态流动的】。同时觉察并旁观大脑产生的想法。
+样例：
+- “带着好奇心，找找身体哪里最难受？是喉咙干痒还是胸口紧绷？它是在发热还是发紧？是在微微跳动还是移动？”
+- “注意观察，这种紧绷感不是固定不变的，它在微妙地变化。如果大脑在找借口，把想法当做云朵看着它飘过。”
+
+## N (Note / Non-identify) 解离与非认同
+操作：进入【解离阶段】。告知烟瘾如同海浪，必然会经历上升、冲顶、然后下降的过程。建立解离认知：“我有渴望，但我不是渴望本身。我可以有冲动，但我【不必采取行动】。”
+样例：
+- “冲动就像海浪，会上升、冲顶，然后终将消退。看着它起伏，告诉自己：‘我不必采取任何行动。’”
+- “你不是你的欲望，你只是在岸边观察海浪的人。感受这股力量正在自行解体、消散。”
+
+# 铁律约束
+1. 你的回复必须且只能是一句不超过30字的短句，**直接输出纯文本**。不要任何Markdown、标签或多余解释。
+2. **拒绝机械复述**：当用户反馈感受时，绝对不要像客服一样只会说“我理解”、“我听到了”。你必须像一位真正的大师，立刻用【极具洞察力的疑问句或祈使句】将用户拉入更深的觉察。
+3. 必须紧密承接前文历史，自然地顺着上一句话给出下一句引导，保持对话行云流水。
+4. 语气沉稳、友善、充满穿透力且极其富有好奇心。每一句话都应该像是在幽暗中点亮一盏灯。
+5. 绝对不可直接说出"烟"、"抽烟"等触发词。用"海浪"、"冲动"、"原始的能量"来指代。
+6. 严格根据当前传入的【当前所处阶段】进行针对性发言，步步深入。`;
+
+const DEFAULT_SURF_STAGES = [
+    { maxTime: 40, stageName: "【第0阶段：准备上板】", command: "引导用户做深呼吸，稳住重心，准备迎接海浪。" },
+    { maxTime: 180, stageName: "【第1阶段：R - Recognize 认出渴望】", command: "请严格按照系统提示词中【R (Recognize) 认出】的操作和样例进行引导。" },
+    { maxTime: 300, stageName: "【第2阶段：A - Allow 允许不适存在】", command: "请严格按照系统提示词中【A (Allow) 允许】的操作和样例进行引导。" },
+    { maxTime: 600, stageName: "【第3阶段：I - Investigate 探究躯体感受】", command: "请严格按照系统提示词中【I (Investigate) 探究】的操作和样例进行引导。" },
+    { maxTime: 99999, stageName: "【第4阶段：N - Note 记录生灭与非认同】", command: "请严格按照系统提示词中【N (Note / Non-identify) 记录与非认同】的操作和样例进行引导。" },
+];
+
+
 // -----------------------------------------------------------------------------
 // Component: Ruler Time Selector
 // -----------------------------------------------------------------------------
@@ -290,6 +335,31 @@ function PracticeContent() {
     const [aiMode, setAiMode] = useState('常规正念');
     const [aiFrequency, setAiFrequency] = useState<'light' | 'medium' | 'heavy'>('medium');
     const [activeSkillMetadata, setActiveSkillMetadata] = useState<{file: string, stage: string, toolCalled?: boolean, functionName?: string} | null>(null);
+
+    const [surfPromptsConfig, setSurfPromptsConfig] = useState<{ systemPrompt: string, stages: any[] }>({
+        systemPrompt: DEFAULT_SURF_SYSTEM_PROMPT,
+        stages: DEFAULT_SURF_STAGES
+    });
+    const [isSurfPromptsModalOpen, setIsSurfPromptsModalOpen] = useState(false);
+
+    // Hydrate from localStorage safely on client
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem("surfPromptsConfig");
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed && parsed.stages && Array.isArray(parsed.stages)) {
+                    setSurfPromptsConfig(parsed);
+                }
+            }
+        } catch(e) {
+            console.error("Failed to parse surfPromptsConfig", e);
+        }
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem("surfPromptsConfig", JSON.stringify(surfPromptsConfig));
+    }, [surfPromptsConfig]);
 
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess } = useHaptics();
     // --- Time Selector Visibility ---
@@ -523,6 +593,7 @@ function PracticeContent() {
     const preloadedStartTextRef = useRef<string | null>(null);
     const aiHistoryRef = useRef<{ role: string; content: string }[]>([]);
     const [chatHistory, setChatHistory] = useState<{role: string; content: string}[]>([]);
+    const surfBusyRef = useRef(false);
     
     // Helper to keep ref and state in sync
     const pushAiLog = useCallback((role: string, content: string) => {
@@ -611,7 +682,7 @@ function PracticeContent() {
             if (!disableAutoQueue) enqueueTTSChunk(unplayedSentenceBuffer);
         }
         
-        return aiHistoryRef.current[logIndex].content; // return full accumulated text
+        return aiHistoryRef.current[logIndex]?.content || fullText; // return full accumulated text, with safety check
     };
 
     const bowlBufferRef = useRef<AudioBuffer | null>(null);
@@ -631,7 +702,8 @@ function PracticeContent() {
                         elapsedTime: 0,
                         totalTime: durationMinutes,
                         sessionPhase: 'start',
-                        practiceCount: selectedTheme === 'SURF' && typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0
+                        practiceCount: selectedTheme === 'SURF' && typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0,
+                        customSurfPrompts: selectedTheme === 'SURF' ? surfPromptsConfig : undefined
                     }, true); // preloads without auto-playing queue
                     if (fullText) text = fullText;
                 } catch (e) {
@@ -837,26 +909,36 @@ function PracticeContent() {
         // 4. SURF Auto Pulse (every 45s) - OPTION A SELECTED: Keep heartbeat, but use Function Calling
         if (selectedTheme === "SURF" && currentElapsed > 0 && currentElapsed % surfFrequency === 0 && !played.has(`surf_${currentElapsed}`)) {
             played.add(`surf_${currentElapsed}`);
-            const doSurfPulse = async () => {
-                try {
-                    await streamAiReminder({
-                        mood: aiMood,
-                        mode: 'urge_surfing',
-                        elapsedTime: currentElapsed,
-                        totalTime: totalSeconds,
-                        sessionPhase: 'middle',
-                        diagnosisProfile: surfDiagnosisRef.current,
-                        history: aiHistoryRef.current,
-                        practiceCount: typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0
-                    });
-                } catch(e) { console.error(e); }
-            };
-            doSurfPulse();
+            if (surfBusyRef.current) {
+                console.log('[SURF] Auto-pulse skipped: user action in progress');
+            } else {
+                const doSurfPulse = async () => {
+                    surfBusyRef.current = true;
+                    try {
+                        await streamAiReminder({
+                            mood: aiMood,
+                            mode: 'urge_surfing',
+                            elapsedTime: currentElapsed,
+                            totalTime: totalSeconds,
+                            sessionPhase: 'middle',
+                            diagnosisProfile: surfDiagnosisRef.current,
+                            history: aiHistoryRef.current,
+                            practiceCount: typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0,
+                            customSurfPrompts: surfPromptsConfig
+                        });
+                    } catch(e) { console.error(e); } finally {
+                        surfBusyRef.current = false;
+                    }
+                };
+                doSurfPulse();
+            }
         }
     }, [elapsedSeconds, phase, guidanceMode, durationMinutes, aiMood, aiMode, selectedTheme]);
 
     // --- Urge Surfing Realtime Action ---
     const handleUrgeSurfingAction = async (action: string) => {
+        if (surfBusyRef.current) return; // prevent collision with auto-pulse
+        surfBusyRef.current = true;
         triggerMedium();
         const isFinish = action.includes('完成');
         const count = typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0;
@@ -878,10 +960,13 @@ function PracticeContent() {
                 history: aiHistoryRef.current,
                 userAction: action,
                 diagnosisProfile: surfDiagnosisRef.current,
-                practiceCount: count
+                practiceCount: count,
+                customSurfPrompts: surfPromptsConfig
             });
         } catch (e) {
             console.error("SURF Action API Failed", e);
+        } finally {
+            surfBusyRef.current = false;
         }
 
         if (isFinish) {
@@ -2826,6 +2911,15 @@ function PracticeContent() {
                             {/* Right Side Controls - Only show in IDLE */}
                             {phase === "IDLE" && (
                                 <div className="flex gap-2 items-center">
+                                    {selectedTheme === 'SURF' && (
+                                        <button
+                                            onClick={() => setIsSurfPromptsModalOpen(true)}
+                                            className="w-11 h-11 flex items-center justify-center rounded-full bg-red-500/10 backdrop-blur-md border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all"
+                                            title="自定义冲浪提示词"
+                                        >
+                                            ⚙️
+                                        </button>
+                                    )}
                                     {/* 🎵 Sound Selection Button - Navigates to Global Mixer */}
                                     <div className="relative">
                                         <button
@@ -2993,13 +3087,22 @@ function PracticeContent() {
                                                         sessionPhase: 'start',
                                                         diagnosisProfile: actionStr,
                                                         history: aiHistoryRef.current,
-                                                        practiceCount: typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0
+                                                        practiceCount: typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0,
+                                                        customSurfPrompts: surfPromptsConfig
                                                     });
                                                 } catch(e) { console.error(e); }
                                             }}
                                             className="w-full px-8 py-3 mt-4 bg-red-600/50 border border-red-500/50 rounded-full text-white text-lg font-medium hover:bg-red-500/70 transition-colors shadow-[0_0_20px_rgba(239,68,68,0.4)]"
                                         >
                                             开始冲浪
+                                        </button>
+                                        
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsSurfPromptsModalOpen(true)}
+                                            className="w-full py-2 px-4 rounded-full border border-white/10 text-white/60 text-xs mt-3 hover:text-white hover:bg-white/10 transition-all active:scale-95 cursor-pointer"
+                                        >
+                                            ⚙️ 高级：自定义冲浪提示词
                                         </button>
                                     </motion.div>
                                 )}
@@ -3071,7 +3174,7 @@ function PracticeContent() {
                         </div>
 
                         {/* Footer */}
-                        <footer className="w-full max-w-sm pb-safe px-6 pointer-events-auto z-50">
+                        <footer className="w-full max-w-sm pb-safe px-6 pointer-events-none z-50">
                             <AnimatePresence>
                                 {/* IDLE UI */}
                                 {phase === "IDLE" && (
@@ -3079,7 +3182,7 @@ function PracticeContent() {
                                         initial={{ opacity: 0, y: 50 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: 50 }}
-                                        className="flex flex-col gap-10"
+                                        className="flex flex-col gap-10 pointer-events-auto"
                                     >
                                         {/* Removed Ruler from Top */}
 
@@ -3325,17 +3428,39 @@ function PracticeContent() {
 
                                             <div className="flex flex-col gap-3 w-full max-w-[320px] pb-4">
                                                 <div className="text-center text-white/50 text-[10px] font-medium tracking-widest uppercase mb-1">
-                                                    觉察身体：此刻成瘾感在哪里？
+                                                    {elapsedSeconds <= 40 ? '准备上板' :
+                                                     elapsedSeconds <= 180 ? 'R · 认出渴望 — 标签与打分' :
+                                                     elapsedSeconds <= 300 ? 'A · 允许不适 — 友善接纳' :
+                                                     elapsedSeconds <= 600 ? 'I · 探究身体 — 温和好奇心' :
+                                                     'N · 解离 — 记录生灭'}
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-3">
-                                                    {[
-                                                        { id: 'throat', label: '🫁 喉咙发紧', action: '我觉察到咽喉口有发干、发紧的感觉。' },
-                                                        { id: 'chest', label: '🫀 胸口沉闷', action: '我觉察到胸腔很闷，像有块石头压着。' },
-                                                        { id: 'racing', label: '💓 心跳加速', action: '我感觉心跳很快，血液在躁动。' },
-                                                        { id: 'restless', label: '🖐️ 坐立难安', action: '我手脚无处安放，浑身烦躁不安。' },
-                                                        { id: 'head', label: '🧠 头颈发木', action: '我感觉额头和后脑勺紧绷、发麻。' },
-                                                        { id: 'anxious', label: '🔥 极度焦灼', action: '我的情绪极度焦灼，很想抓取点什么。' }
-                                                    ].map(btn => (
+                                                    {(elapsedSeconds <= 40 ? [
+                                                        { id: 'ready', label: '🏄 我准备好了', action: '我已经站上冲浪板，准备好迎接海浪了。' },
+                                                        { id: 'nervous', label: '😰 有点紧张', action: '我感到紧张，海浪好像要来了。' },
+                                                    ] : elapsedSeconds <= 180 ? [
+                                                        { id: 'recognized', label: '👁️ 我认出来了', action: '我认出来了，这是尼古丁的冲动在呼唤我。' },
+                                                        { id: 'score3', label: '📊 强度 3/10', action: '我给当前渴望打分：3分，比较轻微但能感知到。' },
+                                                        { id: 'score5', label: '📊 强度 5/10', action: '我给当前渴望打分：5分，中等强度，能明显感受到。' },
+                                                        { id: 'score8', label: '📊 强度 8/10', action: '我给当前渴望打分：8分，非常强烈，几乎要被吞没。' },
+                                                    ] : elapsedSeconds <= 300 ? [
+                                                        { id: 'allow', label: '🤝 我允许它存在', action: '我选择不对抗，允许这股冲动在体内流淌。' },
+                                                        { id: 'hard', label: '😣 好难受但不对抗', action: '真的很难受，但我不跟它拔河，我为它腾出空间。' },
+                                                        { id: 'cannothold', label: '🆘 快撑不住了', action: '我快撑不住了，大脑不停地找借口。' },
+                                                        { id: 'friendly', label: '💛 友善地接纳', action: '我试着带着友善的态度对冲动说：你可以待在这里。' },
+                                                    ] : elapsedSeconds <= 600 ? [
+                                                        { id: 'throat', label: '🫁 喉咙', action: '我觉察到渴望集中在喉咙，有干痒发紧的感觉。' },
+                                                        { id: 'chest', label: '🫀 胸口', action: '我觉察到渴望集中在胸口，有沉闷紧绷的感觉。' },
+                                                        { id: 'belly', label: '🔥 腹部', action: '我觉察到渴望集中在腹部，有灼热翻滚的感觉。' },
+                                                        { id: 'hands', label: '🖐️ 手指', action: '我觉察到渴望集中在手指，它们在微微颤抖想要抓取。' },
+                                                        { id: 'pulsing', label: '💫 在跳动', action: '这种感觉不是固定的，我注意到它在微微跳动和变化。' },
+                                                        { id: 'shrinking', label: '📐 在收缩', action: '这种感觉好像在收缩、变紧，像被挤压一样。' },
+                                                    ] : [
+                                                        { id: 'fading', label: '🌊 在消退', action: '我注意到冲动的海浪正在消退，强度在降低。' },
+                                                        { id: 'stillstrong', label: '💪 还很强', action: '冲动还很强，但我只是在旁边观察它，不采取行动。' },
+                                                        { id: 'notme', label: '🧘 我不是欲望', action: '我清楚地感受到：我有欲望，但我不是欲望本身。' },
+                                                        { id: 'noaction', label: '🛑 不必行动', action: '海浪在冲顶后终将回落，我不必采取任何行动。' },
+                                                    ]).map(btn => (
                                                         <button
                                                             key={btn.id}
                                                             onClick={() => handleUrgeSurfingAction(btn.action)}
@@ -3515,6 +3640,88 @@ function PracticeContent() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Surf Prompts Configuration Modal - Plain Divs to avoid AnimatePresence bugs */}
+            {isSurfPromptsModalOpen && (
+                <div 
+                    className="fixed inset-0 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md" 
+                    style={{ zIndex: 9999999 }}
+                >
+                    <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto text-white shadow-2xl relative pointer-events-auto">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-medium tracking-wide">⚙️ 自定义冲浪提示词</h2>
+                            <button
+                                onClick={() => setIsSurfPromptsModalOpen(false)}
+                                className="p-2 bg-white/5 rounded-full hover:bg-white/10"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-white/70">系统提示词 (System Prompt - 教练人设与铁律)</label>
+                                <textarea
+                                    value={surfPromptsConfig?.systemPrompt || ''}
+                                    onChange={(e) => setSurfPromptsConfig(prev => ({ ...prev, systemPrompt: e.target.value }))}
+                                    className="w-full h-40 bg-black/50 border border-white/10 rounded-xl p-3 text-sm text-white/90 font-mono resize-y focus:border-red-500/50 focus:outline-none"
+                                />
+                            </div>
+
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-medium text-white/70 mb-2">分段操作手册 (Stage Prompts)</h3>
+                                {(surfPromptsConfig?.stages || []).map((stage: any, index: number) => (
+                                    <div key={index} className="p-4 bg-white/5 border border-white/5 rounded-xl space-y-3">
+                                        <div className="flex items-center gap-4">
+                                            <div className="text-xs text-white/50 w-24">时间 &lt;= {stage.maxTime === 99999 ? '∞' : stage.maxTime}秒</div>
+                                            <input
+                                                type="text"
+                                                value={stage?.stageName || ''}
+                                                onChange={(e) => {
+                                                    const newStages = [...(surfPromptsConfig.stages || [])];
+                                                    newStages[index] = { ...newStages[index], stageName: e.target.value };
+                                                    setSurfPromptsConfig(prev => ({ ...prev, stages: newStages }));
+                                                }}
+                                                className="flex-1 bg-black/30 border border-white/10 rounded-lg p-2 text-sm text-white/90 focus:border-red-500/50 focus:outline-none"
+                                                placeholder="阶段名称"
+                                            />
+                                        </div>
+                                        <textarea
+                                            value={stage?.command || ''}
+                                            onChange={(e) => {
+                                                const newStages = [...(surfPromptsConfig.stages || [])];
+                                                newStages[index] = { ...newStages[index], command: e.target.value };
+                                                setSurfPromptsConfig(prev => ({ ...prev, stages: newStages }));
+                                            }}
+                                            className="w-full h-24 bg-black/30 border border-white/10 rounded-lg p-3 text-sm text-white/90 resize-y focus:border-red-500/50 focus:outline-none"
+                                            placeholder="教练指令"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex justify-between pt-4 border-t border-white/10">
+                                <button
+                                    onClick={() => {
+                                        if (confirm('确定要恢复默认配置吗？')) {
+                                            setSurfPromptsConfig({ systemPrompt: DEFAULT_SURF_SYSTEM_PROMPT, stages: JSON.parse(JSON.stringify(DEFAULT_SURF_STAGES)) });
+                                        }
+                                    }}
+                                    className="px-4 py-2 text-sm text-white/50 hover:text-white transition-colors"
+                                >
+                                    恢复默认
+                                </button>
+                                <button
+                                    onClick={() => setIsSurfPromptsModalOpen(false)}
+                                    className="px-6 py-2 bg-red-600/50 border border-red-500/50 rounded-full text-sm font-medium hover:bg-red-500/70 transition-colors shadow-[0_0_15px_rgba(239,68,68,0.3)]"
+                                >
+                                    完成并保存
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }
