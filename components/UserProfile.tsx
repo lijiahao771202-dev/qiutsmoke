@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { LogOut, ChevronDown, Image as ImageIcon, Check, Shuffle, User, Pencil, Trash2, Bell, Bot, Cpu, Loader2 } from "lucide-react";
+import { LogOut, ChevronDown, Image as ImageIcon, Check, Shuffle, User, Pencil, Trash2, Bell, Bot, Cpu, Loader2, Volume2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useBackground, WALLPAPERS } from "./BackgroundContext";
@@ -22,6 +22,15 @@ import {
     type AIModelFamily,
     type AIProvider,
 } from "@/lib/ai-models";
+import {
+    COSYVOICE_PROFILE,
+    DEFAULT_TTS_PROVIDER,
+    TTS_PROVIDER_DESCRIPTIONS,
+    TTS_PROVIDER_LABELS,
+    normalizeTTSSettings,
+    type TTSSettings,
+    type TTSProvider,
+} from "@/lib/tts-settings";
 
 export default function UserProfile() {
     const [user, setUser] = useState<any>(null);
@@ -31,6 +40,7 @@ export default function UserProfile() {
     const [showProfileEditor, setShowProfileEditor] = useState(false);
     const [showReminderSettings, setShowReminderSettings] = useState(false);
     const [showAISettings, setShowAISettings] = useState(false);
+    const [showTTSSettings, setShowTTSSettings] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
@@ -45,6 +55,14 @@ export default function UserProfile() {
     const [isSavingAISettings, setIsSavingAISettings] = useState(false);
     const [isTestingAISettings, setIsTestingAISettings] = useState(false);
     const [aiTestResult, setAITestResult] = useState<{ ok: boolean; message: string } | null>(null);
+    const [ttsProvider, setTTSProvider] = useState<TTSProvider>(DEFAULT_TTS_PROVIDER);
+    const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
+    const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
+    const [cosyvoiceSeed, setCosyvoiceSeed] = useState<number>(COSYVOICE_PROFILE.seed);
+    const [isLoadingTTSSettings, setIsLoadingTTSSettings] = useState(true);
+    const [isSavingTTSSettings, setIsSavingTTSSettings] = useState(false);
+    const [isTestingTTSSettings, setIsTestingTTSSettings] = useState(false);
+    const [ttsTestResult, setTTSTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
     const router = useRouter();
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -65,6 +83,7 @@ export default function UserProfile() {
         };
         getInitialSession();
         void loadAISettings();
+        void loadTTSSettings();
 
         // 监听认证状态变化
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -101,6 +120,34 @@ export default function UserProfile() {
             console.error("Load ai settings failed:", error);
         } finally {
             setIsLoadingAISettings(false);
+        }
+    };
+
+    const loadTTSSettings = async () => {
+        try {
+            const res = await fetch(getApiUrl("/api/tts-settings"), {
+                method: "GET",
+                cache: "no-store",
+            });
+            if (!res.ok) return;
+
+            const data = await res.json();
+            if (data?.provider === "edge" || data?.provider === "cosyvoice") {
+                setTTSProvider(data.provider);
+            }
+            if (typeof data?.cosyvoiceSpeed === "number") {
+                setCosyvoiceSpeed(data.cosyvoiceSpeed);
+            }
+            if (typeof data?.cosyvoiceInstruction === "string") {
+                setCosyvoiceInstruction(data.cosyvoiceInstruction);
+            }
+            if (typeof data?.cosyvoiceSeed === "number") {
+                setCosyvoiceSeed(data.cosyvoiceSeed);
+            }
+        } catch (error) {
+            console.error("Load tts settings failed:", error);
+        } finally {
+            setIsLoadingTTSSettings(false);
         }
     };
 
@@ -253,6 +300,100 @@ export default function UserProfile() {
         }
     };
 
+    const handleSaveTTSSettings = async () => {
+        setIsSavingTTSSettings(true);
+        try {
+            const nextSettings = normalizeTTSSettings({
+                provider: ttsProvider,
+                cosyvoiceSpeed,
+                cosyvoiceInstruction,
+                cosyvoiceSeed,
+            });
+            const res = await fetch(getApiUrl("/api/tts-settings"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(nextSettings),
+            });
+            if (res.ok) {
+                const savedSettings = await res.json().catch(() => nextSettings) as TTSSettings;
+                setTTSProvider(savedSettings.provider);
+                setCosyvoiceSpeed(savedSettings.cosyvoiceSpeed);
+                setCosyvoiceInstruction(savedSettings.cosyvoiceInstruction);
+                setCosyvoiceSeed(savedSettings.cosyvoiceSeed);
+                if (typeof window !== "undefined") {
+                    localStorage.setItem("tts_provider", savedSettings.provider);
+                    localStorage.setItem("cosyvoice_speed", String(savedSettings.cosyvoiceSpeed));
+                    localStorage.setItem("cosyvoice_instruction", savedSettings.cosyvoiceInstruction);
+                    localStorage.setItem("cosyvoice_seed", String(savedSettings.cosyvoiceSeed));
+                    window.dispatchEvent(new CustomEvent("tts-provider-changed", {
+                        detail: savedSettings,
+                    }));
+                }
+                setShowTTSSettings(false);
+            }
+        } catch (error) {
+            console.error("Save tts settings failed:", error);
+        } finally {
+            setIsSavingTTSSettings(false);
+        }
+    };
+
+    const handleTestTTSSettings = async () => {
+        setIsTestingTTSSettings(true);
+        setTTSTestResult(null);
+
+        if (ttsProvider !== "cosyvoice") {
+            setTTSTestResult({
+                ok: true,
+                message: "当前选择的是 EdgeTTS，无需本地 CosyVoice 连通性测试。",
+            });
+            setIsTestingTTSSettings(false);
+            return;
+        }
+
+        try {
+            const res = await fetch(getApiUrl("/api/tts-settings/test"), {
+                method: "GET",
+                cache: "no-store",
+            });
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok || !data?.ok) {
+                setTTSTestResult({
+                    ok: false,
+                    message: data?.error || `HTTP ${res.status}`,
+                });
+                return;
+            }
+
+            const summary = [
+                "CosyVoice 连通成功",
+                data?.model_dir ? `模型 ${data.model_dir}` : "",
+                data?.mode ? `模式 ${data.mode}` : "",
+                data?.sample_rate ? `采样率 ${data.sample_rate}Hz` : "",
+            ]
+                .filter(Boolean)
+                .join(" | ");
+
+            setTTSTestResult({
+                ok: true,
+                message: summary || "CosyVoice 连通成功",
+            });
+        } catch (error: any) {
+            setTTSTestResult({
+                ok: false,
+                message: error?.message || "CosyVoice 连通失败",
+            });
+        } finally {
+            setIsTestingTTSSettings(false);
+        }
+    };
+
+    const handleRandomCosyvoiceSeed = () => {
+        setCosyvoiceSeed(Math.floor(Math.random() * 2147483647));
+        setTTSTestResult(null);
+    };
+
     const { triggerLight } = useHaptics();
 
     if (!user) return null;
@@ -370,6 +511,24 @@ export default function UserProfile() {
                                         <div className="font-light">AI 模型</div>
                                         <div className="text-xs text-white/35 truncate">
                                             {isLoadingAISettings ? "加载中..." : `${selectedFamilyMeta?.label || AI_PROVIDER_LABELS[aiProvider]} · ${selectedModelMeta?.label || aiModel}`}
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        setIsOpen(false);
+                                        setShowTTSSettings(true);
+                                    }}
+                                    className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-white/10 text-cyan-400 hover:text-cyan-300 transition-colors text-sm text-left group"
+                                >
+                                    <div className="p-1.5 rounded-lg bg-cyan-500/10 group-hover:bg-cyan-500/20 transition-colors">
+                                        <Volume2 className="w-4 h-4" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="font-light">TTS 引擎</div>
+                                        <div className="text-xs text-white/35 truncate">
+                                            {isLoadingTTSSettings ? "加载中..." : TTS_PROVIDER_LABELS[ttsProvider]}
                                         </div>
                                     </div>
                                 </button>
@@ -692,6 +851,212 @@ export default function UserProfile() {
                                 >
                                     {isSavingAISettings && <Loader2 className="w-4 h-4 animate-spin" />}
                                     <span>{isSavingAISettings ? "保存中..." : "保存"}</span>
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {showTTSSettings && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+                        onClick={() => setShowTTSSettings(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full max-w-lg max-h-[85vh] overflow-hidden glass-panel rounded-3xl border border-white/10 shadow-2xl"
+                        >
+                            <div className="px-6 py-4 border-b border-white/10">
+                                <h2 className="text-lg font-medium text-white/90">TTS 引擎选择</h2>
+                                <p className="text-sm text-white/45 mt-1">
+                                    首页、冥想和 TTS Studio 的语音合成都走这里的全局设置。
+                                </p>
+                            </div>
+
+                            <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(85vh-140px)]">
+                                {(["cosyvoice", "edge"] as TTSProvider[]).map((provider) => {
+                                    const active = ttsProvider === provider;
+                                    return (
+                                        <button
+                                            key={provider}
+                                            type="button"
+                                            onClick={() => {
+                                                setTTSProvider(provider);
+                                                setTTSTestResult(null);
+                                            }}
+                                            className={cn(
+                                                "w-full rounded-2xl border px-4 py-4 text-left transition-all",
+                                                active
+                                                    ? "border-cyan-400/70 bg-cyan-500/10 shadow-lg shadow-cyan-500/10"
+                                                    : "border-white/10 bg-white/5 hover:bg-white/10"
+                                            )}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <div className={cn(
+                                                    "mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl",
+                                                    active ? "bg-cyan-500/20 text-cyan-300" : "bg-white/10 text-white/60"
+                                                )}>
+                                                    <Volume2 className="w-5 h-5" />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="text-sm text-white/90">{TTS_PROVIDER_LABELS[provider]}</div>
+                                                        {active && (
+                                                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-200">
+                                                                当前
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-xs text-white/45 mt-1">
+                                                        {TTS_PROVIDER_DESCRIPTIONS[provider]}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+
+                                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 space-y-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm text-white/90">CosyVoice 全局参数</div>
+                                            <div className="text-xs text-white/45 mt-1">
+                                                这些参数会影响首页、冥想和 TTS Studio 的 CosyVoice 合成。
+                                            </div>
+                                        </div>
+                                        <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/60">
+                                            {COSYVOICE_PROFILE.mode} | stream={String(COSYVOICE_PROFILE.stream)}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3">
+                                            <div className="text-xs text-white/45 mb-1">克隆音频</div>
+                                            <div className="text-sm text-white/85">{COSYVOICE_PROFILE.cloneAudioName}</div>
+                                        </div>
+                                        <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3">
+                                            <div className="text-xs text-white/45 mb-1">当前模式</div>
+                                            <div className="text-sm text-white/85">{COSYVOICE_PROFILE.mode}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="block text-sm text-white/85">倍速</label>
+                                        <input
+                                            type="number"
+                                            min={0.5}
+                                            max={2}
+                                            step={0.1}
+                                            value={cosyvoiceSpeed}
+                                            onChange={(e) => setCosyvoiceSpeed(Number.parseFloat(e.target.value) || COSYVOICE_PROFILE.speed)}
+                                            disabled={ttsProvider !== "cosyvoice"}
+                                            className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none disabled:opacity-50"
+                                        />
+                                        <div className="text-xs text-white/40">范围 0.5 - 2.0，默认 {COSYVOICE_PROFILE.speed}</div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="block text-sm text-white/85">自然语言控制指令</label>
+                                        <textarea
+                                            value={cosyvoiceInstruction}
+                                            onChange={(e) => setCosyvoiceInstruction(e.target.value)}
+                                            disabled={ttsProvider !== "cosyvoice"}
+                                            rows={4}
+                                            className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none resize-none disabled:opacity-50"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="block text-sm text-white/85">随机推理种子</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                value={cosyvoiceSeed}
+                                                onChange={(e) => {
+                                                    const digits = e.target.value.replace(/\D/g, "");
+                                                    setCosyvoiceSeed(digits === "" ? 0 : Number.parseInt(digits, 10));
+                                                }}
+                                                disabled={ttsProvider !== "cosyvoice"}
+                                                className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none disabled:opacity-50"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleRandomCosyvoiceSeed}
+                                                disabled={ttsProvider !== "cosyvoice"}
+                                                className="shrink-0 rounded-xl border border-white/10 bg-white/10 px-3 py-2.5 text-white/80 hover:bg-white/15 disabled:opacity-50"
+                                                title="随机种子"
+                                            >
+                                                <Shuffle className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm text-white/90">CosyVoice 连通性测试</div>
+                                            <div className="text-xs text-white/45 mt-1">
+                                                检查本机 `http://127.0.0.1:50000` 的 CosyVoice 服务是否可达。
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleTestTTSSettings}
+                                            disabled={isTestingTTSSettings}
+                                            className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs transition-colors disabled:opacity-50 flex items-center gap-2"
+                                        >
+                                            {isTestingTTSSettings && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                                            <span>{isTestingTTSSettings ? "测试中..." : "测试连通性"}</span>
+                                        </button>
+                                    </div>
+
+                                    {ttsTestResult && (
+                                        <div
+                                            className={cn(
+                                                "mt-3 rounded-xl border px-3 py-2 text-xs",
+                                                ttsTestResult.ok
+                                                    ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                                                    : "border-rose-400/30 bg-rose-500/10 text-rose-200"
+                                            )}
+                                        >
+                                            {ttsTestResult.message}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="px-6 py-4 border-t border-white/10 flex gap-3">
+                                <button
+                                    onClick={() => setShowTTSSettings(false)}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 text-sm transition-colors"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={handleTestTTSSettings}
+                                    disabled={isTestingTTSSettings}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isTestingTTSSettings && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    <span>{isTestingTTSSettings ? "测试中..." : "测试连通性"}</span>
+                                </button>
+                                <button
+                                    onClick={handleSaveTTSSettings}
+                                    disabled={isSavingTTSSettings}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white text-sm font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isSavingTTSSettings && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    <span>{isSavingTTSSettings ? "保存中..." : "保存"}</span>
                                 </button>
                             </div>
                         </motion.div>

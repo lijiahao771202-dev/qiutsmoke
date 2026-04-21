@@ -8,6 +8,7 @@ const http = require('http');
 const handler = require('serve-handler');
 
 let mainWindow;
+const DEFAULT_COSYVOICE_BASE_URL = process.env.COSYVOICE_BASE_URL || 'http://127.0.0.1:50000';
 
 function buildElectronSystemPrompt(systemPrompt = "") {
     const basePrompt = "你是一个专业的冥想引导师。请用舒缓、温柔、自然的中文语调创作冥想脚本。脚本应该包含适当的停顿指示。请直接输出冥想内容，不要包含任何开场白或结束语。你可以使用标签来控制节奏：使用 [pause Ns] 来插入 N 秒的停顿，使用 [rate +/-N%] 来调整语速，并建议在开始时使用 [rate -10%] 营造舒缓氛围。";
@@ -51,6 +52,46 @@ function getElectronUpstreamConfig(provider, model, key) {
     };
 }
 
+async function synthesizeEdgeAudio(text, voice, rate) {
+    const tts = new EdgeTTS({
+        voice: voice || "zh-CN-XiaoxiaoNeural",
+        lang: "zh-CN",
+        outputFormat: "audio-24khz-48kbitrate-mono-mp3",
+        rate: rate || "0%",
+    });
+
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(tempDir, `tts-${Date.now()}-${Math.random().toString(36).substring(7)}.mp3`);
+
+    await tts.ttsPromise(text, tempFile);
+    const audioBuffer = await fs.promises.readFile(tempFile);
+    await fs.promises.unlink(tempFile);
+    return `data:audio/mp3;base64,${audioBuffer.toString('base64')}`;
+}
+
+async function synthesizeCosyVoiceAudio(text, options = {}) {
+    const url = `${DEFAULT_COSYVOICE_BASE_URL.replace(/\/$/, '')}/api/cosyvoice/tts`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            text,
+            speed: options.cosyvoiceSpeed,
+            instruct_text: options.cosyvoiceInstruction,
+            seed: options.cosyvoiceSeed,
+        }),
+    });
+
+    if (!response.ok) {
+        const details = await response.text().catch(() => '');
+        throw new Error(details || 'CosyVoice service unavailable. Start http://127.0.0.1:50000 or switch back to EdgeTTS.');
+    }
+
+    const contentType = response.headers.get('content-type') || 'audio/wav';
+    const arrayBuffer = await response.arrayBuffer();
+    return `data:${contentType};base64,${Buffer.from(arrayBuffer).toString('base64')}`;
+}
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200,
@@ -90,24 +131,16 @@ function createWindow() {
 }
 
 // IPC Handlers
-ipcMain.handle('generate-tts', async (event, { text, voice, rate }) => {
+ipcMain.handle('generate-tts', async (event, { text, provider, voice, rate, cosyvoiceSpeed, cosyvoiceInstruction, cosyvoiceSeed }) => {
     try {
-        const tts = new EdgeTTS({
-            voice: voice || "zh-CN-XiaoxiaoNeural",
-            lang: "zh-CN",
-            outputFormat: "audio-24khz-48kbitrate-mono-mp3",
-            rate: rate || "0%",
-        });
-
-        const tempDir = os.tmpdir();
-        const tempFile = path.join(tempDir, `tts-${Date.now()}-${Math.random().toString(36).substring(7)}.mp3`);
-
-        await tts.ttsPromise(text, tempFile);
-        const audioBuffer = await fs.promises.readFile(tempFile);
-        await fs.promises.unlink(tempFile);
-
-        // Convert buffer to base64 for sending to renderer
-        return `data:audio/mp3;base64,${audioBuffer.toString('base64')}`;
+        if (provider === 'cosyvoice') {
+            return await synthesizeCosyVoiceAudio(text, {
+                cosyvoiceSpeed,
+                cosyvoiceInstruction,
+                cosyvoiceSeed,
+            });
+        }
+        return await synthesizeEdgeAudio(text, voice, rate);
     } catch (error) {
         console.error("TTS Error:", error);
         throw error;

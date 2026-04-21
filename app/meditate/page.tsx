@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 
 import { useState, useRef, useEffect, useMemo } from "react";
@@ -15,6 +15,12 @@ import { useBackgroundAudio } from "@/hooks/useBackgroundAudio";
 import { useWhiteNoise } from "@/hooks/useWhiteNoise";
 import { getApiUrl } from "@/lib/config";
 import ProMeditationPlayer from "@/components/meditation/ProMeditationPlayer";
+import {
+    COSYVOICE_PROFILE,
+    DEFAULT_TTS_PROVIDER,
+    type TTSProvider,
+    type TTSSettings,
+} from "@/lib/tts-settings";
 
 // 🚀 引导模式常量
 
@@ -149,6 +155,10 @@ export default function MeditatePage() {
 
     const [activeCard, setActiveCard] = useState<string | null>(null);
     const [selectedVoice, setSelectedVoice] = useState(VOICES[0].id);
+    const [ttsProvider, setTTSProvider] = useState<TTSProvider>(DEFAULT_TTS_PROVIDER);
+    const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
+    const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
+    const [cosyvoiceSeed, setCosyvoiceSeed] = useState<number>(COSYVOICE_PROFILE.seed);
     const [customPrompt, setCustomPrompt] = useState(DEFAULT_PROMPT);
     const [apiKey, setApiKey] = useState("");
     const [showPromptEdit, setShowPromptEdit] = useState(false);
@@ -223,6 +233,30 @@ export default function MeditatePage() {
 
         (async () => {
             try {
+                const res = await fetch(getApiUrl("/api/tts-settings"), {
+                    method: "GET",
+                    cache: "no-store",
+                });
+                if (!res.ok) return;
+
+                const data = await res.json();
+                if (data?.provider === "edge" || data?.provider === "cosyvoice") {
+                    setTTSProvider(data.provider);
+                }
+                if (typeof data?.cosyvoiceSpeed === "number") {
+                    setCosyvoiceSpeed(data.cosyvoiceSpeed);
+                }
+                if (typeof data?.cosyvoiceInstruction === "string") {
+                    setCosyvoiceInstruction(data.cosyvoiceInstruction);
+                }
+                if (typeof data?.cosyvoiceSeed === "number") {
+                    setCosyvoiceSeed(data.cosyvoiceSeed);
+                }
+            } catch { }
+        })();
+
+        (async () => {
+            try {
                 const res = await fetch(getApiUrl('/api/prompts'));
                 if (res.ok) {
                     const serverObj = await res.json();
@@ -264,6 +298,30 @@ export default function MeditatePage() {
                 }
             } catch { }
         })();
+    }, []);
+
+    useEffect(() => {
+        const handleTTSProviderChanged = (event: Event) => {
+            const detail = (event as CustomEvent<Partial<TTSSettings>>).detail || {};
+            const provider = detail.provider;
+            if (provider === "edge" || provider === "cosyvoice") {
+                setTTSProvider(provider);
+            }
+            if (typeof detail.cosyvoiceSpeed === "number") {
+                setCosyvoiceSpeed(detail.cosyvoiceSpeed);
+            }
+            if (typeof detail.cosyvoiceInstruction === "string") {
+                setCosyvoiceInstruction(detail.cosyvoiceInstruction);
+            }
+            if (typeof detail.cosyvoiceSeed === "number") {
+                setCosyvoiceSeed(detail.cosyvoiceSeed);
+            }
+        };
+
+        window.addEventListener("tts-provider-changed", handleTTSProviderChanged as EventListener);
+        return () => {
+            window.removeEventListener("tts-provider-changed", handleTTSProviderChanged as EventListener);
+        };
     }, []);
 
     // 使用 SWR 缓存数据
@@ -1266,7 +1324,15 @@ export default function MeditatePage() {
 
         try {
             if (typeof window !== 'undefined' && (window as any).electron) {
-                const url = await (window as any).electron.generateTTS(text, selectedVoice, currentRate.current);
+                const url = await (window as any).electron.generateTTS({
+                    text,
+                    provider: ttsProvider,
+                    voice: selectedVoice,
+                    rate: currentRate.current,
+                    cosyvoiceSpeed,
+                    cosyvoiceInstruction,
+                    cosyvoiceSeed,
+                });
                 setAudioQueue(prev => prev.map(item =>
                     item.id === itemId ? { ...item, url, status: 'ready' } : item
                 ));
@@ -1275,7 +1341,15 @@ export default function MeditatePage() {
                 const resp = await fetchWithRetry('/api/tts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text, voice: selectedVoice, rate: currentRate.current })
+                    body: JSON.stringify({
+                        text,
+                        provider: ttsProvider,
+                        voice: selectedVoice,
+                        rate: currentRate.current,
+                        cosyvoiceSpeed,
+                        cosyvoiceInstruction,
+                        cosyvoiceSeed,
+                    })
                 });
 
                 if (resp && resp.ok) {

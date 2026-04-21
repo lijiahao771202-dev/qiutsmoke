@@ -15,10 +15,18 @@ export async function ensureTables() {
     quit_date date,
     ai_provider text,
     ai_model text,
+    tts_provider text,
+    cosyvoice_speed double precision,
+    cosyvoice_instruction text,
+    cosyvoice_seed integer,
     updated_at timestamptz DEFAULT now()
   )`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ai_provider text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ai_model text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS tts_provider text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_speed double precision`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_instruction text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_seed integer`;
   await sql`CREATE TABLE IF NOT EXISTS user_prompts (
     user_id text REFERENCES users(id) ON DELETE CASCADE,
     topic_id text,

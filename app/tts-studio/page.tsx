@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -9,6 +9,12 @@ import { saveAudioCache, getAudioCache, hasAudioCache, deleteAudioCache } from "
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
 import { getApiUrl } from "@/lib/config";
+import {
+    COSYVOICE_PROFILE,
+    DEFAULT_TTS_PROVIDER,
+    type TTSProvider,
+    type TTSSettings,
+} from "@/lib/tts-settings";
 
 // TTSCard interface moved to lib/hooks/useData.ts
 // Re-export for backwards compatibility
@@ -26,6 +32,27 @@ const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
     light: { label: "🍃 轻引导", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/20" },
     medium: { label: "⚖️ 中引导", color: "bg-blue-500/20 text-blue-300 border-blue-500/20" },
     heavy: { label: "🧘 多引导", color: "bg-purple-500/20 text-purple-300 border-purple-500/20" }
+};
+
+const hashCacheSignature = (value: string) => {
+    let hash = 5381;
+    for (let i = 0; i < value.length; i++) {
+        hash = ((hash << 5) + hash) ^ value.charCodeAt(i);
+    }
+    return (hash >>> 0).toString(36);
+};
+
+const buildAudioCacheKey = (cardId: string, settings: TTSSettings) => {
+    if (settings.provider !== "cosyvoice") {
+        return `edge:${cardId}`;
+    }
+
+    const signature = hashCacheSignature(JSON.stringify({
+        speed: settings.cosyvoiceSpeed,
+        instruction: settings.cosyvoiceInstruction.trim(),
+        seed: settings.cosyvoiceSeed,
+    }));
+    return `cosyvoice:${signature}:${cardId}`;
 };
 
 // -----------------------------------------------------------------------------
@@ -592,7 +619,21 @@ const JELLY_VARIANTS = {
     }
 };
 
-function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSCard; onDelete: (id: string) => void; onEdit: (card: TTSCard) => void; onView: (card: TTSCard) => void; index?: number }) {
+function TTSCardItem({
+    card,
+    onDelete,
+    onEdit,
+    onView,
+    ttsSettings,
+    index = 0
+}: {
+    card: TTSCard;
+    onDelete: (id: string) => void;
+    onEdit: (card: TTSCard) => void;
+    onView: (card: TTSCard) => void;
+    ttsSettings: TTSSettings;
+    index?: number
+}) {
     // ... (keep existing state declarations)
     // Queue State
     type QueueItem =
@@ -635,6 +676,7 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
     const [showCardMenu, setShowCardMenu] = useState(false);
     const [deleteCacheConfirm, setDeleteCacheConfirm] = useState(false); // iOS的确认弹窗
     const [useCachedPlayback, setUseCachedPlayback] = useState(true); // 默认使用缓存播放
+    const audioCacheKey = buildAudioCacheKey(card.id, ttsSettings);
 
     // 播放进度状态 (用于缓存音频)
     const [playbackProgress, setPlaybackProgress] = useState({ currentTime: 0, duration: 0 });
@@ -651,15 +693,22 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
     // 检查缓存状态 - 如果没有缓存则自动后台合成
     const hasCheckedCacheRef = useRef(false);
     useEffect(() => {
+        hasCheckedCacheRef.current = false;
+        setHasCachedAudio(false);
+        setCachedAudioUrl(null);
+        setAudioDuration(null);
+    }, [audioCacheKey]);
+
+    useEffect(() => {
         // 防止重复检测
         if (hasCheckedCacheRef.current) return;
         hasCheckedCacheRef.current = true;
 
-        hasAudioCache(card.id).then(async (exists) => {
+        hasAudioCache(audioCacheKey).then(async (exists) => {
             setHasCachedAudio(exists);
             if (exists) {
                 try {
-                    const blob = await getAudioCache(card.id);
+                    const blob = await getAudioCache(audioCacheKey);
                     if (blob) {
                         const duration = await getBlobDuration(blob);
                         setAudioDuration(duration);
@@ -668,6 +717,11 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                     console.error("Failed to get audio duration via cache", e);
                 }
             } else {
+                if (ttsSettings.provider === "cosyvoice") {
+                    console.log(`[TTSCard] 卡片 "${card.title || card.id}" 无缓存，CosyVoice 模式下等待手动合成。`);
+                    return;
+                }
+
                 // ✨ 没有缓存时自动后台合成
                 // 🔒 检查全局 Set，防止页面切换后重复合成
                 if (synthesizingCardsSet.has(card.id)) {
@@ -683,7 +737,7 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                 }, 500);
             }
         });
-    }, [card.id]);
+    }, [audioCacheKey, card.id, ttsSettings.provider]);
 
     // Refs
     const currentItemIdRef = useRef<string | null>(null);
@@ -944,6 +998,10 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                     method: "POST",
                     body: JSON.stringify({
                         text: item.content,
+                        provider: ttsSettings.provider,
+                        cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
+                        cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
+                        cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
                         voice: item.voiceId,
                         rate: item.rate
                     }),
@@ -1222,6 +1280,10 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                             method: "POST",
                             body: JSON.stringify({
                                 text: seg.content,
+                                provider: ttsSettings.provider,
+                                cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
+                                cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
+                                cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
                                 voice: seg.voiceId,
                                 rate: seg.rate
                             }),
@@ -1359,7 +1421,7 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
             console.log("[Synthesize] WAV 大小:", (wavArrayBuffer.byteLength / 1024).toFixed(1), "KB");
 
             // 保存到 IndexedDB
-            await saveAudioCache(card.id, blob);
+            await saveAudioCache(audioCacheKey, blob);
             setHasCachedAudio(true);
 
             // 创建可播放的 URL
@@ -1491,6 +1553,10 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                             method: "POST",
                             body: JSON.stringify({
                                 text: item.content,
+                                provider: ttsSettings.provider,
+                                cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
+                                cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
+                                cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
                                 voice: item.voiceId,
                                 rate: item.rate
                             }),
@@ -1624,7 +1690,7 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
         setIsLoadingAudio(true);
         try {
             // 从 IndexedDB 获取缓存
-            const cachedBlob = await getAudioCache(card.id);
+            const cachedBlob = await getAudioCache(audioCacheKey);
             if (!cachedBlob) {
                 console.warn("[Play] 缓存不存在，回退到流式播放");
                 setIsLoadingAudio(false);
@@ -1983,7 +2049,7 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                                                         onClick={async (e) => {
                                                             e.stopPropagation();
                                                             setShowCardMenu(false);
-                                                            const blob = await getAudioCache(card.id);
+                                                            const blob = await getAudioCache(audioCacheKey);
                                                             if (blob) {
                                                                 const filename = `${card.title || '未命名'}_合成音频.wav`;
                                                                 // 尝试使用 Web Share API (iOS 支持更好)
@@ -2276,7 +2342,7 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
                                 <button
                                     onClick={async () => {
                                         triggerHeavy();
-                                        await deleteAudioCache(card.id);
+                                        await deleteAudioCache(audioCacheKey);
                                         setHasCachedAudio(false);
                                         setCachedAudioUrl(null);
                                         setDeleteCacheConfirm(false);
@@ -2300,6 +2366,10 @@ function TTSCardItem({ card, onDelete, onEdit, onView, index = 0 }: { card: TTSC
 export default function TTSStudioPage() {
     // 使用 SWR 缓存数据
     const { cards: ttsCards, addCard: apiAddCard, deleteCard: apiDeleteCard, isLoading: isLoadingCards } = useTTSCards();
+    const [ttsProvider, setTTSProvider] = useState<TTSProvider>(DEFAULT_TTS_PROVIDER);
+    const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
+    const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
+    const [cosyvoiceSeed, setCosyvoiceSeed] = useState<number>(COSYVOICE_PROFILE.seed);
 
     // 🚀 iOS 性能优化：延迟动画启动，等待页面完成静态渲染
     const [isMounted, setIsMounted] = useState(false);
@@ -2310,6 +2380,62 @@ export default function TTSStudioPage() {
         });
         return () => cancelAnimationFrame(raf);
     }, []);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await fetch(getApiUrl("/api/tts-settings"), {
+                    method: "GET",
+                    cache: "no-store",
+                });
+                if (!res.ok) return;
+
+                const data = await res.json();
+                if (data?.provider === "edge" || data?.provider === "cosyvoice") {
+                    setTTSProvider(data.provider);
+                }
+                if (typeof data?.cosyvoiceSpeed === "number") {
+                    setCosyvoiceSpeed(data.cosyvoiceSpeed);
+                }
+                if (typeof data?.cosyvoiceInstruction === "string") {
+                    setCosyvoiceInstruction(data.cosyvoiceInstruction);
+                }
+                if (typeof data?.cosyvoiceSeed === "number") {
+                    setCosyvoiceSeed(data.cosyvoiceSeed);
+                }
+            } catch { }
+        })();
+    }, []);
+
+    useEffect(() => {
+        const handleTTSProviderChanged = (event: Event) => {
+            const detail = (event as CustomEvent<Partial<TTSSettings>>).detail || {};
+            if (detail.provider === "edge" || detail.provider === "cosyvoice") {
+                setTTSProvider(detail.provider);
+            }
+            if (typeof detail.cosyvoiceSpeed === "number") {
+                setCosyvoiceSpeed(detail.cosyvoiceSpeed);
+            }
+            if (typeof detail.cosyvoiceInstruction === "string") {
+                setCosyvoiceInstruction(detail.cosyvoiceInstruction);
+            }
+            if (typeof detail.cosyvoiceSeed === "number") {
+                setCosyvoiceSeed(detail.cosyvoiceSeed);
+            }
+        };
+
+        window.addEventListener("tts-provider-changed", handleTTSProviderChanged as EventListener);
+        return () => {
+            window.removeEventListener("tts-provider-changed", handleTTSProviderChanged as EventListener);
+        };
+    }, []);
+
+    const ttsSettings: TTSSettings = {
+        provider: ttsProvider,
+        cosyvoiceSpeed,
+        cosyvoiceInstruction,
+        cosyvoiceSeed,
+    };
 
     const [editingCard, setEditingCard] = useState<TTSCard | null>(null);
     // 👁️ 阅读模式：查看完整文案（只读）
@@ -2425,7 +2551,7 @@ export default function TTSStudioPage() {
 
         // 尝试获取缓存并播放
         try {
-            const blob = await getAudioCache(card.id);
+            const blob = await getAudioCache(buildAudioCacheKey(card.id, ttsSettings));
             if (blob && playerAudioRef.current) {
                 const url = URL.createObjectURL(blob);
                 playerAudioRef.current.src = url;
@@ -2701,11 +2827,12 @@ export default function TTSStudioPage() {
                                 >
                                     {ttsCards.map((card: TTSCard, index: number) => (
                                         <TTSCardItem
-                                            key={card.id}
+                                            key={buildAudioCacheKey(card.id, ttsSettings)}
                                             card={card}
                                             onDelete={handleDelete}
                                             onEdit={handleEdit}
                                             onView={(c) => handlePlayCard(c)}
+                                            ttsSettings={ttsSettings}
                                             index={index}
                                         />
                                     ))}
