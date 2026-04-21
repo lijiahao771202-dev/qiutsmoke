@@ -13,38 +13,50 @@ const AuthContext = createContext<AuthContextType>({ user: null, loading: true }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
-    // 初始化为 true，等 session 检查完成后设为 false
     const [loading, setLoading] = useState(true);
     const supabase = createClient();
 
     useEffect(() => {
         let isMounted = true;
 
+        // 🚀 优化：给 getSession 加超时保护
+        // 如果 Supabase 慢，100ms 后直接视为"无用户"继续渲染
+        const SESSION_TIMEOUT = 100;
+
         const initAuth = async () => {
             try {
-                // 使用 getSession 读取本地 cookie
-                const { data: { session } } = await supabase.auth.getSession();
+                const sessionPromise = supabase.auth.getSession();
+                const timeoutPromise = new Promise<null>((resolve) =>
+                    setTimeout(() => resolve(null), SESSION_TIMEOUT)
+                );
+
+                const result = await Promise.race([sessionPromise, timeoutPromise]);
+
                 if (isMounted) {
-                    setUser(session?.user ?? null);
+                    if (result && 'data' in result) {
+                        setUser(result.data.session?.user ?? null);
+                    }
+                    // 无论超时还是成功，都结束 loading
                     setLoading(false);
                 }
             } catch (error) {
                 console.error("Auth initialization failed:", error);
-                if (isMounted) {
-                    setLoading(false);
-                }
+                if (isMounted) setLoading(false);
             }
         };
 
         initAuth();
 
-        // 监听认证状态变化
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
-            if (isMounted) {
-                setUser(session?.user ?? null);
-                setLoading(false);
+        // onAuthStateChange 会在 session 恢复后自动触发
+        // 即使 getSession 超时了，这里也会后续补上正确的 user
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            (_event: AuthChangeEvent, session: Session | null) => {
+                if (isMounted) {
+                    setUser(session?.user ?? null);
+                    setLoading(false);
+                }
             }
-        });
+        );
 
         return () => {
             isMounted = false;
@@ -60,4 +72,3 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
-

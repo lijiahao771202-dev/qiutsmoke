@@ -8,7 +8,6 @@ import { AuthProvider } from './AuthProvider';
 import { AnimatePresence, motion } from 'framer-motion';
 import { PushSubscriber } from './PushSubscriber';
 import { useBackgroundSync } from '@/lib/hooks/useSync';
-import { useSwipeNavigation } from '@/lib/hooks/useSwipeNavigation';
 
 // 懒加载重量级组件
 const DarkFluidBackground = lazy(() => import('./DarkFluidBackground').then(mod => ({ default: mod.DarkFluidBackground })));
@@ -182,9 +181,6 @@ export default function AppWrapper({ children }: { children: React.ReactNode }) 
 
     // 后台静默同步 IndexedDB ↔ Supabase
     useBackgroundSync();
-
-    // 📱 左右滑动切换页面
-    useSwipeNavigation();
 
     return (
         <BackgroundProvider>
