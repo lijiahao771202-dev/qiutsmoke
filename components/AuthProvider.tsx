@@ -11,49 +11,72 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({ user: null, loading: true });
 
+// ─── localStorage 缓存 ───
+
+const AUTH_CACHE_KEY = 'rain_auth_cache';
+
+function getCachedUser(): User | null {
+    if (typeof window === 'undefined') return null;
+    try {
+        const cached = localStorage.getItem(AUTH_CACHE_KEY);
+        if (cached) return JSON.parse(cached);
+    } catch {}
+    return null;
+}
+
+function setCachedUser(user: User | null) {
+    if (typeof window === 'undefined') return;
+    try {
+        if (user) {
+            localStorage.setItem(AUTH_CACHE_KEY, JSON.stringify(user));
+        } else {
+            localStorage.removeItem(AUTH_CACHE_KEY);
+        }
+    } catch {}
+}
+
+// ─── Provider ───
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-    const [user, setUser] = useState<User | null>(null);
-    const [loading, setLoading] = useState(true);
+    // 🚀 核心优化：用 localStorage 缓存的用户信息初始化
+    // 这是同步读取，零延迟！
+    const cachedUser = getCachedUser();
+    const [user, setUser] = useState<User | null>(cachedUser);
+    // 如果有缓存，直接视为"不在加载"，页面秒出
+    const [loading, setLoading] = useState(!cachedUser);
     const supabase = createClient();
 
     useEffect(() => {
         let isMounted = true;
 
-        // 🚀 优化：给 getSession 加超时保护
-        // 如果 Supabase 慢，100ms 后直接视为"无用户"继续渲染
-        const SESSION_TIMEOUT = 100;
-
-        const initAuth = async () => {
+        // 后台静默验证：向 Supabase 确认 session 是否仍然有效
+        const validateSession = async () => {
             try {
-                const sessionPromise = supabase.auth.getSession();
-                const timeoutPromise = new Promise<null>((resolve) =>
-                    setTimeout(() => resolve(null), SESSION_TIMEOUT)
-                );
-
-                const result = await Promise.race([sessionPromise, timeoutPromise]);
-
+                const { data: { session } } = await supabase.auth.getSession();
                 if (isMounted) {
-                    if (result && 'data' in result) {
-                        setUser(result.data.session?.user ?? null);
-                    }
-                    // 无论超时还是成功，都结束 loading
+                    const freshUser = session?.user ?? null;
+                    setUser(freshUser);
                     setLoading(false);
+                    // 更新缓存
+                    setCachedUser(freshUser);
                 }
             } catch (error) {
-                console.error("Auth initialization failed:", error);
+                console.error("Auth validation failed:", error);
                 if (isMounted) setLoading(false);
             }
         };
 
-        initAuth();
+        validateSession();
 
-        // onAuthStateChange 会在 session 恢复后自动触发
-        // 即使 getSession 超时了，这里也会后续补上正确的 user
+        // 监听认证状态变化（登录/登出/token 刷新）
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             (_event: AuthChangeEvent, session: Session | null) => {
                 if (isMounted) {
-                    setUser(session?.user ?? null);
+                    const newUser = session?.user ?? null;
+                    setUser(newUser);
                     setLoading(false);
+                    // 同步更新缓存
+                    setCachedUser(newUser);
                 }
             }
         );
