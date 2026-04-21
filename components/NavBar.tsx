@@ -28,6 +28,7 @@ export default function NavBar() {
                     <Link
                         key={tab.href}
                         href={tab.href}
+                        prefetch={true}
                         onClick={() => triggerLight()}
                         className={cn(
                             "relative px-7 py-4 md:px-8 md:py-4 rounded-full flex flex-col items-center justify-center transition-colors duration-300",

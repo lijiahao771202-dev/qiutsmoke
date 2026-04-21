@@ -10,7 +10,7 @@ export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // 需要认证的页面
-    const protectedPaths = ['/meditate', '/stats', '/tts-studio', '/push-test'];
+    const protectedPaths = ['/meditate', '/stats', '/push-test'];
     const needsAuth = protectedPaths.some(path => pathname === path || pathname.startsWith(path + '/'));
 
     // 不需要认证的页面直接放行
