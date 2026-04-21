@@ -16,12 +16,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     }, [user, loading, router, pathname]);
 
     if (loading) {
-        // Show a transparent/empty loading state to avoid flash
-        // blocking interaction until auth is determined
-        return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[1px] pointer-events-none">
-            </div>
-        );
+        // 🚀 核心优化：loading 期间返回空片段而不是全屏遮罩
+        // 这样页面不会被 backdrop-blur 阻塞视觉
+        // SSR 时也会返回 null 防止 document 错误
+        return null;
     }
 
     if (!user) {

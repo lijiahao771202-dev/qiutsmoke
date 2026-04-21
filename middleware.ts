@@ -55,8 +55,13 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
     matcher: [
-        // 匹配所有页面路由，排除静态资源和 API
-        '/((?!_next/static|_next/image|favicon.ico|api|manifest.json|sw.js|icon-|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf|js|css|json)$).*)',
+        // 只匹配需要认证的页面，其他页面完全跳过 middleware
+        '/meditate',
+        '/meditate/:path*',
+        '/stats',
+        '/stats/:path*',
+        '/push-test',
+        '/push-test/:path*',
     ],
 }
 
