@@ -41,10 +41,14 @@ export async function middleware(request: NextRequest) {
         }
     )
 
-    // 使用 getSession() 刷新 Cookie（如果有），但不通过 Middleware 强制拦截重定向
-    // "Zero Latency" 策略：把鉴权交给前端 AuthGuard 或后端 API 处理
-    // 这样页面切换就是纯前端行为，不会被 Middleware 的网络请求阻塞
-    await supabase.auth.getSession()
+    // "Zero Latency" 策略：getSession 最多等 200ms
+    // 超时则直接放行，让前端 AuthGuard 处理鉴权
+    // 这样即使 Supabase 慢，页面切换也不会被阻塞
+    const SESSION_TIMEOUT = 200;
+    await Promise.race([
+        supabase.auth.getSession(),
+        new Promise(resolve => setTimeout(resolve, SESSION_TIMEOUT)),
+    ])
 
     return response
 }

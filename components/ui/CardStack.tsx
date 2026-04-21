@@ -28,7 +28,7 @@ export function CardStack({ children, className = "" }: CardStackProps) {
     };
 
     return (
-        <div className={`relative w-full h-full perspective-[1200px] preserve-3d group ${className}`}>
+        <div className={`relative w-full h-full perspective-[1200px] group ${className}`}>
             {childrenArray.map((child, index) => {
                 // Calculate position relative to current index
                 // We handle the circular wrap-around logic here for a consistent "helix" view
@@ -67,7 +67,7 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                         key={index}
                         className="absolute inset-0 will-change-transform"
                         style={{
-                            transformStyle: "preserve-3d",
+                            // Removed transformStyle: "preserve-3d" to fix backdrop-filter bug on Chrome Windows
                             zIndex: 100 - Math.abs(offset), // Center item on top
                             pointerEvents: isVisible ? "auto" : "none", // Allow interaction on all visible cards
                         }}
@@ -112,7 +112,7 @@ export function CardStack({ children, className = "" }: CardStackProps) {
                     >
                         {/* Zero-G Floating Container - "Breathing" Effect */}
                         <motion.div
-                            className="w-full h-full relative preserve-3d"
+                            className="w-full h-full relative"
                             initial={{ y: 0, rotateX: 0, rotateZ: 0 }}
                             animate={{
                                 y: isActive ? [0, -floatY, 0] : [0, -floatY * 0.6, 0],

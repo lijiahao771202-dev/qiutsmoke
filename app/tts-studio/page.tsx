@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -27,6 +27,7 @@ import { useWhiteNoise, AMBIENT_SOUNDS, type AmbientSoundType } from "@/hooks/us
 // Constants
 // -----------------------------------------------------------------------------
 import { VOICES } from "@/lib/constants";
+import { RAIN_CARDS } from "./rainCards";
 
 const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
     light: { label: "🍃 轻引导", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/20" },
@@ -2366,6 +2367,7 @@ function TTSCardItem({
 export default function TTSStudioPage() {
     // 使用 SWR 缓存数据
     const { cards: ttsCards, addCard: apiAddCard, deleteCard: apiDeleteCard, isLoading: isLoadingCards } = useTTSCards();
+    const [activeCategory, setActiveCategory] = useState<'all' | 'rain'>('all');
     const [ttsProvider, setTTSProvider] = useState<TTSProvider>(DEFAULT_TTS_PROVIDER);
     const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
     const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
@@ -2593,17 +2595,19 @@ export default function TTSStudioPage() {
 
     const handlePrev = () => {
         if (!playerCard) return;
-        const currentIndex = ttsCards.findIndex(c => c.id === playerCard.id);
+        const currentList = activeCategory === 'rain' ? RAIN_CARDS : ttsCards;
+        const currentIndex = currentList.findIndex(c => c.id === playerCard.id);
         if (currentIndex > 0) {
-            handlePlayCard(ttsCards[currentIndex - 1]);
+            handlePlayCard(currentList[currentIndex - 1]);
         }
     };
 
     const handleNext = () => {
         if (!playerCard) return;
-        const currentIndex = ttsCards.findIndex(c => c.id === playerCard.id);
-        if (currentIndex < ttsCards.length - 1) {
-            handlePlayCard(ttsCards[currentIndex + 1]);
+        const currentList = activeCategory === 'rain' ? RAIN_CARDS : ttsCards;
+        const currentIndex = currentList.findIndex(c => c.id === playerCard.id);
+        if (currentIndex < currentList.length - 1) {
+            handlePlayCard(currentList[currentIndex + 1]);
         }
     };
 
@@ -2793,9 +2797,25 @@ export default function TTSStudioPage() {
                         <GlassInput onAddCard={apiAddCard} />
                     </div>
 
-                    <div className="mt-8">
+                    {/* 分类标签 */}
+                    <div className="flex gap-4 mt-8 mb-6 px-1">
+                        <button 
+                            onClick={() => setActiveCategory('all')} 
+                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all", activeCategory === 'all' ? "bg-white text-black shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10")}
+                        >
+                            全部语料
+                        </button>
+                        <button 
+                            onClick={() => setActiveCategory('rain')} 
+                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2", activeCategory === 'rain' ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20" : "bg-rose-500/10 text-rose-300/80 hover:bg-rose-500/20")}
+                        >
+                            <span>🌊</span> RAIN 冲浪冥想
+                        </button>
+                    </div>
+
+                    <div>
                         <AnimatePresence mode="wait">
-                            {isLoadingCards ? (
+                            {isLoadingCards && activeCategory === 'all' ? (
                                 <motion.div
                                     key="loading"
                                     initial={{ opacity: 0 }}
@@ -2806,7 +2826,7 @@ export default function TTSStudioPage() {
                                     <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mb-4" />
                                     <p className="text-sm font-light">正在加载语料库...</p>
                                 </motion.div>
-                            ) : ttsCards.length === 0 ? (
+                            ) : (activeCategory === 'rain' ? RAIN_CARDS : ttsCards).length === 0 ? (
                                 <motion.div
                                     key="empty"
                                     variants={ITEM_VARIANTS}
@@ -2825,7 +2845,7 @@ export default function TTSStudioPage() {
                                     animate={isMounted ? "show" : "hidden"}
                                     className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                                 >
-                                    {ttsCards.map((card: TTSCard, index: number) => (
+                                    {(activeCategory === 'rain' ? RAIN_CARDS : ttsCards).map((card: TTSCard, index: number) => (
                                         <TTSCardItem
                                             key={buildAudioCacheKey(card.id, ttsSettings)}
                                             card={card}

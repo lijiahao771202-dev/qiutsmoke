@@ -17,10 +17,17 @@ import { useGlobalWhiteNoise } from "@/contexts/WhiteNoiseContext";
 import { SoundscapesContent } from "@/components/soundscapes/SoundscapesContent";
 import { usePracticeKeepAwake } from "@/hooks/usePracticeKeepAwake";
 
+import scriptsPrepare from "@/app/data/scripts_prepare.json";
+import scriptsRecognize from "@/app/data/scripts_recognize.json";
+import scriptsAllow from "@/app/data/scripts_allow.json";
+import scriptsInvestigate from "@/app/data/scripts_investigate.json";
+import scriptsNote from "@/app/data/scripts_note.json";
+import scriptsInterrupt from "@/app/data/scripts_interrupt.json";
+
 // --- Types ---
 type Phase = "IDLE" | "TRANSITION_TO_PRACTICE" | "COUNTDOWN" | "PREP_SURF" | "PRACTICING" | "COMPLETED" | "SUMMARY";
 type BreathPhase = "INHALE" | "HOLD" | "EXHALE";
-type Theme = "SPHERE" | "SURF" | "LIQUID" | "ROSE" | "AURORA" | "ZEN" | "GALAXY" | "INFERNO" | "CRYSTAL" | "SAKURA" | "STARFALL" | "LOTUS" | "PRISM";
+type Theme = "SPHERE" | "SURF" | "ZEN" | "GALAXY" | "SAKURA" | "STARFALL" | "LOTUS";
 type BreathingPatternId = "478" | "box" | "focus" | "sigh" | "energy";
 
 interface BreathingPattern {
@@ -44,17 +51,11 @@ const BREATHING_PATTERNS: BreathingPattern[] = [
 const THEMES: Record<Theme, { name: string; icon: any; color: string }> = {
     SPHERE: { name: "Sphere", icon: Globe, color: "text-blue-400" },
     SURF: { name: "Surfing", icon: Waves, color: "text-blue-500" },
-    LIQUID: { name: "Liquid", icon: Gem, color: "text-slate-200" },
-    ROSE: { name: "Rose", icon: Flower2, color: "text-pink-400" },
-    AURORA: { name: "Aurora", icon: Sparkles, color: "text-purple-400" },
     ZEN: { name: "Zen", icon: CircleDot, color: "text-stone-300" },
     GALAXY: { name: "Galaxy", icon: Orbit, color: "text-indigo-400" },
-    INFERNO: { name: "Inferno", icon: Flame, color: "text-orange-500" },
-    CRYSTAL: { name: "Crystal", icon: Gem, color: "text-emerald-400" },
     SAKURA: { name: "Sakura", icon: Cherry, color: "text-pink-300" },
     STARFALL: { name: "Starfall", icon: Star, color: "text-yellow-300" },
     LOTUS: { name: "Lotus", icon: Flower, color: "text-amber-200" },
-    PRISM: { name: "Prism", icon: Gem, color: "text-cyan-300" },
 };
 
 // --- Configuration ---
@@ -292,7 +293,7 @@ function PracticeContent() {
             const saved = localStorage.getItem("practiceTheme") as Theme | null;
             if (saved && THEMES[saved]) return saved;
         }
-        return "ROSE";
+        return "ZEN";
     });
 
     // Surf Pre-boarding Form Data
@@ -324,6 +325,13 @@ function PracticeContent() {
         }
         return 45;
     });
+    const [surfStyle, setSurfStyle] = useState<'interactive' | 'immersive' | 'system'>(() => {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("surfStyle") as any;
+            return (saved === 'interactive' || saved === 'immersive' || saved === 'system') ? saved : 'interactive';
+        }
+        return 'interactive';
+    });
 
     useEffect(() => {
         localStorage.setItem("practiceGuidanceMode", guidanceMode);
@@ -331,6 +339,7 @@ function PracticeContent() {
 
     // AI Smart Reminder States
     const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+    const [isPromptInspectorOpen, setIsPromptInspectorOpen] = useState(false);
     const [aiMood, setAiMood] = useState('平静');
     const [aiMode, setAiMode] = useState('常规正念');
     const [aiFrequency, setAiFrequency] = useState<'light' | 'medium' | 'heavy'>('medium');
@@ -477,6 +486,27 @@ function PracticeContent() {
                         audio.removeEventListener('error', onEnded);
                         queue.jobs.shift(); // remove played
                         queue.isPlaying = false;
+                        
+                        const triggerSystemEngineNext = () => {
+                            if (selectedTheme === 'SURF' && surfStyle === 'system') {
+                                const isPriority = systemPriorityQueueRef.current.length > 0;
+                                // priority interrupt waits 1s, normal stage waits dynamically
+                                let delay = 1000;
+                                if (!isPriority) {
+                                    const stage = systemStageRef.current;
+                                    if (stage === 0) delay = 5000; // Prepare
+                                    else if (stage === 1) delay = 8000; // Recognize
+                                    else if (stage === 2) delay = 8000; // Allow
+                                    else if (stage === 3) delay = 10000; // Investigate
+                                    else if (stage === 4) delay = 6000; // Note
+                                }
+                                systemWaitTimerRef.current = setTimeout(() => {
+                                    popNextSystemSentence();
+                                }, delay);
+                            }
+                        };
+                        
+                        triggerSystemEngineNext();
                         processTTSQueue();
                     };
                     audio.addEventListener('ended', onEnded);
@@ -489,6 +519,27 @@ function PracticeContent() {
                 } else {
                     // Blob failed, skip
                     queue.jobs.shift();
+                    
+                    const triggerSystemEngineNext = () => {
+                        if (selectedTheme === 'SURF' && surfStyle === 'system') {
+                            const isPriority = systemPriorityQueueRef.current.length > 0;
+                            // priority interrupt waits 1s, normal stage waits dynamically
+                            let delay = 1000;
+                            if (!isPriority) {
+                                const stage = systemStageRef.current;
+                                if (stage === 0) delay = 5000; // Prepare
+                                else if (stage === 1) delay = 8000; // Recognize
+                                else if (stage === 2) delay = 8000; // Allow
+                                else if (stage === 3) delay = 10000; // Investigate
+                                else if (stage === 4) delay = 6000; // Note
+                            }
+                            systemWaitTimerRef.current = setTimeout(() => {
+                                popNextSystemSentence();
+                            }, delay);
+                        }
+                    };
+                    triggerSystemEngineNext();
+                    
                     processTTSQueue();
                 }
             }
@@ -511,6 +562,73 @@ function PracticeContent() {
             ttsAudioRef.current.src = "";
         }
     };
+
+    // --- System Mode Event-Driven Engine Methods ---
+    const popNextSystemSentence = useCallback(() => {
+        if (systemWaitTimerRef.current) {
+            clearTimeout(systemWaitTimerRef.current);
+            systemWaitTimerRef.current = null;
+        }
+
+        const typeSentenceAndPlay = (sentence: string) => {
+            const logIndex = startAiStreamLog();
+            let charIdx = 0;
+            const typeInterval = setInterval(() => {
+                if (charIdx < sentence.length) {
+                    appendAiStreamLog(logIndex, sentence[charIdx]);
+                    charIdx++;
+                } else {
+                    clearInterval(typeInterval);
+                }
+            }, 30);
+            enqueueTTSChunk(sentence);
+        };
+
+        // 1. Check Priority Queue (Interrupts)
+        if (systemPriorityQueueRef.current.length > 0) {
+            const interruptSentence = systemPriorityQueueRef.current.shift()!;
+            typeSentenceAndPlay(interruptSentence);
+            return;
+        }
+
+        // 2. Check Main Queue
+        if (systemMainQueueRef.current.length > 0) {
+            const nextSentence = systemMainQueueRef.current.shift()!;
+            typeSentenceAndPlay(nextSentence);
+        } else {
+            // Main queue empty! Proceed to next stage
+            const nextStage = systemStageRef.current + 1;
+            if (nextStage <= 4) {
+                systemStageRef.current = nextStage;
+                setSystemStage(nextStage);
+                loadSystemScriptForStage(nextStage);
+            } else {
+                console.log("[System Mode] Practice Complete.");
+            }
+        }
+    }, [enqueueTTSChunk]);
+
+    const getRandomVersion = useCallback((jsonArray: any[]) => {
+        if (!jsonArray || jsonArray.length === 0) return [];
+        const randomItem = jsonArray[Math.floor(Math.random() * jsonArray.length)];
+        return randomItem.sentences || [];
+    }, []);
+
+    const loadSystemScriptForStage = useCallback((stage: number) => {
+        let sentences: string[] = [];
+        if (stage === 0) sentences = getRandomVersion(scriptsPrepare);
+        else if (stage === 1) sentences = getRandomVersion(scriptsRecognize);
+        else if (stage === 2) sentences = getRandomVersion(scriptsAllow);
+        else if (stage === 3) sentences = getRandomVersion(scriptsInvestigate);
+        else if (stage === 4) sentences = getRandomVersion(scriptsNote);
+        
+        systemMainQueueRef.current = [...sentences];
+        console.log(`[System Mode] Loaded Stage ${stage} script:`, sentences);
+        
+        if (!ttsQueueRef.current.isPlaying) {
+            popNextSystemSentence();
+        }
+    }, [getRandomVersion, popNextSystemSentence]);
 
     // Keep playVoicePrompt for simple random fixed prompts
     const playVoicePrompt = async (text: string): Promise<void> => {
@@ -595,6 +713,16 @@ function PracticeContent() {
     const [chatHistory, setChatHistory] = useState<{role: string; content: string}[]>([]);
     const surfBusyRef = useRef(false);
     
+    // Immersive Mode Queue Refs
+    const playbackQueueRef = useRef<string[]>([]);
+    const isFetchingBatchRef = useRef<boolean>(false);
+
+    // System Mode Stage & Queue Refs
+    const [systemStage, setSystemStage] = useState(0);
+    const systemStageRef = useRef(0);
+    const systemMainQueueRef = useRef<string[]>([]);
+    const systemPriorityQueueRef = useRef<string[]>([]);
+    const systemWaitTimerRef = useRef<NodeJS.Timeout | null>(null);
     // Helper to keep ref and state in sync
     const pushAiLog = useCallback((role: string, content: string) => {
         aiHistoryRef.current.push({ role, content });
@@ -911,13 +1039,14 @@ function PracticeContent() {
             played.add(`surf_${currentElapsed}`);
             if (surfBusyRef.current) {
                 console.log('[SURF] Auto-pulse skipped: user action in progress');
-            } else {
+            } else if (surfStyle === 'interactive') {
                 const doSurfPulse = async () => {
                     surfBusyRef.current = true;
                     try {
                         await streamAiReminder({
                             mood: aiMood,
                             mode: 'urge_surfing',
+                            surfStyle: 'interactive',
                             elapsedTime: currentElapsed,
                             totalTime: totalSeconds,
                             sessionPhase: 'middle',
@@ -931,12 +1060,61 @@ function PracticeContent() {
                     }
                 };
                 doSurfPulse();
+            } else if (surfStyle === 'immersive') {
+                // Immersive Mode: Pull from local queue
+                const doQueuePulse = async () => {
+                    if (playbackQueueRef.current.length > 0) {
+                        const nextSentence = playbackQueueRef.current.shift()!;
+                        console.log("[SURF Immersive] Popped from queue:", nextSentence);
+                        const logIndex = startAiStreamLog();
+                        // Simulate typewriter
+                        let charIdx = 0;
+                        const typeInterval = setInterval(() => {
+                            if (charIdx < nextSentence.length) {
+                                appendAiStreamLog(logIndex, nextSentence[charIdx]);
+                                charIdx++;
+                            } else {
+                                clearInterval(typeInterval);
+                                enqueueTTSChunk(nextSentence);
+                            }
+                        }, 50); // 50ms per character
+                    }
+
+                    // Background reload if queue is low
+                    if (playbackQueueRef.current.length <= 1 && !isFetchingBatchRef.current) {
+                        isFetchingBatchRef.current = true;
+                        try {
+                            const resultText = await streamAiReminder({
+                                mood: aiMood,
+                                mode: 'urge_surfing',
+                                surfStyle: 'immersive',
+                                elapsedTime: currentElapsed + surfFrequency, // look ahead
+                                totalTime: totalSeconds,
+                                sessionPhase: 'middle',
+                                diagnosisProfile: surfDiagnosisRef.current,
+                                history: aiHistoryRef.current,
+                                practiceCount: typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0,
+                                customSurfPrompts: surfPromptsConfig
+                            }, true); // disableAutoQueue = true
+                            
+                            // Parse batch sentences
+                            const sentences = resultText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+                            playbackQueueRef.current.push(...sentences);
+                            console.log("[SURF Immersive] Reloaded queue in background:", sentences);
+                        } catch(e) {
+                            console.error("[SURF Immersive] Batch fetch failed", e);
+                        } finally {
+                            isFetchingBatchRef.current = false;
+                        }
+                    }
+                };
+                doQueuePulse();
             }
         }
     }, [elapsedSeconds, phase, guidanceMode, durationMinutes, aiMood, aiMode, selectedTheme]);
 
     // --- Urge Surfing Realtime Action ---
-    const handleUrgeSurfingAction = async (action: string) => {
+    const handleUrgeSurfingAction = async (action: string, buttonId?: string) => {
         if (surfBusyRef.current) return; // prevent collision with auto-pulse
         surfBusyRef.current = true;
         triggerMedium();
@@ -951,20 +1129,79 @@ function PracticeContent() {
 
             clearTTSQueue();
             
-            await streamAiReminder({
-                mood: aiMood,
-                mode: 'urge_surfing',
-                elapsedTime: elapsedSeconds,
-                totalTime: durationMinutes * 60,
-                sessionPhase: isFinish ? 'end' : 'middle',
-                history: aiHistoryRef.current,
-                userAction: action,
-                diagnosisProfile: surfDiagnosisRef.current,
-                practiceCount: count,
-                customSurfPrompts: surfPromptsConfig
-            });
+            if (surfStyle === 'interactive') {
+                await streamAiReminder({
+                    mood: aiMood,
+                    mode: 'urge_surfing',
+                    surfStyle: 'interactive',
+                    elapsedTime: elapsedSeconds,
+                    totalTime: durationMinutes * 60,
+                    sessionPhase: isFinish ? 'end' : 'middle',
+                    history: aiHistoryRef.current,
+                    userAction: action,
+                    diagnosisProfile: surfDiagnosisRef.current,
+                    practiceCount: count,
+                    customSurfPrompts: surfPromptsConfig
+                });
+            } else if (surfStyle === 'immersive') {
+                // Immersive Mode Action
+                playbackQueueRef.current = []; // Clear queue on interrupt
+                isFetchingBatchRef.current = true;
+                
+                const resultText = await streamAiReminder({
+                    mood: aiMood,
+                    mode: 'urge_surfing',
+                    surfStyle: 'immersive',
+                    elapsedTime: elapsedSeconds,
+                    totalTime: durationMinutes * 60,
+                    sessionPhase: isFinish ? 'end' : 'middle',
+                    history: aiHistoryRef.current,
+                    userAction: action,
+                    diagnosisProfile: surfDiagnosisRef.current,
+                    practiceCount: count,
+                    customSurfPrompts: surfPromptsConfig
+                }, true); // disableAutoQueue
+                
+                const sentences = resultText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+                if (sentences.length > 0) {
+                    const immediateSentence = sentences.shift()!;
+                    const logIndex = startAiStreamLog();
+                    let charIdx = 0;
+                    const typeInterval = setInterval(() => {
+                        if (charIdx < immediateSentence.length) {
+                            appendAiStreamLog(logIndex, immediateSentence[charIdx]);
+                            charIdx++;
+                        } else {
+                            clearInterval(typeInterval);
+                            enqueueTTSChunk(immediateSentence);
+                        }
+                    }, 50); // 50ms per character
+                    
+                    playbackQueueRef.current = sentences; // Queue the rest
+                }
+                isFetchingBatchRef.current = false;
+            } else if (surfStyle === 'system') {
+                // System Mode Interrupt Action
+                clearTTSQueue();
+                if (systemWaitTimerRef.current) clearTimeout(systemWaitTimerRef.current);
+                
+                let sentences: string[] = [];
+                if (buttonId && (scriptsInterrupt as any)[buttonId]) {
+                    const versions = (scriptsInterrupt as any)[buttonId];
+                    sentences = [...versions[Math.floor(Math.random() * versions.length)]];
+                } else if (isFinish && (scriptsInterrupt as any)['complete']) {
+                    const versions = (scriptsInterrupt as any)['complete'];
+                    sentences = [...versions[Math.floor(Math.random() * versions.length)]];
+                } else {
+                    sentences = [action];
+                }
+                
+                systemPriorityQueueRef.current = [...sentences];
+                popNextSystemSentence();
+            }
         } catch (e) {
             console.error("SURF Action API Failed", e);
+            isFetchingBatchRef.current = false;
         } finally {
             surfBusyRef.current = false;
         }
@@ -2088,12 +2325,17 @@ function PracticeContent() {
         const elapsedSeconds = state.elapsedSeconds || 0;
         const tMinutes = elapsedSeconds / 60;
         
-        // Psychological Urge Curve: 0m->0, 1m->1, 3m->1, 5m->0.1, >5m->0.1
         let urgeIntensity = 0;
-        if (tMinutes < 1) urgeIntensity = tMinutes; // Rising
-        else if (tMinutes < 3) urgeIntensity = 1; // Peak Urge
-        else if (tMinutes < 5) urgeIntensity = Math.max(0.05, 1 - (tMinutes - 3) / 2); // Receding
-        else urgeIntensity = 0.05; // Calm baseline
+        if (state.phase === "IDLE") {
+            // In the theme selection page, simulate a gentle, breathing swell so it doesn't look stuck
+            urgeIntensity = 0.3 + Math.sin(timestamp * 0.001) * 0.15; 
+        } else {
+            // Psychological Urge Curve: 0m->0, 1m->1, 3m->1, 5m->0.1, >5m->0.1
+            if (tMinutes < 1) urgeIntensity = tMinutes; // Rising
+            else if (tMinutes < 3) urgeIntensity = 1; // Peak Urge
+            else if (tMinutes < 5) urgeIntensity = Math.max(0.05, 1 - (tMinutes - 3) / 2); // Receding
+            else urgeIntensity = 0.05; // Calm baseline
+        }
         
         // Extremely smooth, localized time
         const speed = 0.0008;
@@ -2140,8 +2382,15 @@ function PracticeContent() {
 
             p.diffuseX = p.diffuseX || p.x;
             p.diffuseY = p.diffuseY || p.y;
-            p.diffuseX += ((targetX + floatX) - p.diffuseX) * 0.03 * transitionProgress;
-            p.diffuseY += ((targetY + floatY) - p.diffuseY) * 0.03 * transitionProgress;
+
+            if (transitionProgress < 0.01) {
+                // IDLE preview: drive particles directly to the wave shape
+                p.diffuseX += ((targetX + floatX) - p.diffuseX) * 0.03;
+                p.diffuseY += ((targetY + floatY) - p.diffuseY) * 0.03;
+            } else {
+                p.diffuseX += ((targetX + floatX) - p.diffuseX) * 0.03 * transitionProgress;
+                p.diffuseY += ((targetY + floatY) - p.diffuseY) * 0.03 * transitionProgress;
+            }
             p.x = p.diffuseX;
             p.y = p.diffuseY;
 
@@ -2255,7 +2504,7 @@ function PracticeContent() {
     const renderSphere = (ctx: CanvasRenderingContext2D, state: any, width: number, height: number, timestamp: number, transitionProgress: number, bloomProgress: number, breathScale: number) => {
         const isMobile = width <= 768;
         const centerX = width / 2;
-        const centerY = height / 2 + (isMobile ? Math.min(height * 0.07, 68) : 0);
+        const centerY = height / 2 + (isMobile ? Math.min(height * 0.02, 20) : 0);
         const now = Date.now();
         const introElapsed = now - (state.themeStartTime || 0);
 
@@ -2489,6 +2738,7 @@ function PracticeContent() {
 
     useEffect(() => {
         const canvas = canvasRef.current;
+
         if (canvas) {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -2826,18 +3076,39 @@ function PracticeContent() {
         if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
         if (breathTimerRef.current) clearTimeout(breathTimerRef.current);
         clearHapticTimers();
+
+        // Stop all audio & TTS
+        clearTTSQueue();
+        if (ttsAudioRef.current) {
+            ttsAudioRef.current.pause();
+            ttsAudioRef.current.src = "";
+        }
+
+        // Clear system mode timers
+        if (systemWaitTimerRef.current) {
+            clearTimeout(systemWaitTimerRef.current);
+            systemWaitTimerRef.current = null;
+        }
+
+        // Reset async flags so nothing re-triggers
+        surfBusyRef.current = false;
+        isFetchingBatchRef.current = false;
     };
 
     const handleExit = () => {
         cleanup();
+        // Reset animation state to prevent stale phase refs
+        animState.current.phase = "IDLE";
         if (phase === "IDLE") {
-            // If already in IDLE, go back to home
+            // If in IDLE (theme selection), go back to home
             router.push('/');
         } else {
-            // Otherwise, return to IDLE state (not home)
+            // During practice/countdown/prep: go directly home
+            // Don't go to IDLE first — that triggers preloadAudioAssets and is slow
             setPhase("IDLE");
             setBreathPhase("INHALE");
             setCountdown(3);
+            router.push('/');
         }
     };
 
@@ -2862,39 +3133,24 @@ function PracticeContent() {
 
     return (
         <>
-            {/* 🔥 背景扩展层 - 强制覆盖到安全区域底部 */}
+            {/* Full-screen practice container */}
             <div
                 className="fixed inset-0 z-[99999] overflow-hidden bg-black animate-in fade-in duration-500"
-                style={{
-                    bottom: 'calc(-1 * env(safe-area-inset-bottom, 0px))',
-                    height: 'calc(100% + env(safe-area-inset-bottom, 0px))'
-                }}
             >
                 <div
-                    className="fixed inset-0 bg-black z-[-1]"
-                />
-                <div
                     className="absolute inset-0 text-white font-sans overflow-hidden"
-                    style={{
-                        bottom: 'calc(-1 * env(safe-area-inset-bottom, 0px))',
-                        height: 'calc(100% + env(safe-area-inset-bottom, 0px))'
-                    }}
                 >
-
-                    {/* Canvas - also extend to cover safe area */}
+                    {/* Canvas */}
                     <canvas
                         ref={canvasRef}
                         className="absolute inset-0 block touch-none"
-                        style={{
-                            bottom: 'calc(-1 * env(safe-area-inset-bottom, 0px))',
-                            height: 'calc(100% + env(safe-area-inset-bottom, 0px))'
-                        }}
                     />
 
                     <div
                         className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between"
                         style={{
                             paddingTop: 'env(safe-area-inset-top)',
+                            paddingBottom: 'env(safe-area-inset-bottom)',
                             paddingLeft: 'env(safe-area-inset-left)',
                             paddingRight: 'env(safe-area-inset-right)',
                         }}
@@ -3074,23 +3330,41 @@ function PracticeContent() {
                                                 
                                                 startPractice();
                                                 
-                                                // Trigger AI with form data Start Phase 0
-                                                try {
-                                                    // Ensure the action is logged in chat history for context
-                                                    pushAiLog('user', actionStr);
+                                                if (surfStyle === 'system') {
+                                                    // System Mode Event-Driven Engine Init
+                                                    setSystemStage(0);
+                                                    systemStageRef.current = 0;
+                                                    systemMainQueueRef.current = [];
+                                                    systemPriorityQueueRef.current = [];
+                                                    clearTTSQueue();
+                                                    if (systemWaitTimerRef.current) {
+                                                        clearTimeout(systemWaitTimerRef.current);
+                                                        systemWaitTimerRef.current = null;
+                                                    }
+                                                    loadSystemScriptForStage(0);
                                                     
-                                                    await streamAiReminder({
-                                                        mood: aiMood,
-                                                        mode: 'urge_surfing',
-                                                        elapsedTime: 0,
-                                                        totalTime: durationMinutes * 60,
-                                                        sessionPhase: 'start',
-                                                        diagnosisProfile: actionStr,
-                                                        history: aiHistoryRef.current,
-                                                        practiceCount: typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0,
-                                                        customSurfPrompts: surfPromptsConfig
-                                                    });
-                                                } catch(e) { console.error(e); }
+                                                    // Also push a simulated log for UI
+                                                    pushAiLog('user', actionStr);
+                                                } else {
+                                                    // Trigger AI with form data Start Phase 0
+                                                    try {
+                                                        // Ensure the action is logged in chat history for context
+                                                        pushAiLog('user', actionStr);
+                                                        
+                                                        await streamAiReminder({
+                                                            mood: aiMood,
+                                                            mode: 'urge_surfing',
+                                                            surfStyle: surfStyle,
+                                                            elapsedTime: 0,
+                                                            totalTime: durationMinutes * 60,
+                                                            sessionPhase: 'start',
+                                                            diagnosisProfile: actionStr,
+                                                            history: aiHistoryRef.current,
+                                                            practiceCount: typeof window !== 'undefined' ? parseInt(localStorage.getItem('surfSuccessCount') || '0', 10) : 0,
+                                                            customSurfPrompts: surfPromptsConfig
+                                                        });
+                                                    } catch(e) { console.error(e); }
+                                                }
                                             }}
                                             className="w-full px-8 py-3 mt-4 bg-red-600/50 border border-red-500/50 rounded-full text-white text-lg font-medium hover:bg-red-500/70 transition-colors shadow-[0_0_20px_rgba(239,68,68,0.4)]"
                                         >
@@ -3174,7 +3448,7 @@ function PracticeContent() {
                         </div>
 
                         {/* Footer */}
-                        <footer className="w-full max-w-sm pb-safe px-6 pointer-events-none z-50">
+                        <footer className="w-full max-w-sm px-6 pb-2 pointer-events-none z-50">
                             <AnimatePresence>
                                 {/* IDLE UI */}
                                 {phase === "IDLE" && (
@@ -3316,35 +3590,97 @@ function PracticeContent() {
 
                                         {selectedTheme === 'SURF' && (
                                             <div className="w-full flex flex-col mb-4 bg-red-900/10 rounded-2xl p-4 border border-red-500/10 gap-3">
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`p-2 rounded-xl transition-colors bg-red-500/20 text-red-400`}>
-                                                        <Activity size={18} />
-                                                    </div>
-                                                    <div className="flex flex-col text-left">
-                                                        <span className="text-sm font-medium text-white/90">教练心跳轮询频次</span>
-                                                        <span className="text-[10px] text-white/50">决定后台守护你的探针频率</span>
-                                                    </div>
+                                                {surfStyle !== 'system' && (
+                                                    <>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`p-2 rounded-xl transition-colors bg-red-500/20 text-red-400`}>
+                                                                <Activity size={18} />
+                                                            </div>
+                                                            <div className="flex flex-col text-left">
+                                                                <span className="text-sm font-medium text-white/90">教练心跳轮询频次</span>
+                                                                <span className="text-[10px] text-white/50">决定后台守护你的探针频率</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-col gap-3 w-full mt-2">
+                                                            <div className="flex justify-between items-center text-xs text-red-300 font-medium px-1">
+                                                                <span>激进 (15s)</span>
+                                                                <span className="text-red-200">当前: {surfFrequency}秒/次</span>
+                                                                <span>独立 (60s)</span>
+                                                            </div>
+                                                            <input
+                                                                type="range"
+                                                                min="15"
+                                                                max="60"
+                                                                step="5"
+                                                                value={surfFrequency}
+                                                                onChange={(e) => {
+                                                                    const val = parseInt(e.target.value, 10);
+                                                                    setSurfFrequency(val);
+                                                                    localStorage.setItem("surfFrequency", val.toString());
+                                                                }}
+                                                                className="w-full h-2 bg-red-950/50 rounded-lg appearance-none cursor-pointer accent-red-500 border border-red-500/20"
+                                                            />
+                                                        </div>
+
+                                                        <div className="w-full h-px bg-white/5 my-2"></div>
+                                                    </>
+                                                )}
+                                                
+                                                <div className="flex flex-col text-left mb-2">
+                                                    <span className="text-sm font-medium text-white/90">AI 发话风格架构</span>
+                                                    <span className="text-[10px] text-white/50">分流选择底层系统 Prompt 的驱动逻辑</span>
                                                 </div>
-                                                <div className="flex flex-col gap-3 w-full mt-2">
-                                                    <div className="flex justify-between items-center text-xs text-red-300 font-medium px-1">
-                                                        <span>激进 (15s)</span>
-                                                        <span className="text-red-200">当前: {surfFrequency}秒/次</span>
-                                                        <span>独立 (60s)</span>
-                                                    </div>
-                                                    <input
-                                                        type="range"
-                                                        min="15"
-                                                        max="60"
-                                                        step="5"
-                                                        value={surfFrequency}
-                                                        onChange={(e) => {
-                                                            const val = parseInt(e.target.value, 10);
-                                                            setSurfFrequency(val);
-                                                            localStorage.setItem("surfFrequency", val.toString());
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                    <button
+                                                        onClick={() => {
+                                                            setSurfStyle('interactive');
+                                                            localStorage.setItem('surfStyle', 'interactive');
                                                         }}
-                                                        className="w-full h-2 bg-red-950/50 rounded-lg appearance-none cursor-pointer accent-red-500 border border-red-500/20"
-                                                    />
+                                                        className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all ${surfStyle === 'interactive' ? 'bg-red-500/20 border-red-500/40 shadow-lg shadow-red-900/20' : 'bg-black/20 border-white/5 hover:bg-white/5 text-white/50'}`}
+                                                    >
+                                                        <div className="text-sm font-medium mb-1 flex items-center gap-1.5">
+                                                            <span>⚡</span>
+                                                            <span className={surfStyle === 'interactive' ? 'text-red-200' : 'text-white/60'}>互动步进</span>
+                                                        </div>
+                                                        <div className="text-[9px] leading-tight text-white/50">短平快指令，紧贴情绪。</div>
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => {
+                                                            setSurfStyle('immersive');
+                                                            localStorage.setItem('surfStyle', 'immersive');
+                                                        }}
+                                                        className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all ${surfStyle === 'immersive' ? 'bg-indigo-500/20 border-indigo-500/40 shadow-lg shadow-indigo-900/20' : 'bg-black/20 border-white/5 hover:bg-white/5 text-white/50'}`}
+                                                    >
+                                                        <div className="text-sm font-medium mb-1 flex items-center gap-1.5">
+                                                            <span>🌊</span>
+                                                            <span className={surfStyle === 'immersive' ? 'text-indigo-200' : 'text-white/60'}>沉浸长篇</span>
+                                                        </div>
+                                                        <div className="text-[9px] leading-tight text-white/50">打破字数，连贯剧本。</div>
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => {
+                                                            setSurfStyle('system');
+                                                            localStorage.setItem('surfStyle', 'system');
+                                                        }}
+                                                        className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all ${surfStyle === 'system' ? 'bg-emerald-500/20 border-emerald-500/40 shadow-lg shadow-emerald-900/20' : 'bg-black/20 border-white/5 hover:bg-white/5 text-white/50'}`}
+                                                    >
+                                                        <div className="text-sm font-medium mb-1 flex items-center gap-1.5">
+                                                            <span>🛡️</span>
+                                                            <span className={surfStyle === 'system' ? 'text-emerald-200' : 'text-white/60'}>系统预制</span>
+                                                        </div>
+                                                        <div className="text-[9px] leading-tight text-white/50">神经科学打断安抚库。</div>
+                                                    </button>
                                                 </div>
+
+                                                <button 
+                                                    onClick={() => setIsPromptInspectorOpen(true)}
+                                                    className="w-full mt-2 py-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors text-[10px] flex items-center justify-center gap-2"
+                                                >
+                                                    <Activity size={12} />
+                                                    <span>查看/编辑底层系统级提示词 (System Prompts)</span>
+                                                </button>
                                             </div>
                                         )}
 
@@ -3364,57 +3700,60 @@ function PracticeContent() {
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         exit={{ opacity: 0 }}
-                                        className="w-full py-5 flex flex-col items-center gap-4 pointer-events-auto"
+                                        className="w-full py-5 flex flex-col items-center gap-6 pointer-events-auto"
                                     >
-                                        <span className="text-2xl font-thin tracking-widest text-white/50 tabular-nums">
+                                        {/* TOP: Stage Indicator */}
+                                        {selectedTheme === "SURF" && (
+                                            <motion.div 
+                                                initial={{ opacity: 0, y: -10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                className="text-center text-white/40 text-[11px] font-medium tracking-widest uppercase mb-[-1rem] mt-2"
+                                            >
+                                                {surfStyle === 'system' ? (
+                                                    systemStage === 0 ? '【 第 0 阶段：准备上板 】' :
+                                                    systemStage === 1 ? '【 第 1 阶段：R · 认出渴望 】' :
+                                                    systemStage === 2 ? '【 第 2 阶段：A · 允许不适 】' :
+                                                    systemStage === 3 ? '【 第 3 阶段：I · 探究身体 】' :
+                                                    '【 第 4 阶段：N · 解离 】'
+                                                ) : (
+                                                    elapsedSeconds <= 40 ? '【 第 0 阶段：准备上板 】' :
+                                                    elapsedSeconds <= 180 ? '【 第 1 阶段：R · 认出渴望 】' :
+                                                    elapsedSeconds <= 300 ? '【 第 2 阶段：A · 允许不适 】' :
+                                                    elapsedSeconds <= 600 ? '【 第 3 阶段：I · 探究身体 】' :
+                                                    '【 第 4 阶段：N · 解离 】'
+                                                )}
+                                            </motion.div>
+                                        )}
+
+                                        <span className="text-4xl font-thin tracking-widest text-white/70 tabular-nums">
                                             {formatTime(selectedTheme === "SURF" ? elapsedSeconds : timeLeft)}
                                         </span>
                                         
                                         {selectedTheme === "SURF" && (
                                             <>
-                                            {activeSkillMetadata && (
-                                                <motion.div 
-                                                    initial={{ opacity: 0, y: 10 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    className="flex flex-col items-center mb-6 pb-2 border-b border-white/5 w-64"
-                                                >
-                                                    <span className="text-[9px] text-emerald-400 tracking-widest uppercase mb-1.5 flex items-center gap-1.5 shadow-sm">
-                                                        <Activity size={10} className="animate-pulse" /> {activeSkillMetadata.toolCalled ? "纯函数调用 (Function Calling) 执勤中" : "正在执行后台强行注入载荷"}
-                                                    </span>
-                                                    <div className="flex flex-col items-center gap-1 w-full relative">
-                                                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono break-all text-center w-full shadow-[0_0_8px_rgba(16,185,129,0.2)]">{activeSkillMetadata.file}</span>
-                                                        <span className="text-[10px] text-white/50">{activeSkillMetadata.stage}</span>
-                                                        {activeSkillMetadata.toolCalled && activeSkillMetadata.functionName && (
-                                                            <span className="text-[9px] text-[#facc15] bg-[#facc15]/10 px-2 py-0.5 rounded border border-[#facc15]/20 font-mono mt-1 w-full text-center">
-                                                                ƒ {activeSkillMetadata.functionName}(...)
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </motion.div>
-                                            )}
                                             {/* Chat History Terminal Overlay */}
-                                            <div className="w-full max-w-[320px] flex flex-col items-center mb-2">
+                                            <div className="w-full max-w-[340px] flex flex-col items-center mt-2 mb-4">
                                                 <button
                                                     onClick={() => setIsChatOpen(!isChatOpen)}
-                                                    className="px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-[10px] text-white/50 hover:bg-white/10 transition-colors flex items-center gap-2 mb-2"
+                                                    className="px-5 py-2 rounded-full bg-white/5 border border-white/5 text-[10px] text-white/40 hover:bg-white/10 hover:text-white/70 transition-all flex items-center gap-2 mb-4"
                                                 >
                                                     <Activity size={12} />
                                                     {isChatOpen ? '隐 藏 实 时 脑 波 交 互 记 录' : '展 开 实 时 脑 波 交 互 记 录'}
                                                 </button>
                                                 
                                                 {isChatOpen && chatHistory.length > 0 && (
-                                                    <div className="w-full max-h-[160px] overflow-y-auto flex flex-col gap-2 p-3 rounded-2xl bg-black/20 border border-white/5 backdrop-blur-md text-[11px] leading-relaxed [mask-image:linear-gradient(to_bottom,transparent,black_20%,black_100%)] scrollbar-hide">
+                                                    <div className="w-full max-h-[180px] overflow-y-auto flex flex-col gap-3 p-4 rounded-3xl bg-black/40 border border-white/5 backdrop-blur-2xl text-[12px] leading-relaxed [mask-image:linear-gradient(to_bottom,transparent,black_20%,black_100%)] scrollbar-hide shadow-2xl">
                                                         {chatHistory.map((msg, i) => (
                                                             <div 
                                                                 key={i} 
                                                                 className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
                                                             >
-                                                                <span className={`px-2 py-1.5 rounded-lg max-w-[85%] ${
+                                                                <span className={`px-4 py-2 rounded-2xl max-w-[85%] font-light tracking-wide ${
                                                                     msg.role === 'user' 
-                                                                        ? msg.content.includes('自动轮询') 
-                                                                            ? 'bg-blue-500/20 text-blue-200 border border-blue-500/20 text-[10px]' 
-                                                                            : 'bg-white/10 text-white/90 border border-white/10' 
-                                                                        : 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/20'
+                                                                        ? msg.content.includes('临床接线') 
+                                                                            ? 'bg-blue-500/10 text-blue-200/50 border border-blue-500/20 text-[10px]' 
+                                                                            : 'bg-white/10 text-white/90 border border-white/10 shadow-sm' 
+                                                                        : 'bg-transparent text-emerald-200/90 text-[13px]'
                                                                 }`}>
                                                                     {msg.content}
                                                                 </span>
@@ -3426,52 +3765,65 @@ function PracticeContent() {
                                                 )}
                                             </div>
 
-                                            <div className="flex flex-col gap-3 w-full max-w-[320px] pb-4">
-                                                <div className="text-center text-white/50 text-[10px] font-medium tracking-widest uppercase mb-1">
-                                                    {elapsedSeconds <= 40 ? '准备上板' :
-                                                     elapsedSeconds <= 180 ? 'R · 认出渴望 — 标签与打分' :
-                                                     elapsedSeconds <= 300 ? 'A · 允许不适 — 友善接纳' :
-                                                     elapsedSeconds <= 600 ? 'I · 探究身体 — 温和好奇心' :
-                                                     'N · 解离 — 记录生灭'}
-                                                </div>
+                                            <div className="flex flex-col gap-4 w-full max-w-[340px] pb-6">
                                                 <div className="grid grid-cols-2 gap-3">
-                                                    {(elapsedSeconds <= 40 ? [
-                                                        { id: 'ready', label: '🏄 我准备好了', action: '我已经站上冲浪板，准备好迎接海浪了。' },
-                                                        { id: 'nervous', label: '😰 有点紧张', action: '我感到紧张，海浪好像要来了。' },
-                                                    ] : elapsedSeconds <= 180 ? [
-                                                        { id: 'recognized', label: '👁️ 我认出来了', action: '我认出来了，这是尼古丁的冲动在呼唤我。' },
-                                                        { id: 'score3', label: '📊 强度 3/10', action: '我给当前渴望打分：3分，比较轻微但能感知到。' },
-                                                        { id: 'score5', label: '📊 强度 5/10', action: '我给当前渴望打分：5分，中等强度，能明显感受到。' },
-                                                        { id: 'score8', label: '📊 强度 8/10', action: '我给当前渴望打分：8分，非常强烈，几乎要被吞没。' },
-                                                    ] : elapsedSeconds <= 300 ? [
-                                                        { id: 'allow', label: '🤝 我允许它存在', action: '我选择不对抗，允许这股冲动在体内流淌。' },
-                                                        { id: 'hard', label: '😣 好难受但不对抗', action: '真的很难受，但我不跟它拔河，我为它腾出空间。' },
-                                                        { id: 'cannothold', label: '🆘 快撑不住了', action: '我快撑不住了，大脑不停地找借口。' },
-                                                        { id: 'friendly', label: '💛 友善地接纳', action: '我试着带着友善的态度对冲动说：你可以待在这里。' },
-                                                    ] : elapsedSeconds <= 600 ? [
-                                                        { id: 'throat', label: '🫁 喉咙', action: '我觉察到渴望集中在喉咙，有干痒发紧的感觉。' },
-                                                        { id: 'chest', label: '🫀 胸口', action: '我觉察到渴望集中在胸口，有沉闷紧绷的感觉。' },
-                                                        { id: 'belly', label: '🔥 腹部', action: '我觉察到渴望集中在腹部，有灼热翻滚的感觉。' },
-                                                        { id: 'hands', label: '🖐️ 手指', action: '我觉察到渴望集中在手指，它们在微微颤抖想要抓取。' },
-                                                        { id: 'pulsing', label: '💫 在跳动', action: '这种感觉不是固定的，我注意到它在微微跳动和变化。' },
-                                                        { id: 'shrinking', label: '📐 在收缩', action: '这种感觉好像在收缩、变紧，像被挤压一样。' },
-                                                    ] : [
-                                                        { id: 'fading', label: '🌊 在消退', action: '我注意到冲动的海浪正在消退，强度在降低。' },
-                                                        { id: 'stillstrong', label: '💪 还很强', action: '冲动还很强，但我只是在旁边观察它，不采取行动。' },
-                                                        { id: 'notme', label: '🧘 我不是欲望', action: '我清楚地感受到：我有欲望，但我不是欲望本身。' },
-                                                        { id: 'noaction', label: '🛑 不必行动', action: '海浪在冲顶后终将回落，我不必采取任何行动。' },
-                                                    ]).map(btn => (
-                                                        <button
-                                                            key={btn.id}
-                                                            onClick={() => handleUrgeSurfingAction(btn.action)}
-                                                            className="p-3 rounded-2xl text-xs font-medium backdrop-blur-md transition-all active:scale-95 flex items-center justify-center text-center leading-tight shadow-md bg-white/10 text-white/80 border border-white/10 hover:bg-white/20 hover:text-white"
-                                                        >
-                                                            {btn.label}
-                                                        </button>
-                                                    ))}
+                                                    {(() => {
+                                                        const isSystem = surfStyle === 'system';
+                                                        let s0, s1, s2, s3, s4;
+                                                        if (isSystem) {
+                                                            s0 = systemStage === 0;
+                                                            s1 = systemStage === 1;
+                                                            s2 = systemStage === 2;
+                                                            s3 = systemStage === 3;
+                                                            s4 = systemStage === 4;
+                                                        } else {
+                                                            s0 = elapsedSeconds <= 40;
+                                                            s1 = elapsedSeconds > 40 && elapsedSeconds <= 180;
+                                                            s2 = elapsedSeconds > 180 && elapsedSeconds <= 300;
+                                                            s3 = elapsedSeconds > 300 && elapsedSeconds <= 600;
+                                                            s4 = elapsedSeconds > 600;
+                                                        }
+
+                                                        const btns = s0 ? [
+                                                            { id: 'ready', label: '🏄 我准备好了', action: '我已经站上冲浪板，准备好迎接海浪了。' },
+                                                            { id: 'nervous', label: '😰 有点紧张', action: '我感到紧张，海浪好像要来了。' },
+                                                        ] : s1 ? [
+                                                            { id: 'recognized', label: '👁️ 我认出来了', action: '我认出来了，这是尼古丁的冲动在呼唤我。' },
+                                                            { id: 'score3', label: '📊 强度 3/10', action: '我给当前渴望打分：3分，比较轻微但能感知到。' },
+                                                            { id: 'score5', label: '📊 强度 5/10', action: '我给当前渴望打分：5分，中等强度，能明显感受到。' },
+                                                            { id: 'score8', label: '📊 强度 8/10', action: '我给当前渴望打分：8分，非常强烈，几乎要被吞没。' },
+                                                        ] : s2 ? [
+                                                            { id: 'allow', label: '🤝 我允许它存在', action: '我选择不对抗，允许这股冲动在体内流淌。' },
+                                                            { id: 'hard', label: '😣 好难受但不对抗', action: '真的很难受，但我不跟它拔河，我为它腾出空间。' },
+                                                            { id: 'cannothold', label: '🆘 快撑不住了', action: '我快撑不住了，大脑不停地找借口。' },
+                                                            { id: 'friendly', label: '💛 友善地接纳', action: '我试着带着友善的态度对冲动说：你可以待在这里。' },
+                                                        ] : s3 ? [
+                                                            { id: 'throat', label: '🫁 喉咙', action: '我觉察到渴望集中在喉咙，有干痒发紧的感觉。' },
+                                                            { id: 'chest', label: '🫀 胸口', action: '我觉察到渴望集中在胸口，有沉闷紧绷的感觉。' },
+                                                            { id: 'belly', label: '🔥 腹部', action: '我觉察到渴望集中在腹部，有灼热翻滚的感觉。' },
+                                                            { id: 'hands', label: '🖐️ 手指', action: '我觉察到渴望集中在手指，它们在微微颤抖想要抓取。' },
+                                                            { id: 'pulsing', label: '💫 在跳动', action: '这种感觉不是固定的，我注意到它在微微跳动和变化。' },
+                                                            { id: 'shrinking', label: '📐 在收缩', action: '这种感觉好像在收缩、变紧，像被挤压一样。' },
+                                                        ] : [
+                                                            { id: 'fading', label: '🌊 在消退', action: '我注意到冲动的海浪正在消退，强度在降低。' },
+                                                            { id: 'stillstrong', label: '💪 还很强', action: '冲动还很强，但我只是在旁边观察它，不采取行动。' },
+                                                            { id: 'notme', label: '🧘 我不是欲望', action: '我清楚地感受到：我有欲望，但我不是欲望本身。' },
+                                                            { id: 'noaction', label: '🛑 不必行动', action: '海浪在冲顶后终将回落，我不必采取任何行动。' },
+                                                        ];
+
+                                                        return btns.map(btn => (
+                                                            <button
+                                                                key={btn.id}
+                                                                onClick={() => handleUrgeSurfingAction(btn.action, btn.id)}
+                                                                className="py-3 px-2 rounded-2xl text-xs font-light tracking-wider backdrop-blur-xl transition-all active:scale-[0.97] flex items-center justify-center text-center leading-tight shadow-lg bg-white/5 text-white/70 border border-white/10 hover:bg-white/15 hover:border-white/30 hover:text-white"
+                                                            >
+                                                                {btn.label}
+                                                            </button>
+                                                        ));
+                                                    })()}
                                                     <button
                                                         onClick={() => handleUrgeSurfingAction('我彻底翻越了这座浪！它的能量已经完全瓦解。完成！')}
-                                                        className="col-span-2 p-3 mt-2 rounded-2xl text-xs font-medium backdrop-blur-md transition-all active:scale-95 flex items-center justify-center text-center leading-tight shadow-lg bg-emerald-500/20 text-emerald-200 border border-emerald-500/30 hover:bg-emerald-500/30"
+                                                        className="col-span-2 py-4 mt-2 rounded-2xl text-xs font-medium tracking-widest backdrop-blur-xl transition-all active:scale-[0.98] flex items-center justify-center text-center leading-tight shadow-[0_0_20px_rgba(16,185,129,0.1)] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 hover:border-emerald-500/40"
                                                     >
                                                         🚩 渴望已消散，我驾驭了它 (完成)
                                                     </button>
@@ -3479,10 +3831,11 @@ function PracticeContent() {
                                             </div>
                                             
                                             {/* Dynamic Real-time Frequency Slider in Practice Phase */}
-                                            <div className="w-full max-w-[320px] flex flex-col p-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md gap-3 mb-4">
-                                                <div className="flex justify-between items-center text-[10px] text-white/50 font-medium px-1">
+                                            {surfStyle !== 'system' && (
+                                                <div className="w-full max-w-[340px] flex flex-col p-4 rounded-3xl bg-white/5 border border-white/5 backdrop-blur-2xl gap-3 mb-4 shadow-xl">
+                                                <div className="flex justify-between items-center text-[10px] text-white/40 font-medium px-2 uppercase tracking-widest">
                                                     <span>高频保护</span>
-                                                    <span className="text-white/80">心跳轮询: {surfFrequency}秒</span>
+                                                    <span className="text-white/70">心跳轮询: {surfFrequency}秒</span>
                                                     <span>低频独立</span>
                                                 </div>
                                                 <input
@@ -3496,9 +3849,10 @@ function PracticeContent() {
                                                         setSurfFrequency(val);
                                                         localStorage.setItem("surfFrequency", val.toString());
                                                     }}
-                                                    className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                                                    className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400"
                                                 />
-                                            </div>
+                                                </div>
+                                            )}
                                             </>
                                         )}
                                     </motion.div>
@@ -3722,6 +4076,94 @@ function PracticeContent() {
                     </div>
                 </div>
             )}
+
+            {/* Prompt Inspector Modal (Tabbed) */}
+            <AnimatePresence>
+                {isPromptInspectorOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[999999] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md"
+                        onClick={() => setIsPromptInspectorOpen(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.95, y: 20 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col rounded-3xl bg-gray-900 border border-white/10 shadow-2xl"
+                        >
+                            <div className="flex items-center justify-between p-6 border-b border-white/10">
+                                <h3 className="text-lg font-medium text-white/90 flex items-center gap-2">
+                                    <Activity size={18} className="text-indigo-400" />
+                                    底层提示词架构监视器
+                                </h3>
+                                <button onClick={() => setIsPromptInspectorOpen(false)} className="text-white/40 hover:text-white"><X size={20}/></button>
+                            </div>
+                            
+                            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 text-sm font-mono leading-relaxed">
+                                <div className="space-y-4">
+                                    <div className="text-xs text-white/50 mb-2">无论处于什么模式，AI 首先都会受到以下核心理论与铁律的约束：</div>
+                                    <h4 className="text-emerald-400 font-bold uppercase text-[10px] tracking-widest">Base System Prompt (基础设定与 RAIN 铁律)</h4>
+                                    <div className="p-4 rounded-xl bg-black/40 border border-emerald-500/20 text-emerald-100/70 whitespace-pre-wrap text-xs">
+                                        {surfPromptsConfig.systemPrompt}
+                                    </div>
+                                </div>
+                                
+                                <div className="w-full h-px bg-white/10 my-2" />
+
+                                <div className="text-xs text-white/50 mb-2">在这之上，将根据你的模式选择，注入不同的局部引擎指令：</div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Interactive Mode Prompts */}
+                                    <div className="space-y-2">
+                                        <h4 className="text-red-400 font-bold uppercase text-[10px] tracking-widest flex items-center gap-1.5 bg-red-500/10 p-2 rounded-t-lg border-b border-red-500/20">
+                                            <span>⚡</span> 互动步进式专属驱动
+                                        </h4>
+                                        <div className="p-4 rounded-b-lg bg-red-950/20 border-x border-b border-red-500/20 text-red-100/70 whitespace-pre-wrap text-[11px] flex flex-col gap-3 h-full">
+                                            <div>
+                                                <span className="text-red-300 font-semibold block mb-1">【当定时器触发/沉默时】：</span>
+                                                （用户正在沉默中体验。请自然地承接你上一句话的方向，继续给出下一步引导。历时 X 秒。当前阶段：Y。不要超过30个字。）
+                                            </div>
+                                            <div className="h-px bg-red-500/10 w-full" />
+                                            <div>
+                                                <span className="text-red-300 font-semibold block mb-1">【当用户点击动态按钮时】：</span>
+                                                【用户反馈】："..." <br/>
+                                                请结合前文，严格根据《当前阶段教练操作手册》给出一句回应。不要超过30个字。
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Immersive Mode Prompts */}
+                                    <div className="space-y-2">
+                                        <h4 className="text-indigo-400 font-bold uppercase text-[10px] tracking-widest flex items-center gap-1.5 bg-indigo-500/10 p-2 rounded-t-lg border-b border-indigo-500/20">
+                                            <span>🌊</span> 沉浸长篇式专属驱动
+                                        </h4>
+                                        <div className="p-4 rounded-b-lg bg-indigo-950/20 border-x border-b border-indigo-500/20 text-indigo-100/70 whitespace-pre-wrap text-[11px] flex flex-col gap-3 h-full">
+                                            <div>
+                                                <span className="text-indigo-300 font-semibold block mb-1">【全局突破设定】：</span>
+                                                不要限制字数。请一次性生成 3~4 句连贯、递进的指导语（构成一个小节的剧本）。每一句必须用单独的换行符 \n 隔开。
+                                            </div>
+                                            <div className="h-px bg-indigo-500/10 w-full" />
+                                            <div>
+                                                <span className="text-indigo-300 font-semibold block mb-1">【后台剧本弹药库耗尽时】：</span>
+                                                （用户正在沉默中体验。请自然承接，为当前阶段生成一整段 3~4 句的连贯剧本。历时 X 秒。当前阶段：Y。注意每句之间用换行符隔开。）
+                                            </div>
+                                            <div className="h-px bg-indigo-500/10 w-full" />
+                                            <div>
+                                                <span className="text-indigo-300 font-semibold block mb-1">【当用户打断（点击按钮）时】：</span>
+                                                【用户反馈】："..." <br/>
+                                                请立刻生成第 1 句短句作为安抚/追问，并紧接着换行生成后续 2~3 句剧本来进一步探究。
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </>
     );
 }

@@ -23,6 +23,7 @@ export async function GET() {
       cosyvoiceSpeed: jar.get("cosyvoice_speed")?.value,
       cosyvoiceInstruction: jar.get("cosyvoice_instruction")?.value,
       cosyvoiceSeed: jar.get("cosyvoice_seed")?.value,
+      cosyvoiceVoiceId: jar.get("cosyvoice_voice_id")?.value,
     });
 
     if (!hasDb()) {
@@ -36,7 +37,7 @@ export async function GET() {
     await ensureTables();
     await sql`INSERT INTO users(id) VALUES (${uid}) ON CONFLICT (id) DO NOTHING`;
     const rows = await sql`
-      SELECT tts_provider, cosyvoice_speed, cosyvoice_instruction, cosyvoice_seed
+      SELECT tts_provider, cosyvoice_speed, cosyvoice_instruction, cosyvoice_seed, cosyvoice_voice_id
       FROM user_settings
       WHERE user_id = ${uid}
     `;
@@ -46,6 +47,7 @@ export async function GET() {
       cosyvoiceInstruction:
         jar.get("cosyvoice_instruction")?.value || rows.rows?.[0]?.cosyvoice_instruction,
       cosyvoiceSeed: jar.get("cosyvoice_seed")?.value || rows.rows?.[0]?.cosyvoice_seed,
+      cosyvoiceVoiceId: jar.get("cosyvoice_voice_id")?.value || rows.rows?.[0]?.cosyvoice_voice_id,
     });
 
     const res = NextResponse.json(settings, { status: 200 });
@@ -68,6 +70,7 @@ export async function POST(req: Request) {
       cosyvoiceSpeed: body?.cosyvoiceSpeed,
       cosyvoiceInstruction: body?.cosyvoiceInstruction,
       cosyvoiceSeed: body?.cosyvoiceSeed,
+      cosyvoiceVoiceId: body?.cosyvoiceVoiceId,
     });
 
     if (!hasDb()) {
@@ -79,19 +82,21 @@ export async function POST(req: Request) {
       res.cookies.set("cosyvoice_speed", String(settings.cosyvoiceSpeed), { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
       res.cookies.set("cosyvoice_instruction", settings.cosyvoiceInstruction, { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
       res.cookies.set("cosyvoice_seed", String(settings.cosyvoiceSeed), { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
+      res.cookies.set("cosyvoice_voice_id", settings.cosyvoiceVoiceId, { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
       return res;
     }
 
     await ensureTables();
     await sql`INSERT INTO users(id) VALUES (${uid}) ON CONFLICT (id) DO NOTHING`;
     await sql`
-      INSERT INTO user_settings(user_id, tts_provider, cosyvoice_speed, cosyvoice_instruction, cosyvoice_seed, updated_at)
+      INSERT INTO user_settings(user_id, tts_provider, cosyvoice_speed, cosyvoice_instruction, cosyvoice_seed, cosyvoice_voice_id, updated_at)
       VALUES (
         ${uid},
         ${settings.provider},
         ${settings.cosyvoiceSpeed},
         ${settings.cosyvoiceInstruction},
         ${settings.cosyvoiceSeed},
+        ${settings.cosyvoiceVoiceId},
         now()
       )
       ON CONFLICT (user_id) DO UPDATE
@@ -99,6 +104,7 @@ export async function POST(req: Request) {
           cosyvoice_speed = EXCLUDED.cosyvoice_speed,
           cosyvoice_instruction = EXCLUDED.cosyvoice_instruction,
           cosyvoice_seed = EXCLUDED.cosyvoice_seed,
+          cosyvoice_voice_id = EXCLUDED.cosyvoice_voice_id,
           updated_at = now()
     `;
 
@@ -107,6 +113,7 @@ export async function POST(req: Request) {
     res.cookies.set("cosyvoice_speed", String(settings.cosyvoiceSpeed), { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
     res.cookies.set("cosyvoice_instruction", settings.cosyvoiceInstruction, { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
     res.cookies.set("cosyvoice_seed", String(settings.cosyvoiceSeed), { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
+    res.cookies.set("cosyvoice_voice_id", settings.cosyvoiceVoiceId, { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
     if (created || !jar.get("uid")?.value) {
       res.cookies.set("uid", uid, { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
     }

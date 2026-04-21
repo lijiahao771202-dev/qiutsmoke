@@ -33,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className="hydrating">
+    <html lang="zh-CN" className="hydrating" suppressHydrationWarning>
       <head>
         {/* 防止样式闪烁：在 JS 加载前就移除 hydrating 类 */}
         <script

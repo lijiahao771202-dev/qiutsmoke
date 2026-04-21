@@ -79,6 +79,7 @@ async function synthesizeCosyVoiceAudio(text, options = {}) {
             speed: options.cosyvoiceSpeed,
             instruct_text: options.cosyvoiceInstruction,
             seed: options.cosyvoiceSeed,
+            voice_id: options.cosyvoiceVoiceId,
         }),
     });
 
@@ -131,13 +132,14 @@ function createWindow() {
 }
 
 // IPC Handlers
-ipcMain.handle('generate-tts', async (event, { text, provider, voice, rate, cosyvoiceSpeed, cosyvoiceInstruction, cosyvoiceSeed }) => {
+ipcMain.handle('generate-tts', async (event, { text, provider, voice, rate, cosyvoiceSpeed, cosyvoiceInstruction, cosyvoiceSeed, cosyvoiceVoiceId }) => {
     try {
         if (provider === 'cosyvoice') {
             return await synthesizeCosyVoiceAudio(text, {
                 cosyvoiceSpeed,
                 cosyvoiceInstruction,
                 cosyvoiceSeed,
+                cosyvoiceVoiceId,
             });
         }
         return await synthesizeEdgeAudio(text, voice, rate);

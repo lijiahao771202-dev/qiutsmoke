@@ -7,7 +7,7 @@ import { useHaptics } from "@/lib/hooks/useHaptics";
 
 import { LotusGarden } from "@/components/LotusGarden";
 import { useMeditationSessions } from "@/lib/hooks/useData";
-import AIRecommendationCard from "@/components/ui/AIRecommendationCard";
+
 import JourneyCard from "@/components/ui/JourneyCard";
 import PulseCard from "@/components/ui/PulseCard";
 
@@ -124,10 +124,7 @@ export default function Home() {
               <JourneyCard days={days} times={sessions.length} minutes={totalMinutes} todayMinutes={todayMinutes} />
             </div>
 
-            {/* Card 2: AI Recommendation Card */}
-            <div className="w-full h-full">
-              <AIRecommendationCard />
-            </div>
+
 
             {/* Card 3: The Pulse Anchor (Tactile Relief) */}
             <div className="w-full h-full">

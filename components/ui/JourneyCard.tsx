@@ -134,59 +134,43 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
         <div className="relative w-full h-full group isolate">
             {/* 
                 ═══════════════════════════════════════════════════════════════════
-                JADE STONE CARD - Pure CSS Implementation (No Framer Motion inside)
+                FROSTED GLASS CARD - Pure CSS Implementation
                 ═══════════════════════════════════════════════════════════════════
             */}
-            {/* SOLID OPAQUE BASE - Deep Jade w/ Noise Pattern */}
-            <div
-                className="absolute inset-0 rounded-[2.5rem]"
-                style={{
-                    backgroundColor: '#064E3B', // Darker base for contrast
-                    backgroundImage: `
-                        radial-gradient(at 100% 0%, rgba(52, 211, 153, 0.4) 0px, transparent 50%),
-                        radial-gradient(at 0% 0%, rgba(6, 182, 212, 0.3) 0px, transparent 50%)
-                    `
-                }}
-            />
-
             <div
                 className={cn(
                     "relative w-full h-full overflow-hidden rounded-[2.5rem]",
-                    "border border-white/20",
+                    "border border-white/20 bg-white/10 backdrop-blur-2xl shadow-2xl"
                 )}
                 style={{
-                    // Main Gradient Body - Smoother, single layer logic
+                    // Glassmorphism Body
                     background: `
                         linear-gradient(180deg, 
-                            rgba(255,255,255,0.1) 0%, 
-                            rgba(20,184,166,0.2) 40%, 
-                            rgba(13,148,136,0.3) 100%
+                            rgba(255, 255, 255, 0.15) 0%, 
+                            rgba(255, 255, 255, 0.02) 100%
                         )
                     `,
-                    // Stronger Fluorescence - Neon Cyan/Teal glow
                     boxShadow: `
-                        inset 0 0 40px rgba(45,212,191,0.3),     /* Cyan inner glow */
-                        inset 0 0 20px rgba(255,255,255,0.1),    /* White rim highlight */
-                        0 10px 40px -10px rgba(45,212,191,0.5),  /* Outer cyan glow */
-                        0 0 20px rgba(20, 184, 166, 0.3)         /* Ambient teal aura */
+                        inset 0 1px 1px rgba(255, 255, 255, 0.4),
+                        inset 0 0 20px rgba(255, 255, 255, 0.05),
+                        0 20px 40px -10px rgba(0, 0, 0, 0.2)
                     `,
                 }}
             >
-                {/* --- LAYER 1: FLUID LIGHT (The "Soul" of the Jade) --- */}
-                {/* Removed the fragmented radial gradients that caused splitting */}
+                {/* --- LAYER 1: FLUID LIGHT (Subtle Glow) --- */}
                 <div
                     className="absolute inset-0 pointer-events-none mix-blend-screen"
                     style={{
                         background: `
-                            radial-gradient(circle at 50% -20%, rgba(94, 234, 212, 0.5), transparent 70%),
-                            radial-gradient(circle at 80% 80%, rgba(45, 212, 191, 0.3), transparent 50%)
+                            radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.2), transparent 70%),
+                            radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.1), transparent 50%)
                         `,
                     }}
                 />
 
-                {/* --- LAYER 2: NOISE TEXTURE (Stone Feel) --- */}
+                {/* --- LAYER 2: NOISE TEXTURE --- */}
                 <div
-                    className="absolute inset-0 opacity-[0.15] mix-blend-overlay pointer-events-none"
+                    className="absolute inset-0 opacity-[0.2] mix-blend-overlay pointer-events-none"
                     style={{
                         backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
                     }}
@@ -205,11 +189,11 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                     }}
                 />
 
-                {/* --- LAYER 4: ANIMATED PULSE (Neon Heartbeat) --- */}
+                {/* --- LAYER 4: ANIMATED PULSE --- */}
                 <div
-                    className="absolute inset-0 pointer-events-none animate-jade-pulse mix-blend-plus-lighter"
+                    className="absolute inset-0 pointer-events-none animate-glass-pulse mix-blend-plus-lighter"
                     style={{
-                        background: `radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.15), transparent 60%)`,
+                        background: `radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.05), transparent 60%)`,
                     }}
                 />
 
@@ -253,7 +237,7 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                             <span
                                 className="text-7xl font-bold tracking-tighter text-white leading-none"
                                 style={{
-                                    textShadow: `0 0 20px rgba(110,231,183,0.6), 0 0 40px rgba(52,211,153,0.4), 0 2px 4px rgba(0,0,0,0.2)`
+                                    textShadow: `0 0 20px rgba(255,255,255,0.3), 0 0 40px rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.2)`
                                 }}
                             >
                                 {animatedTimes}
@@ -294,16 +278,16 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                                 <defs>
                                     <filter id="progressGlow" x="-50%" y="-50%" width="200%" height="200%">
                                         <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
-                                        <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.4  0 1 0 0 0.85  0 0 1 0 0.7  0 0 0 1 0" />
+                                        <feColorMatrix in="blur" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0" />
                                         <feMerge>
                                             <feMergeNode />
                                             <feMergeNode in="SourceGraphic" />
                                         </feMerge>
                                     </filter>
                                     <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                        <stop offset="0%" stopColor="#A7F3D0" />
-                                        <stop offset="50%" stopColor="#6EE7B7" />
-                                        <stop offset="100%" stopColor="#5EEAD4" />
+                                        <stop offset="0%" stopColor="#FFFFFF" />
+                                        <stop offset="50%" stopColor="#F8FAFC" />
+                                        <stop offset="100%" stopColor="#E2E8F0" />
                                     </linearGradient>
                                 </defs>
 
@@ -349,7 +333,7 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                     <motion.div variants={CONTENT_ITEM}>
                         <Link href="/practice" className="w-full relative group/btn block isolate">
                             {/* Glow */}
-                            <div className="absolute -inset-0.5 rounded-2xl blur-md opacity-30 group-hover/btn:opacity-70 transition-opacity duration-500 bg-emerald-400" />
+                            <div className="absolute -inset-0.5 rounded-2xl blur-md opacity-20 group-hover/btn:opacity-40 transition-opacity duration-500 bg-white/50" />
 
                             {/* 3D Frosted Glass Body */}
                             <div
@@ -374,7 +358,7 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
                                 <div className="relative h-full flex items-center justify-between px-6 z-10">
                                     <div className="flex flex-col justify-center">
                                         <span className="text-white font-bold text-[15px] tracking-wide drop-shadow-sm flex items-center gap-2 group-hover/btn:translate-x-1 transition-transform">
-                                            <Sparkles className="w-3.5 h-3.5 text-emerald-200 fill-emerald-200" />
+                                            <Sparkles className="w-3.5 h-3.5 text-white fill-white/50" />
                                             Start Practice
                                         </span>
                                     </div>
@@ -390,12 +374,12 @@ export default function JourneyCard({ days, times, minutes = 0, todayMinutes = 0
 
             {/* CSS Animations */}
             <style jsx>{`
-                @keyframes jade-pulse {
+                @keyframes glass-pulse {
                     0%, 100% { opacity: 0.4; }
-                    50% { opacity: 0.7; }
+                    50% { opacity: 0.8; }
                 }
-                .animate-jade-pulse {
-                    animation: jade-pulse 4s ease-in-out infinite;
+                .animate-glass-pulse {
+                    animation: glass-pulse 4s ease-in-out infinite;
                 }
                 @keyframes button-shine {
                     0% { transform: translateX(-200%) skewX(-20deg); }

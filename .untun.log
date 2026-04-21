@@ -1,0 +1,17 @@
+[35mo[39m Starting cloudflared tunnel to http://127.0.0.1:3000
+
+[41m[30m ERROR [39m[49m spawn EFTYPE
+
+    [90mat [39mChildProcess.spawn ([36mnode:internal/child_process:421:11[39m)
+    [90mat [39mspawn ([36mnode:child_process:796:9[39m)
+    [90mat [39mstartCloudflaredTunnel ([36m/C:/Users/lijia/AppData/Local/npm-cache/_npx/c628db61ff937621/node_modules/untun/dist/chunks/index.mjs:143:17[39m)
+    [90mat [39mstartTunnel ([36m/C:/Users/lijia/AppData/Local/npm-cache/_npx/c628db61ff937621/node_modules/untun/dist/index.mjs:31:24[39m)
+    [90mat [39masync Object.run ([36m/C:/Users/lijia/AppData/Local/npm-cache/_npx/c628db61ff937621/node_modules/untun/dist/cli.mjs:37:21[39m)
+    [90mat [39masync runCommand ([36m/C:/Users/lijia/AppData/Local/npm-cache/_npx/c628db61ff937621/node_modules/citty/dist/index.mjs:316:16[39m)
+    [90mat [39masync runCommand ([36m/C:/Users/lijia/AppData/Local/npm-cache/_npx/c628db61ff937621/node_modules/citty/dist/index.mjs:307:11[39m)
+    [90mat [39masync runMain ([36m/C:/Users/lijia/AppData/Local/npm-cache/_npx/c628db61ff937621/node_modules/citty/dist/index.mjs:445:7[39m) 
+
+
+
+[41m[30m ERROR [39m[49m spawn EFTYPE
+

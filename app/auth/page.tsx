@@ -5,7 +5,7 @@ import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { createBrowserClient } from '@supabase/ssr';
 import { motion } from 'framer-motion';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { Droplets, Loader2 } from 'lucide-react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 function AuthContent() {
@@ -63,96 +63,125 @@ function AuthContent() {
     };
 
     return (
-        <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-black text-white selection:bg-rose-500/30">
-            {/* Ambient Background */}
-            <div className="absolute inset-0 z-0">
-                <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-indigo-500/20 rounded-full blur-[120px] animate-pulse-slow" />
-                <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-rose-500/10 rounded-full blur-[120px] animate-pulse-slow delay-1000" />
-            </div>
+        <div 
+            className="fixed inset-0 w-full h-full bg-[#000000] text-white selection:bg-[#B89052]/30 z-[1000] overflow-hidden font-sans"
+            style={{ WebkitOverflowScrolling: 'none', overscrollBehavior: 'none' }}
+        >
+            
+            {/* Extremely subtle ambient light - almost invisible */}
+            <div className="absolute top-0 left-0 right-0 h-[40vh] bg-gradient-to-b from-[#B89052]/[0.02] to-transparent pointer-events-none" />
 
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                className="relative z-10 w-full max-w-md"
-            >
-                <div className="mb-8 text-center space-y-2">
-                    <motion.div
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: 0.2 }}
-                        className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] mb-4"
-                    >
-                        <Sparkles className="w-6 h-6 text-indigo-400" />
-                    </motion.div>
-                    <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-br from-white to-white/60 bg-clip-text text-transparent">
-                        欢迎回来
-                    </h1>
-                    <p className="text-zinc-400">登入您的 Rain 账户以同步数据</p>
-                </div>
-
-                <div className="space-y-4">
-                    <div className="backdrop-blur-xl bg-black/40 border border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] rounded-3xl p-8 overflow-hidden relative group">
-                        <div className="absoulte inset-0 bg-gradient-to-b from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-
-                        <Auth
-                            supabaseClient={supabase}
-                            appearance={{
-                                theme: ThemeSupa,
-                                variables: {
-                                    default: {
-                                        colors: {
-                                            brand: 'rgb(99 102 241)',
-                                            brandAccent: 'rgb(67 56 202)',
-                                            brandButtonText: 'white',
-                                            defaultButtonBackground: 'rgba(255,255,255,0.05)',
-                                            defaultButtonBackgroundHover: 'rgba(255,255,255,0.1)',
-                                            inputBackground: 'rgba(0,0,0,0.3)',
-                                            inputBorder: 'rgba(255,255,255,0.1)',
-                                            inputBorderHover: 'rgba(255,255,255,0.2)',
-                                            inputPlaceholder: 'rgba(255,255,255,0.3)',
-                                            inputText: 'white',
-                                        },
-                                        radii: {
-                                            borderRadiusButton: '12px',
-                                            borderRadiusInput: '12px',
-                                        },
-                                        space: {
-                                            inputPadding: '12px 16px',
-                                            buttonPadding: '12px 16px',
-                                        }
-                                    },
-                                },
-                                className: {
-                                    button: 'font-medium transition-all duration-200 active:scale-95 shadow-lg shadow-indigo-500/20',
-                                    input: 'transition-all duration-200 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 !bg-white/5 backdrop-blur-md',
-                                    label: 'text-zinc-400 text-sm font-medium mb-1.5 block',
-                                    anchor: 'text-zinc-400 hover:text-white transition-colors text-sm',
-                                }
-                            }}
-                            theme="dark"
-                            providers={[]}
-                            redirectTo={getRedirectUrl()}
-                            localization={{
-                                variables: {
-                                    sign_in: {
-                                        email_label: '邮箱地址',
-                                        password_label: '密码',
-                                        button_label: '登入',
-                                        loading_button_label: '验证中...',
-                                    },
-                                    sign_up: {
-                                        email_label: '邮箱地址',
-                                        password_label: '密码',
-                                        button_label: '注册账户',
-                                        loading_button_label: '创建中...',
-                                    },
-                                },
-                            }}
-                        />
+            {/* Main Auth Container - Fixed near top to avoid keyboard jank */}
+            <div className="absolute top-[12vh] left-0 right-0 w-full max-w-[320px] mx-auto px-4 flex flex-col items-center">
+                
+                {/* Minimalist Premium Logo Sequence */}
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 1, ease: "easeOut" }}
+                    className="flex flex-col items-center mb-12 w-full"
+                >
+                    <div className="w-12 h-12 mb-6 flex items-center justify-center">
+                        <Droplets strokeWidth={1} className="w-10 h-10 text-[#B89052]" />
                     </div>
-                </div>
-            </motion.div>
+                    
+                    <h1 className="text-[28px] font-normal tracking-[0.15em] ml-2 text-white mb-2">
+                        RAIN
+                    </h1>
+                    
+                    <p className="text-[#666666] text-[13px] font-light tracking-widest">
+                        Mindful Surfing
+                    </p>
+                </motion.div>
+
+                {/* Authentication Form */}
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 1, delay: 0.2, ease: "easeOut" }}
+                    className="w-full"
+                >
+                    <Auth
+                        supabaseClient={supabase}
+                        appearance={{
+                            theme: ThemeSupa,
+                            variables: {
+                                default: {
+                                    colors: {
+                                        brand: '#B89052',
+                                        brandAccent: '#C99F5E',
+                                        brandButtonText: '#000000',
+                                        defaultButtonBackground: '#111111',
+                                        defaultButtonBackgroundHover: '#1A1A1A',
+                                        inputBackground: '#111111',
+                                        inputBorder: '#222222',
+                                        inputBorderHover: '#333333',
+                                        inputBorderFocus: '#B89052',
+                                        inputPlaceholder: '#666666',
+                                        inputText: '#FFFFFF',
+                                        messageText: '#B89052',
+                                        anchorTextColor: '#888888',
+                                        anchorTextHoverColor: '#FFFFFF',
+                                    },
+                                    radii: {
+                                        borderRadiusButton: '16px',
+                                        borderRadiusInput: '16px',
+                                    },
+                                    space: {
+                                        inputPadding: '16px 20px',
+                                        buttonPadding: '16px 20px',
+                                        labelBottomMargin: '8px',
+                                    },
+                                    fonts: {
+                                        bodyFontFamily: 'inherit',
+                                        buttonFontFamily: 'inherit',
+                                        inputFontFamily: 'inherit',
+                                        labelFontFamily: 'inherit',
+                                    }
+                                },
+                            },
+                            className: {
+                                button: 'w-full h-[52px] bg-[#B89052] hover:bg-[#C99F5E] !text-[#000000] font-medium text-[16px] transition-all duration-300 mt-6 active:scale-[0.98] !border-0 shadow-[0_4px_14px_rgba(184,144,82,0.15)]',
+                                input: 'w-full h-[52px] !bg-[#111111] border-[0.5px] !border-[#222222] focus:!border-[#B89052]/50 text-white font-normal text-[16px] transition-colors focus:ring-0 placeholder:text-[#666666] shadow-none',
+                                label: 'hidden',
+                                anchor: 'text-[#888888] hover:text-[#FFFFFF] text-[13px] font-light transition-colors block text-center mt-2',
+                                container: 'space-y-4',
+                                message: 'text-[#B89052] text-[13px] font-normal text-center mt-6',
+                                divider: 'hidden',
+                            }
+                        }}
+                        theme="dark"
+                        providers={[]}
+                        redirectTo={getRedirectUrl()}
+                        localization={{
+                            variables: {
+                                sign_in: {
+                                    email_label: '',
+                                    password_label: '',
+                                    button_label: '登 录',
+                                    loading_button_label: '登录中...',
+                                    email_input_placeholder: '输入您的邮箱',
+                                    password_input_placeholder: '输入您的密码',
+                                    link_text: '已有账号？点击登录',
+                                },
+                                sign_up: {
+                                    email_label: '',
+                                    password_label: '',
+                                    button_label: '注 册',
+                                    loading_button_label: '注册中...',
+                                    email_input_placeholder: '输入您的邮箱',
+                                    password_input_placeholder: '设置您的密码',
+                                    link_text: '没有账号？点击注册',
+                                },
+                                forgotten_password: {
+                                    link_text: '找回密码',
+                                }
+                            },
+                        }}
+                    />
+                </motion.div>
+                
+            </div>
         </div>
     );
 }
@@ -160,14 +189,14 @@ function AuthContent() {
 // 加载中状态
 function AuthLoading() {
     return (
-        <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="min-h-screen bg-[#030305] flex items-center justify-center">
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="flex flex-col items-center gap-4"
             >
-                <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
-                <p className="text-white/40 text-sm">正在检查登录状态...</p>
+                <Loader2 className="w-6 h-6 text-white/20 animate-spin" />
+                <p className="text-white/30 text-xs tracking-widest uppercase font-light">系统初始化中...</p>
             </motion.div>
         </div>
     );

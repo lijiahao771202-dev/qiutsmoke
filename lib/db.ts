@@ -19,6 +19,7 @@ export async function ensureTables() {
     cosyvoice_speed double precision,
     cosyvoice_instruction text,
     cosyvoice_seed integer,
+    cosyvoice_voice_id text,
     updated_at timestamptz DEFAULT now()
   )`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ai_provider text`;
@@ -27,6 +28,7 @@ export async function ensureTables() {
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_speed double precision`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_instruction text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_seed integer`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_voice_id text`;
   await sql`CREATE TABLE IF NOT EXISTS user_prompts (
     user_id text REFERENCES users(id) ON DELETE CASCADE,
     topic_id text,

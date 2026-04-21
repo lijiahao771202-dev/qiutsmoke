@@ -29,6 +29,7 @@ type TTSRequest = {
   cosyvoiceSpeed?: unknown;
   cosyvoiceInstruction?: unknown;
   cosyvoiceSeed?: unknown;
+  cosyvoiceVoiceId?: unknown;
 };
 
 function getLangFromVoice(voice: string): string {
@@ -42,6 +43,7 @@ async function getPersistedTTSSettings(): Promise<TTSSettings> {
   const cookieSpeed = jar.get("cosyvoice_speed")?.value;
   const cookieInstruction = jar.get("cosyvoice_instruction")?.value;
   const cookieSeed = jar.get("cosyvoice_seed")?.value;
+  const cookieVoiceId = jar.get("cosyvoice_voice_id")?.value;
 
   if (!hasDb()) {
     return normalizeTTSSettings({
@@ -49,6 +51,7 @@ async function getPersistedTTSSettings(): Promise<TTSSettings> {
       cosyvoiceSpeed: cookieSpeed,
       cosyvoiceInstruction: cookieInstruction,
       cosyvoiceSeed: cookieSeed,
+      cosyvoiceVoiceId: cookieVoiceId,
     });
   }
 
@@ -59,12 +62,13 @@ async function getPersistedTTSSettings(): Promise<TTSSettings> {
       cosyvoiceSpeed: cookieSpeed,
       cosyvoiceInstruction: cookieInstruction,
       cosyvoiceSeed: cookieSeed,
+      cosyvoiceVoiceId: cookieVoiceId,
     });
   }
 
   await ensureTables();
   const rows = await sql`
-    SELECT tts_provider, cosyvoice_speed, cosyvoice_instruction, cosyvoice_seed
+    SELECT tts_provider, cosyvoice_speed, cosyvoice_instruction, cosyvoice_seed, cosyvoice_voice_id
     FROM user_settings
     WHERE user_id = ${uid}
   `;
@@ -73,6 +77,7 @@ async function getPersistedTTSSettings(): Promise<TTSSettings> {
     cosyvoiceSpeed: cookieSpeed || rows.rows?.[0]?.cosyvoice_speed,
     cosyvoiceInstruction: cookieInstruction || rows.rows?.[0]?.cosyvoice_instruction,
     cosyvoiceSeed: cookieSeed || rows.rows?.[0]?.cosyvoice_seed,
+    cosyvoiceVoiceId: cookieVoiceId || rows.rows?.[0]?.cosyvoice_voice_id,
   });
 }
 
@@ -241,6 +246,7 @@ async function synthesizeCosyVoiceTTS(text: string, settings: TTSSettings) {
         speed: settings.cosyvoiceSpeed,
         instruct_text: settings.cosyvoiceInstruction,
         seed: settings.cosyvoiceSeed,
+        voice_id: settings.cosyvoiceVoiceId,
       }),
       signal: controller.signal,
     });
@@ -269,6 +275,7 @@ async function synthesizeCosyVoiceTTS(text: string, settings: TTSSettings) {
         "Cache-Control": "no-cache",
         "X-TTS-Impl": "cosyvoice-local",
         "X-CosyVoice-Upstream": baseUrl,
+        "X-CosyVoice-Voice": settings.cosyvoiceVoiceId,
       },
     });
   } catch (error) {
@@ -322,6 +329,7 @@ export async function POST(req: Request) {
       cosyvoiceSpeed: body.cosyvoiceSpeed ?? persistedSettings.cosyvoiceSpeed,
       cosyvoiceInstruction: body.cosyvoiceInstruction ?? persistedSettings.cosyvoiceInstruction,
       cosyvoiceSeed: body.cosyvoiceSeed ?? persistedSettings.cosyvoiceSeed,
+      cosyvoiceVoiceId: body.cosyvoiceVoiceId ?? persistedSettings.cosyvoiceVoiceId,
     });
     const provider = settings.provider;
     if (provider === "cosyvoice") {

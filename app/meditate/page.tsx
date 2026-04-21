@@ -17,7 +17,9 @@ import { getApiUrl } from "@/lib/config";
 import ProMeditationPlayer from "@/components/meditation/ProMeditationPlayer";
 import {
     COSYVOICE_PROFILE,
+    DEFAULT_COSYVOICE_VOICE_ID,
     DEFAULT_TTS_PROVIDER,
+    type CosyVoiceVoiceId,
     type TTSProvider,
     type TTSSettings,
 } from "@/lib/tts-settings";
@@ -159,6 +161,7 @@ export default function MeditatePage() {
     const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
     const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
     const [cosyvoiceSeed, setCosyvoiceSeed] = useState<number>(COSYVOICE_PROFILE.seed);
+    const [cosyvoiceVoiceId, setCosyvoiceVoiceId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_VOICE_ID);
     const [customPrompt, setCustomPrompt] = useState(DEFAULT_PROMPT);
     const [apiKey, setApiKey] = useState("");
     const [showPromptEdit, setShowPromptEdit] = useState(false);
@@ -252,6 +255,9 @@ export default function MeditatePage() {
                 if (typeof data?.cosyvoiceSeed === "number") {
                     setCosyvoiceSeed(data.cosyvoiceSeed);
                 }
+                if (data?.cosyvoiceVoiceId === "yupinglu" || data?.cosyvoiceVoiceId === "tea") {
+                    setCosyvoiceVoiceId(data.cosyvoiceVoiceId);
+                }
             } catch { }
         })();
 
@@ -315,6 +321,9 @@ export default function MeditatePage() {
             }
             if (typeof detail.cosyvoiceSeed === "number") {
                 setCosyvoiceSeed(detail.cosyvoiceSeed);
+            }
+            if (detail.cosyvoiceVoiceId === "yupinglu" || detail.cosyvoiceVoiceId === "tea") {
+                setCosyvoiceVoiceId(detail.cosyvoiceVoiceId);
             }
         };
 
@@ -1332,6 +1341,7 @@ export default function MeditatePage() {
                     cosyvoiceSpeed,
                     cosyvoiceInstruction,
                     cosyvoiceSeed,
+                    cosyvoiceVoiceId,
                 });
                 setAudioQueue(prev => prev.map(item =>
                     item.id === itemId ? { ...item, url, status: 'ready' } : item
@@ -1349,6 +1359,7 @@ export default function MeditatePage() {
                         cosyvoiceSpeed,
                         cosyvoiceInstruction,
                         cosyvoiceSeed,
+                        cosyvoiceVoiceId,
                     })
                 });
 

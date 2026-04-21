@@ -129,14 +129,17 @@ button {
   appearance: none;
 }
 
-/* iOS 全屏支持 - 确保视口充满整个屏幕 */
-html,
+/* iOS PWA 全屏支持 - 使用固定高度避免 WebKit 视口计算 Bug */
+html {
+  height: 100vh;
+  overflow: hidden;
+}
+
 body {
-  min-height: 100dvh;
-  min-height: -webkit-fill-available;
-  /* iOS Safari 兼容 */
-  /* PWA 安全区域填充 */
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* 背景层全屏覆盖 - 终极强制覆盖方案 (The Nuclear Option) */

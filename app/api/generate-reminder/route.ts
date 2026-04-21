@@ -155,12 +155,12 @@ export async function POST(req: Request) {
 3. 必须紧密承接前文历史，自然地顺着上一句话给出下一句引导，保持对话行云流水。
 4. 语气沉稳、友善、充满穿透力且极其富有好奇心。每一句话都应该像是在幽暗中点亮一盏灯。
 5. 绝对不可直接说出"烟"、"抽烟"等触发词。用"海浪"、"冲动"、"原始的能量"来指代。
-6. 严格根据当前传入的【当前所处阶段】进行针对性发言，步步深入。\`;
+6. 严格根据当前传入的【当前所处阶段】进行针对性发言，步步深入。`;
 
                 systemPrompt = customSystemPrompt || DEFAULT_SURF_SYSTEM_PROMPT;
             }
 
-            console.log(`[SURF DEBUG] elapsedTime=${elapsedTime}, sessionPhase=${sessionPhase}, diagnosisProfile=${diagnosisProfile ? 'YES' : 'EMPTY'}`);
+            console.log("[SURF DEBUG] elapsedTime=" + elapsedTime + ", sessionPhase=" + sessionPhase + ", diagnosisProfile=" + (diagnosisProfile ? "YES" : "EMPTY"));
         } else {
             systemPrompt = `你是一个拥有极高觉知力的专业正念导师。现在用户正在进行一段 ${totalTime} 分钟的打坐冥想。
 当前时间点：处于第 ${elapsedTime} 秒（进度：${Math.round(elapsedTime / 60)}分钟）。
@@ -203,10 +203,20 @@ if (mode === 'urge_surfing') {
             }
 
             let currentUserMessage = "";
-            if (userAction) {
-                currentUserMessage = `【用户反馈】："${userAction}"\n请结合前文，严格根据《当前阶段教练操作手册》给出一句回应。不要超过30个字。`;
+            if (body.surfStyle === 'immersive') {
+                systemInstruction += `【沉浸模式特殊指令】：不要限制字数。请一次性生成 3~4 句连贯、递进的指导语（构成一个小节的剧本）。每一句必须用单独的换行符 "\\n" 隔开。`;
+                if (userAction) {
+                    currentUserMessage = `【用户反馈】："${userAction}"\n请立刻生成第 1 句短句作为安抚/追问，并紧接着换行生成后续 2~3 句剧本来进一步探究。`;
+                } else {
+                    currentUserMessage = `（用户正在沉默中体验，或者刚刚进入新阶段。请自然承接，为当前阶段生成一整段 3~4 句的连贯剧本。历时 ${elapsedTime} 秒。当前阶段：${rainStage}。注意每句之间用换行符隔开。）`;
+                }
             } else {
-                currentUserMessage = `（用户正在沉默中体验。请自然地承接你上一句话的方向，继续给出下一步引导。历时 ${elapsedTime} 秒。当前阶段：${rainStage}。不要超过30个字。）`;
+                // Interactive Mode (Default)
+                if (userAction) {
+                    currentUserMessage = `【用户反馈】："${userAction}"\n请结合前文，严格根据《当前阶段教练操作手册》给出一句回应。不要超过30个字。`;
+                } else {
+                    currentUserMessage = `（用户正在沉默中体验。请自然地承接你上一句话的方向，继续给出下一步引导。历时 ${elapsedTime} 秒。当前阶段：${rainStage}。不要超过30个字。）`;
+                }
             }
 
             messages = [

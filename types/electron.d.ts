@@ -9,6 +9,7 @@ declare global {
         cosyvoiceSpeed?: number;
         cosyvoiceInstruction?: string;
         cosyvoiceSeed?: number;
+        cosyvoiceVoiceId?: "yupinglu" | "tea";
     }
 
     interface ElectronMeditationPayload {

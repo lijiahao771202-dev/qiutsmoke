@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { LogOut, ChevronDown, Image as ImageIcon, Check, Shuffle, User, Pencil, Trash2, Bell, Bot, Cpu, Loader2, Volume2 } from "lucide-react";
+import { LogOut, ChevronDown, Image as ImageIcon, Check, Shuffle, User, Pencil, Trash2, Bell, Bot, Cpu, Loader2, Volume2, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useBackground, WALLPAPERS } from "./BackgroundContext";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { AVATAR_PRESETS, getAvatarById } from "@/lib/avatars";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { getApiUrl } from "@/lib/config";
+import { syncAll } from "@/lib/hooks/useSync";
 import ReminderSettings from "./ReminderSettings";
 import {
     AI_MODEL_FAMILY_OPTIONS,
@@ -23,11 +24,15 @@ import {
     type AIProvider,
 } from "@/lib/ai-models";
 import {
+    COSYVOICE_INSTRUCTION_PRESETS,
     COSYVOICE_PROFILE,
+    COSYVOICE_VOICE_PROFILES,
+    DEFAULT_COSYVOICE_VOICE_ID,
     DEFAULT_TTS_PROVIDER,
     TTS_PROVIDER_DESCRIPTIONS,
     TTS_PROVIDER_LABELS,
     normalizeTTSSettings,
+    type CosyVoiceVoiceId,
     type TTSSettings,
     type TTSProvider,
 } from "@/lib/tts-settings";
@@ -43,6 +48,7 @@ export default function UserProfile() {
     const [showTTSSettings, setShowTTSSettings] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     // 用户资料状态
     const [nickname, setNickname] = useState("");
@@ -59,6 +65,7 @@ export default function UserProfile() {
     const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
     const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
     const [cosyvoiceSeed, setCosyvoiceSeed] = useState<number>(COSYVOICE_PROFILE.seed);
+    const [cosyvoiceVoiceId, setCosyvoiceVoiceId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_VOICE_ID);
     const [isLoadingTTSSettings, setIsLoadingTTSSettings] = useState(true);
     const [isSavingTTSSettings, setIsSavingTTSSettings] = useState(false);
     const [isTestingTTSSettings, setIsTestingTTSSettings] = useState(false);
@@ -143,6 +150,9 @@ export default function UserProfile() {
             }
             if (typeof data?.cosyvoiceSeed === "number") {
                 setCosyvoiceSeed(data.cosyvoiceSeed);
+            }
+            if (data?.cosyvoiceVoiceId === "yupinglu" || data?.cosyvoiceVoiceId === "tea") {
+                setCosyvoiceVoiceId(data.cosyvoiceVoiceId);
             }
         } catch (error) {
             console.error("Load tts settings failed:", error);
@@ -308,6 +318,7 @@ export default function UserProfile() {
                 cosyvoiceSpeed,
                 cosyvoiceInstruction,
                 cosyvoiceSeed,
+                cosyvoiceVoiceId,
             });
             const res = await fetch(getApiUrl("/api/tts-settings"), {
                 method: "POST",
@@ -320,11 +331,13 @@ export default function UserProfile() {
                 setCosyvoiceSpeed(savedSettings.cosyvoiceSpeed);
                 setCosyvoiceInstruction(savedSettings.cosyvoiceInstruction);
                 setCosyvoiceSeed(savedSettings.cosyvoiceSeed);
+                setCosyvoiceVoiceId(savedSettings.cosyvoiceVoiceId);
                 if (typeof window !== "undefined") {
                     localStorage.setItem("tts_provider", savedSettings.provider);
                     localStorage.setItem("cosyvoice_speed", String(savedSettings.cosyvoiceSpeed));
                     localStorage.setItem("cosyvoice_instruction", savedSettings.cosyvoiceInstruction);
                     localStorage.setItem("cosyvoice_seed", String(savedSettings.cosyvoiceSeed));
+                    localStorage.setItem("cosyvoice_voice_id", savedSettings.cosyvoiceVoiceId);
                     window.dispatchEvent(new CustomEvent("tts-provider-changed", {
                         detail: savedSettings,
                     }));
@@ -545,6 +558,25 @@ export default function UserProfile() {
                                         <Trash2 className="w-4 h-4" />
                                     </div>
                                     <span className="font-light">清除冥想数据</span>
+                                </button>
+
+                                {/* Manual Sync */}
+                                <button
+                                    onClick={async () => {
+                                        setIsSyncing(true);
+                                        try {
+                                            await syncAll();
+                                        } finally {
+                                            setIsSyncing(false);
+                                        }
+                                    }}
+                                    disabled={isSyncing}
+                                    className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-white/10 text-emerald-400 hover:text-emerald-300 transition-colors text-sm text-left group disabled:opacity-50"
+                                >
+                                    <div className="p-1.5 rounded-lg bg-emerald-500/10 group-hover:bg-emerald-500/20 transition-colors">
+                                        <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
+                                    </div>
+                                    <span className="font-light">{isSyncing ? "同步中..." : "同步数据"}</span>
                                 </button>
 
                                 {/* Sign Out */}
@@ -940,11 +972,39 @@ export default function UserProfile() {
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3">
                                             <div className="text-xs text-white/45 mb-1">克隆音频</div>
-                                            <div className="text-sm text-white/85">{COSYVOICE_PROFILE.cloneAudioName}</div>
+                                            <div className="text-sm text-white/85">
+                                                {COSYVOICE_VOICE_PROFILES.find((profile) => profile.id === cosyvoiceVoiceId)?.cloneAudioName || COSYVOICE_PROFILE.cloneAudioName}
+                                            </div>
                                         </div>
                                         <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3">
                                             <div className="text-xs text-white/45 mb-1">当前模式</div>
                                             <div className="text-sm text-white/85">{COSYVOICE_PROFILE.mode}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="block text-sm text-white/85">克隆音色</label>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {COSYVOICE_VOICE_PROFILES.map((profile) => {
+                                                const active = cosyvoiceVoiceId === profile.id;
+                                                return (
+                                                    <button
+                                                        key={profile.id}
+                                                        type="button"
+                                                        onClick={() => setCosyvoiceVoiceId(profile.id)}
+                                                        disabled={ttsProvider !== "cosyvoice"}
+                                                        className={cn(
+                                                            "rounded-xl border px-3 py-3 text-left transition-all disabled:opacity-50",
+                                                            active
+                                                                ? "border-cyan-400/70 bg-cyan-500/10 text-cyan-100"
+                                                                : "border-white/10 bg-black/10 text-white/70 hover:bg-white/10"
+                                                        )}
+                                                    >
+                                                        <div className="text-sm">{profile.label}</div>
+                                                        <div className="mt-1 text-[11px] text-white/40">{profile.cloneAudioName}</div>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     </div>
 
@@ -965,6 +1025,42 @@ export default function UserProfile() {
 
                                     <div className="space-y-2">
                                         <label className="block text-sm text-white/85">自然语言控制指令</label>
+                                        <div className="mb-3 space-y-2">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="text-[11px] text-white/45">指令预设</div>
+                                                <div className="text-[11px] text-white/35">点击后会填充到文本框</div>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                                {COSYVOICE_INSTRUCTION_PRESETS.map((preset) => {
+                                                    const active = cosyvoiceInstruction.trim() === preset.prompt;
+                                                    return (
+                                                        <button
+                                                            key={preset.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setCosyvoiceInstruction(preset.prompt);
+                                                                setTTSTestResult(null);
+                                                            }}
+                                                            disabled={ttsProvider !== "cosyvoice"}
+                                                            className={cn(
+                                                                "rounded-xl border px-3 py-3 text-left transition-all disabled:opacity-50",
+                                                                active
+                                                                    ? "border-cyan-400/70 bg-cyan-500/10 text-cyan-100"
+                                                                    : "border-white/10 bg-black/10 text-white/70 hover:bg-white/10"
+                                                            )}
+                                                        >
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <div className="text-sm">{preset.label}</div>
+                                                                <div className="text-[10px] text-white/40">{preset.description}</div>
+                                                            </div>
+                                                            <div className="mt-2 text-[11px] leading-5 text-white/45 line-clamp-3">
+                                                                {preset.prompt}
+                                                            </div>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
                                         <textarea
                                             value={cosyvoiceInstruction}
                                             onChange={(e) => setCosyvoiceInstruction(e.target.value)}
