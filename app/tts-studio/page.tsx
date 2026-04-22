@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Play, Trash2, Clock, Volume2, Sparkles, ChevronRight, ChevronDown, Settings, Info, Save, X, Edit2, Check, ArrowRight, Music, RotateCcw, Download, Pencil, RotateCw, Pause, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -2372,6 +2372,12 @@ export default function TTSStudioPage() {
     // 使用 SWR 缓存数据
     const { cards: ttsCards, addCard: apiAddCard, deleteCard: apiDeleteCard, isLoading: isLoadingCards } = useTTSCards();
     const [activeCategory, setActiveCategory] = useState<'all' | 'rain' | 'rain-advanced' | 'emotion-anxiety' | 'emotion-body-scan'>('all');
+    const [activeSubCategory, setActiveSubCategory] = useState<string>('all');
+
+    const handleCategoryChange = (category: typeof activeCategory) => {
+        setActiveCategory(category);
+        setActiveSubCategory('all');
+    };
     const [ttsProvider, setTTSProvider] = useState<TTSProvider>(DEFAULT_TTS_PROVIDER);
     const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
     const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
@@ -2651,29 +2657,40 @@ export default function TTSStudioPage() {
         setPlayerCurrentTime(time);
     };
 
+    const displayCards = useMemo(() => {
+        let list = ttsCards;
+        if (activeCategory === 'rain') list = RAIN_CARDS;
+        else if (activeCategory === 'rain-advanced') list = RAIN_ADVANCED_CARDS;
+        else if (activeCategory === 'emotion-anxiety') list = EMOTION_ANXIETY_CARDS;
+        else if (activeCategory === 'emotion-body-scan') list = EMOTION_BODY_SCAN_CARDS;
+
+        if (activeCategory === 'emotion-body-scan' && activeSubCategory !== 'all') {
+            list = list.filter(card => {
+                if (activeSubCategory === 'quick') return card.title.includes('⚡');
+                if (activeSubCategory === 'basic') return card.title.includes('⚖️') || card.title.includes('🧘‍♀️');
+                if (activeSubCategory === 'deep') return card.title.includes('🌌') || card.title.includes('🛡️') || card.title.includes('🌬️');
+                if (activeSubCategory === 'sleep') return card.title.includes('💤');
+                if (activeSubCategory === 'visual') return card.title.includes('🌿');
+                if (activeSubCategory === 'active') return card.title.includes('🏃');
+                return true;
+            });
+        }
+        return list;
+    }, [activeCategory, activeSubCategory, ttsCards]);
+
     const handlePrev = () => {
         if (!playerCard) return;
-        let currentList = ttsCards;
-        if (activeCategory === 'rain') currentList = RAIN_CARDS;
-        if (activeCategory === 'rain-advanced') currentList = RAIN_ADVANCED_CARDS;
-        if (activeCategory === 'emotion-anxiety') currentList = EMOTION_ANXIETY_CARDS;
-        if (activeCategory === 'emotion-body-scan') currentList = EMOTION_BODY_SCAN_CARDS;
-        const currentIndex = currentList.findIndex(c => c.id === playerCard.id);
+        const currentIndex = displayCards.findIndex(c => c.id === playerCard.id);
         if (currentIndex > 0) {
-            handlePlayCard(currentList[currentIndex - 1]);
+            handlePlayCard(displayCards[currentIndex - 1]);
         }
     };
 
     const handleNext = () => {
         if (!playerCard) return;
-        let currentList = ttsCards;
-        if (activeCategory === 'rain') currentList = RAIN_CARDS;
-        if (activeCategory === 'rain-advanced') currentList = RAIN_ADVANCED_CARDS;
-        if (activeCategory === 'emotion-anxiety') currentList = EMOTION_ANXIETY_CARDS;
-        if (activeCategory === 'emotion-body-scan') currentList = EMOTION_BODY_SCAN_CARDS;
-        const currentIndex = currentList.findIndex(c => c.id === playerCard.id);
-        if (currentIndex < currentList.length - 1) {
-            handlePlayCard(currentList[currentIndex + 1]);
+        const currentIndex = displayCards.findIndex(c => c.id === playerCard.id);
+        if (currentIndex < displayCards.length - 1) {
+            handlePlayCard(displayCards[currentIndex + 1]);
         }
     };
 
@@ -2866,36 +2883,56 @@ export default function TTSStudioPage() {
                     {/* 分类标签 */}
                     <div className="flex gap-4 mt-8 mb-6 px-1 overflow-x-auto pb-2 scrollbar-hide">
                         <button 
-                            onClick={() => setActiveCategory('all')} 
+                            onClick={() => handleCategoryChange('all')} 
                             className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all", activeCategory === 'all' ? "bg-white text-black shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10")}
                         >
                             全部语料
                         </button>
                         <button 
-                            onClick={() => setActiveCategory('rain')} 
+                            onClick={() => handleCategoryChange('rain')} 
                             className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2", activeCategory === 'rain' ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20" : "bg-rose-500/10 text-rose-300/80 hover:bg-rose-500/20")}
                         >
                             <span>🌊</span> RAIN 简易版
                         </button>
                         <button 
-                            onClick={() => setActiveCategory('rain-advanced')} 
+                            onClick={() => handleCategoryChange('rain-advanced')} 
                             className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2", activeCategory === 'rain-advanced' ? "bg-purple-500 text-white shadow-lg shadow-purple-500/20" : "bg-purple-500/10 text-purple-300/80 hover:bg-purple-500/20")}
                         >
                             <span>🔥</span> RAIN 进阶版
                         </button>
                         <button 
-                            onClick={() => setActiveCategory('emotion-anxiety')} 
+                            onClick={() => handleCategoryChange('emotion-anxiety')} 
                             className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0", activeCategory === 'emotion-anxiety' ? "bg-teal-500 text-white shadow-lg shadow-teal-500/20" : "bg-teal-500/10 text-teal-300/80 hover:bg-teal-500/20")}
                         >
                             <span>🌧️</span> 情绪：焦虑
                         </button>
                         <button 
-                            onClick={() => setActiveCategory('emotion-body-scan')} 
+                            onClick={() => handleCategoryChange('emotion-body-scan')} 
                             className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0", activeCategory === 'emotion-body-scan' ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}
                         >
                             <span>🧘‍♀️</span> 身体扫描
                         </button>
                     </div>
+
+                    {/* Secondary Navigation for Body Scan */}
+                    <AnimatePresence>
+                        {activeCategory === 'emotion-body-scan' && (
+                            <motion.div 
+                                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                                animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
+                                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                                className="flex overflow-x-auto pb-2 scrollbar-hide space-x-2"
+                            >
+                                <button onClick={() => setActiveSubCategory('all')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'all' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>全部</button>
+                                <button onClick={() => setActiveSubCategory('quick')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'quick' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>⚡ 急救重置</button>
+                                <button onClick={() => setActiveSubCategory('basic')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'basic' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>⚖️ 基础练习</button>
+                                <button onClick={() => setActiveSubCategory('deep')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'deep' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>🌌 深度疗愈</button>
+                                <button onClick={() => setActiveSubCategory('sleep')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'sleep' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>💤 助眠冬眠</button>
+                                <button onClick={() => setActiveSubCategory('visual')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'visual' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>🌿 高级意象</button>
+                                <button onClick={() => setActiveSubCategory('active')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'active' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>🏃 特殊情境</button>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
                     <div>
                         <AnimatePresence mode="wait">
@@ -2910,7 +2947,7 @@ export default function TTSStudioPage() {
                                     <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mb-4" />
                                     <p className="text-sm font-light">正在加载语料库...</p>
                                 </motion.div>
-                            ) : (activeCategory === 'rain' ? RAIN_CARDS : activeCategory === 'rain-advanced' ? RAIN_ADVANCED_CARDS : activeCategory === 'emotion-anxiety' ? EMOTION_ANXIETY_CARDS : activeCategory === 'emotion-body-scan' ? EMOTION_BODY_SCAN_CARDS : ttsCards).length === 0 ? (
+                            ) : displayCards.length === 0 ? (
                                 <motion.div
                                     key="empty"
                                     variants={ITEM_VARIANTS}
@@ -2929,7 +2966,7 @@ export default function TTSStudioPage() {
                                     animate={isMounted ? "show" : "hidden"}
                                     className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                                 >
-                                    {(activeCategory === 'rain' ? RAIN_CARDS : activeCategory === 'rain-advanced' ? RAIN_ADVANCED_CARDS : activeCategory === 'emotion-anxiety' ? EMOTION_ANXIETY_CARDS : activeCategory === 'emotion-body-scan' ? EMOTION_BODY_SCAN_CARDS : ttsCards).map((card: TTSCard, index: number) => (
+                                    {displayCards.map((card: TTSCard, index: number) => (
                                         <TTSCardItem
                                             key={buildAudioCacheKey(card.id, ttsSettings)}
                                             card={card}
