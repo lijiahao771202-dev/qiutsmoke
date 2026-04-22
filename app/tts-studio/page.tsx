@@ -31,6 +31,7 @@ import { VOICES } from "@/lib/constants";
 import { RAIN_CARDS } from "./rainCards";
 import { RAIN_ADVANCED_CARDS } from "./rainAdvancedCards";
 import { EMOTION_ANXIETY_CARDS } from "./emotionAnxietyCards";
+import { EMOTION_BODY_SCAN_CARDS } from "./bodyScanCards";
 
 const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
     light: { label: "🍃 轻引导", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/20" },
@@ -2370,7 +2371,7 @@ function TTSCardItem({
 export default function TTSStudioPage() {
     // 使用 SWR 缓存数据
     const { cards: ttsCards, addCard: apiAddCard, deleteCard: apiDeleteCard, isLoading: isLoadingCards } = useTTSCards();
-    const [activeCategory, setActiveCategory] = useState<'all' | 'rain' | 'rain-advanced' | 'emotion-anxiety'>('all');
+    const [activeCategory, setActiveCategory] = useState<'all' | 'rain' | 'rain-advanced' | 'emotion-anxiety' | 'emotion-body-scan'>('all');
     const [ttsProvider, setTTSProvider] = useState<TTSProvider>(DEFAULT_TTS_PROVIDER);
     const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
     const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
@@ -2656,6 +2657,7 @@ export default function TTSStudioPage() {
         if (activeCategory === 'rain') currentList = RAIN_CARDS;
         if (activeCategory === 'rain-advanced') currentList = RAIN_ADVANCED_CARDS;
         if (activeCategory === 'emotion-anxiety') currentList = EMOTION_ANXIETY_CARDS;
+        if (activeCategory === 'emotion-body-scan') currentList = EMOTION_BODY_SCAN_CARDS;
         const currentIndex = currentList.findIndex(c => c.id === playerCard.id);
         if (currentIndex > 0) {
             handlePlayCard(currentList[currentIndex - 1]);
@@ -2668,6 +2670,7 @@ export default function TTSStudioPage() {
         if (activeCategory === 'rain') currentList = RAIN_CARDS;
         if (activeCategory === 'rain-advanced') currentList = RAIN_ADVANCED_CARDS;
         if (activeCategory === 'emotion-anxiety') currentList = EMOTION_ANXIETY_CARDS;
+        if (activeCategory === 'emotion-body-scan') currentList = EMOTION_BODY_SCAN_CARDS;
         const currentIndex = currentList.findIndex(c => c.id === playerCard.id);
         if (currentIndex < currentList.length - 1) {
             handlePlayCard(currentList[currentIndex + 1]);
@@ -2886,6 +2889,12 @@ export default function TTSStudioPage() {
                         >
                             <span>🌧️</span> 情绪：焦虑
                         </button>
+                        <button 
+                            onClick={() => setActiveCategory('emotion-body-scan')} 
+                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0", activeCategory === 'emotion-body-scan' ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}
+                        >
+                            <span>🧘‍♀️</span> 身体扫描
+                        </button>
                     </div>
 
                     <div>
@@ -2901,7 +2910,7 @@ export default function TTSStudioPage() {
                                     <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mb-4" />
                                     <p className="text-sm font-light">正在加载语料库...</p>
                                 </motion.div>
-                            ) : (activeCategory === 'rain' ? RAIN_CARDS : activeCategory === 'rain-advanced' ? RAIN_ADVANCED_CARDS : activeCategory === 'emotion-anxiety' ? EMOTION_ANXIETY_CARDS : ttsCards).length === 0 ? (
+                            ) : (activeCategory === 'rain' ? RAIN_CARDS : activeCategory === 'rain-advanced' ? RAIN_ADVANCED_CARDS : activeCategory === 'emotion-anxiety' ? EMOTION_ANXIETY_CARDS : activeCategory === 'emotion-body-scan' ? EMOTION_BODY_SCAN_CARDS : ttsCards).length === 0 ? (
                                 <motion.div
                                     key="empty"
                                     variants={ITEM_VARIANTS}
@@ -2920,7 +2929,7 @@ export default function TTSStudioPage() {
                                     animate={isMounted ? "show" : "hidden"}
                                     className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                                 >
-                                    {(activeCategory === 'rain' ? RAIN_CARDS : activeCategory === 'rain-advanced' ? RAIN_ADVANCED_CARDS : activeCategory === 'emotion-anxiety' ? EMOTION_ANXIETY_CARDS : ttsCards).map((card: TTSCard, index: number) => (
+                                    {(activeCategory === 'rain' ? RAIN_CARDS : activeCategory === 'rain-advanced' ? RAIN_ADVANCED_CARDS : activeCategory === 'emotion-anxiety' ? EMOTION_ANXIETY_CARDS : activeCategory === 'emotion-body-scan' ? EMOTION_BODY_SCAN_CARDS : ttsCards).map((card: TTSCard, index: number) => (
                                         <TTSCardItem
                                             key={buildAudioCacheKey(card.id, ttsSettings)}
                                             card={card}
