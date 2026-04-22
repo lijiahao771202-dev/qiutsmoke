@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Play, Trash2, Clock, Volume2, Sparkles, ChevronRight, ChevronDown, Settings, Info, Save, X, Edit2, Check, ArrowRight, Music, RotateCcw, Download, Pencil, RotateCw, Pause, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { shouldBypassWebAudioForBackgroundPlayback } from "@/lib/audio-platform";
 import AuthGuard from "@/components/AuthGuard";
 import { saveAudioCache, getAudioCache, hasAudioCache, deleteAudioCache } from "@/lib/audioCache";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -29,6 +30,7 @@ import { useWhiteNoise, AMBIENT_SOUNDS, type AmbientSoundType } from "@/hooks/us
 import { VOICES } from "@/lib/constants";
 import { RAIN_CARDS } from "./rainCards";
 import { RAIN_ADVANCED_CARDS } from "./rainAdvancedCards";
+import { EMOTION_ANXIETY_CARDS } from "./emotionAnxietyCards";
 
 const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
     light: { label: "🍃 轻引导", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/20" },
@@ -2368,7 +2370,7 @@ function TTSCardItem({
 export default function TTSStudioPage() {
     // 使用 SWR 缓存数据
     const { cards: ttsCards, addCard: apiAddCard, deleteCard: apiDeleteCard, isLoading: isLoadingCards } = useTTSCards();
-    const [activeCategory, setActiveCategory] = useState<'all' | 'rain' | 'rain-advanced'>('all');
+    const [activeCategory, setActiveCategory] = useState<'all' | 'rain' | 'rain-advanced' | 'emotion-anxiety'>('all');
     const [ttsProvider, setTTSProvider] = useState<TTSProvider>(DEFAULT_TTS_PROVIDER);
     const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
     const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
@@ -2481,11 +2483,23 @@ export default function TTSStudioPage() {
     const [analyser, setAnalyser] = useState<AnalyserNode | null>(null); // Use state to trigger re-render
     const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
 
+    const shouldBypassPlayerWebAudio = () => {
+        if (typeof window === "undefined") return false;
+        return shouldBypassWebAudioForBackgroundPlayback({
+            userAgent: window.navigator.userAgent,
+            displayModeStandalone: window.matchMedia?.("(display-mode: standalone)")?.matches ?? false,
+            navigatorStandalone: (window.navigator as any).standalone === true,
+        });
+    };
+
     // 初始化音频引擎
     useEffect(() => {
         if (!playerAudioRef.current) {
             playerAudioRef.current = new Audio();
             playerAudioRef.current.crossOrigin = "anonymous";
+            // iOS needs a plain media element path to keep background playback alive in PWA mode.
+            (playerAudioRef.current as HTMLAudioElement & { playsInline?: boolean }).playsInline = true;
+            playerAudioRef.current.preload = "auto";
         }
 
         const audio = playerAudioRef.current;
@@ -2520,6 +2534,10 @@ export default function TTSStudioPage() {
 
     // 初始化 Web Audio API (在首次用户交互后)
     const initAudioContext = () => {
+        if (shouldBypassPlayerWebAudio()) {
+            setAnalyser(null);
+            return null;
+        }
         if (!audioCtxRef.current && playerAudioRef.current) {
             const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
             const ctx = new AudioContext();
@@ -2537,6 +2555,44 @@ export default function TTSStudioPage() {
             audioCtxRef.current.resume();
         }
     };
+
+    useEffect(() => {
+        if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+
+        if (!playerCard || !isPlayerOpen) {
+            navigator.mediaSession.playbackState = "none";
+            return;
+        }
+
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: playerCard.title || "声波工坊",
+            artist: "Rain",
+            album: "声波工坊",
+        });
+        navigator.mediaSession.playbackState = playerIsPlaying ? "playing" : "paused";
+        navigator.mediaSession.setActionHandler("play", () => {
+            playerAudioRef.current?.play().then(() => setPlayerIsPlaying(true)).catch(() => { });
+        });
+        navigator.mediaSession.setActionHandler("pause", () => {
+            playerAudioRef.current?.pause();
+            setPlayerIsPlaying(false);
+        });
+        navigator.mediaSession.setActionHandler("seekto", (details) => {
+            if (typeof details.seekTime === "number") {
+                if (!playerAudioRef.current) return;
+                playerAudioRef.current.currentTime = details.seekTime;
+                setPlayerCurrentTime(details.seekTime);
+            }
+        });
+
+        return () => {
+            try {
+                navigator.mediaSession.setActionHandler("play", null);
+                navigator.mediaSession.setActionHandler("pause", null);
+                navigator.mediaSession.setActionHandler("seekto", null);
+            } catch { }
+        };
+    }, [isPlayerOpen, playerCard, playerIsPlaying]);
 
     // 播放卡片逻辑
     const handlePlayCard = async (card: TTSCard) => {
@@ -2599,6 +2655,7 @@ export default function TTSStudioPage() {
         let currentList = ttsCards;
         if (activeCategory === 'rain') currentList = RAIN_CARDS;
         if (activeCategory === 'rain-advanced') currentList = RAIN_ADVANCED_CARDS;
+        if (activeCategory === 'emotion-anxiety') currentList = EMOTION_ANXIETY_CARDS;
         const currentIndex = currentList.findIndex(c => c.id === playerCard.id);
         if (currentIndex > 0) {
             handlePlayCard(currentList[currentIndex - 1]);
@@ -2610,6 +2667,7 @@ export default function TTSStudioPage() {
         let currentList = ttsCards;
         if (activeCategory === 'rain') currentList = RAIN_CARDS;
         if (activeCategory === 'rain-advanced') currentList = RAIN_ADVANCED_CARDS;
+        if (activeCategory === 'emotion-anxiety') currentList = EMOTION_ANXIETY_CARDS;
         const currentIndex = currentList.findIndex(c => c.id === playerCard.id);
         if (currentIndex < currentList.length - 1) {
             handlePlayCard(currentList[currentIndex + 1]);
@@ -2803,7 +2861,7 @@ export default function TTSStudioPage() {
                     </div>
 
                     {/* 分类标签 */}
-                    <div className="flex gap-4 mt-8 mb-6 px-1">
+                    <div className="flex gap-4 mt-8 mb-6 px-1 overflow-x-auto pb-2 scrollbar-hide">
                         <button 
                             onClick={() => setActiveCategory('all')} 
                             className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all", activeCategory === 'all' ? "bg-white text-black shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10")}
@@ -2822,6 +2880,12 @@ export default function TTSStudioPage() {
                         >
                             <span>🔥</span> RAIN 进阶版
                         </button>
+                        <button 
+                            onClick={() => setActiveCategory('emotion-anxiety')} 
+                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0", activeCategory === 'emotion-anxiety' ? "bg-teal-500 text-white shadow-lg shadow-teal-500/20" : "bg-teal-500/10 text-teal-300/80 hover:bg-teal-500/20")}
+                        >
+                            <span>🌧️</span> 情绪：焦虑
+                        </button>
                     </div>
 
                     <div>
@@ -2837,7 +2901,7 @@ export default function TTSStudioPage() {
                                     <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mb-4" />
                                     <p className="text-sm font-light">正在加载语料库...</p>
                                 </motion.div>
-                            ) : (activeCategory === 'rain' ? RAIN_CARDS : activeCategory === 'rain-advanced' ? RAIN_ADVANCED_CARDS : ttsCards).length === 0 ? (
+                            ) : (activeCategory === 'rain' ? RAIN_CARDS : activeCategory === 'rain-advanced' ? RAIN_ADVANCED_CARDS : activeCategory === 'emotion-anxiety' ? EMOTION_ANXIETY_CARDS : ttsCards).length === 0 ? (
                                 <motion.div
                                     key="empty"
                                     variants={ITEM_VARIANTS}
@@ -2856,7 +2920,7 @@ export default function TTSStudioPage() {
                                     animate={isMounted ? "show" : "hidden"}
                                     className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                                 >
-                                    {(activeCategory === 'rain' ? RAIN_CARDS : activeCategory === 'rain-advanced' ? RAIN_ADVANCED_CARDS : ttsCards).map((card: TTSCard, index: number) => (
+                                    {(activeCategory === 'rain' ? RAIN_CARDS : activeCategory === 'rain-advanced' ? RAIN_ADVANCED_CARDS : activeCategory === 'emotion-anxiety' ? EMOTION_ANXIETY_CARDS : ttsCards).map((card: TTSCard, index: number) => (
                                         <TTSCardItem
                                             key={buildAudioCacheKey(card.id, ttsSettings)}
                                             card={card}
