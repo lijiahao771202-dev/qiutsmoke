@@ -135,18 +135,6 @@ export default function StatsPage() {
                     <StatCard icon={Trophy} label="最长连续" value={stats?.longestStreak || 0} unit="天" index={3} color="text-yellow-400" />
                 </motion.div>
 
-                {/* Activity Trend Sparkline */}
-                <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.4, duration: 0.8 }}
-                    className="w-full h-32 mb-8"
-                >
-                    <GlassCard className="h-full p-6 relative overflow-hidden flex items-center justify-center bg-gradient-to-r from-rose-500/[0.05] to-purple-500/[0.05]">
-                        <div className="absolute top-4 left-6 text-xs text-white/40 uppercase tracking-wider font-semibold">本月冥想趋势</div>
-                        <ActivitySparkline sessions={sessions} daysInMonth={getDaysInMonth(currentDate)} />
-                    </GlassCard>
-                </motion.div>
 
                 {/* Calendar Section */}
                 <div className="grid md:grid-cols-3 gap-8">
@@ -404,67 +392,3 @@ function CountUp({ value }: { value: number }) {
     return <motion.span>{displayValue}</motion.span>;
 }
 
-function ActivitySparkline({ sessions, daysInMonth }: { sessions: Session[], daysInMonth: number }) {
-    // Calculate daily minutes
-    const data = useMemo(() => {
-        const counts = new Array(daysInMonth).fill(0);
-        sessions.forEach(s => {
-            const d = new Date(s.started_at).getDate();
-            if (d >= 1 && d <= daysInMonth) {
-                // Use default 10 mins if duration missing (for demo), usually s.duration_seconds
-                const mins = (s.duration_seconds || 600) / 60;
-                counts[d - 1] += mins;
-            }
-        });
-        return counts;
-    }, [sessions, daysInMonth]);
-
-    // Path generation
-    const width = 100; // viewBox width
-    const height = 40; // viewBox height
-    const maxVal = Math.max(...data, 10); // Min max to avoid flat line
-
-    // Create Path D
-    const d = `M 0,${height} ` + data.map((val, i) => {
-        const x = (i / (daysInMonth - 1)) * width;
-        const y = height - (val / maxVal) * height;
-        return `L ${x},${y}`;
-    }).join(" ");
-
-
-    return (
-        <div className="w-full h-full flex items-end pt-6">
-            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
-                {/* Gradient Definition */}
-                <defs>
-                    <linearGradient id="sparklineGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="rgba(244, 63, 94, 0.5)" />
-                        <stop offset="100%" stopColor="rgba(244, 63, 94, 0)" />
-                    </linearGradient>
-                </defs>
-
-                {/* Area Fill (optional, closing the path) */}
-                <motion.path
-                    d={`${d} L ${width},${height} Z`}
-                    fill="url(#sparklineGradient)"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 1, delay: 0.8 }}
-                />
-
-                {/* Line Path */}
-                <motion.path
-                    d={d}
-                    fill="none"
-                    stroke="#fb7185" // rose-400
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    initial={{ pathLength: 0 }}
-                    animate={{ pathLength: 1 }}
-                    transition={{ duration: 2, ease: "easeInOut", delay: 0.5 }}
-                />
-            </svg>
-        </div>
-    );
-}
