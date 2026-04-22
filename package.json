@@ -4,7 +4,7 @@
   "private": true,
   "main": "electron.js",
   "scripts": {
-    "dev": "next dev -H 0.0.0.0",
+    "dev": "next dev -H ::",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
