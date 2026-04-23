@@ -12,7 +12,20 @@ import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
 import { getApiUrl } from "@/lib/config";
 import {
     COSYVOICE_PROFILE,
+    DEFAULT_COSYVOICE_VOICE_ID,
+    DEFAULT_QWEN_TTS_INSTRUCTIONS,
+    DEFAULT_QWEN_TTS_LANGUAGE_TYPE,
+    DEFAULT_QWEN_TTS_MODEL,
+    DEFAULT_QWEN_TTS_VOICE,
     DEFAULT_TTS_PROVIDER,
+    isQwenTTSLanguageType,
+    isQwenTTSModel,
+    isQwenTTSVoice,
+    isTTSProvider,
+    type CosyVoiceVoiceId,
+    type QwenTTSLanguageType,
+    type QwenTTSModel,
+    type QwenTTSVoice,
     type TTSProvider,
     type TTSSettings,
 } from "@/lib/tts-settings";
@@ -48,14 +61,25 @@ const hashCacheSignature = (value: string) => {
 };
 
 const buildAudioCacheKey = (cardId: string, settings: TTSSettings) => {
-    if (settings.provider !== "cosyvoice") {
+    if (settings.provider === "edge") {
         return `edge:${cardId}`;
+    }
+
+    if (settings.provider === "qwentts") {
+        const signature = hashCacheSignature(JSON.stringify({
+            model: settings.qwenTTSModel,
+            voice: settings.qwenTTSVoice,
+            languageType: settings.qwenTTSLanguageType,
+            instructions: settings.qwenTTSInstructions.trim(),
+        }));
+        return `qwentts:${signature}:${cardId}`;
     }
 
     const signature = hashCacheSignature(JSON.stringify({
         speed: settings.cosyvoiceSpeed,
         instruction: settings.cosyvoiceInstruction.trim(),
         seed: settings.cosyvoiceSeed,
+        voiceId: settings.cosyvoiceVoiceId,
     }));
     return `cosyvoice:${signature}:${cardId}`;
 };
@@ -722,24 +746,12 @@ function TTSCardItem({
                     console.error("Failed to get audio duration via cache", e);
                 }
             } else {
-                if (ttsSettings.provider === "cosyvoice") {
-                    console.log(`[TTSCard] 卡片 "${card.title || card.id}" 无缓存，CosyVoice 模式下等待手动合成。`);
-                    return;
-                }
-
-                // ✨ 没有缓存时自动后台合成
-                // 🔒 检查全局 Set，防止页面切换后重复合成
+                // ✨ 统一等待手动点击合成，不再自动合成
                 if (synthesizingCardsSet.has(card.id)) {
-                    console.log(`[TTSCard] 卡片 "${card.title || card.id}" 已在合成中，跳过...`);
                     setIsSynthesizing(true); // 显示合成状态
-                    return;
+                } else {
+                    console.log(`[TTSCard] 卡片 "${card.title || card.id}" 无缓存，等待手动合成。`);
                 }
-
-                console.log(`[TTSCard] 卡片 "${card.title || card.id}" 无缓存，自动开始合成...`);
-                // 延迟 500ms 开始合成，避免页面加载时同时发起多个请求
-                setTimeout(() => {
-                    synthesizeAndDownload();
-                }, 500);
             }
         });
     }, [audioCacheKey, card.id, ttsSettings.provider]);
@@ -1007,6 +1019,11 @@ function TTSCardItem({
                         cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
                         cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
                         cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
+                        cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,
+                        qwenTTSModel: ttsSettings.qwenTTSModel,
+                        qwenTTSVoice: ttsSettings.qwenTTSVoice,
+                        qwenTTSLanguageType: ttsSettings.qwenTTSLanguageType,
+                        qwenTTSInstructions: ttsSettings.qwenTTSInstructions,
                         voice: item.voiceId,
                         rate: item.rate
                     }),
@@ -1289,6 +1306,11 @@ function TTSCardItem({
                                 cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
                                 cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
                                 cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
+                                cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,
+                                qwenTTSModel: ttsSettings.qwenTTSModel,
+                                qwenTTSVoice: ttsSettings.qwenTTSVoice,
+                                qwenTTSLanguageType: ttsSettings.qwenTTSLanguageType,
+                                qwenTTSInstructions: ttsSettings.qwenTTSInstructions,
                                 voice: seg.voiceId,
                                 rate: seg.rate
                             }),
@@ -1562,6 +1584,11 @@ function TTSCardItem({
                                 cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
                                 cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
                                 cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
+                                cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,
+                                qwenTTSModel: ttsSettings.qwenTTSModel,
+                                qwenTTSVoice: ttsSettings.qwenTTSVoice,
+                                qwenTTSLanguageType: ttsSettings.qwenTTSLanguageType,
+                                qwenTTSInstructions: ttsSettings.qwenTTSInstructions,
                                 voice: item.voiceId,
                                 rate: item.rate
                             }),
@@ -2382,6 +2409,11 @@ export default function TTSStudioPage() {
     const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
     const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
     const [cosyvoiceSeed, setCosyvoiceSeed] = useState<number>(COSYVOICE_PROFILE.seed);
+    const [cosyvoiceVoiceId, setCosyvoiceVoiceId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_VOICE_ID);
+    const [qwenTTSModel, setQwenTTSModel] = useState<QwenTTSModel>(DEFAULT_QWEN_TTS_MODEL);
+    const [qwenTTSVoice, setQwenTTSVoice] = useState<QwenTTSVoice>(DEFAULT_QWEN_TTS_VOICE);
+    const [qwenTTSLanguageType, setQwenTTSLanguageType] = useState<QwenTTSLanguageType>(DEFAULT_QWEN_TTS_LANGUAGE_TYPE);
+    const [qwenTTSInstructions, setQwenTTSInstructions] = useState<string>(DEFAULT_QWEN_TTS_INSTRUCTIONS);
 
     // 🚀 iOS 性能优化：延迟动画启动，等待页面完成静态渲染
     const [isMounted, setIsMounted] = useState(false);
@@ -2403,7 +2435,7 @@ export default function TTSStudioPage() {
                 if (!res.ok) return;
 
                 const data = await res.json();
-                if (data?.provider === "edge" || data?.provider === "cosyvoice") {
+                if (isTTSProvider(data?.provider)) {
                     setTTSProvider(data.provider);
                 }
                 if (typeof data?.cosyvoiceSpeed === "number") {
@@ -2415,6 +2447,21 @@ export default function TTSStudioPage() {
                 if (typeof data?.cosyvoiceSeed === "number") {
                     setCosyvoiceSeed(data.cosyvoiceSeed);
                 }
+                if (data?.cosyvoiceVoiceId === "yupinglu" || data?.cosyvoiceVoiceId === "tea") {
+                    setCosyvoiceVoiceId(data.cosyvoiceVoiceId);
+                }
+                if (isQwenTTSModel(data?.qwenTTSModel)) {
+                    setQwenTTSModel(data.qwenTTSModel);
+                }
+                if (isQwenTTSVoice(data?.qwenTTSVoice)) {
+                    setQwenTTSVoice(data.qwenTTSVoice);
+                }
+                if (isQwenTTSLanguageType(data?.qwenTTSLanguageType)) {
+                    setQwenTTSLanguageType(data.qwenTTSLanguageType);
+                }
+                if (typeof data?.qwenTTSInstructions === "string") {
+                    setQwenTTSInstructions(data.qwenTTSInstructions);
+                }
             } catch { }
         })();
     }, []);
@@ -2422,7 +2469,7 @@ export default function TTSStudioPage() {
     useEffect(() => {
         const handleTTSProviderChanged = (event: Event) => {
             const detail = (event as CustomEvent<Partial<TTSSettings>>).detail || {};
-            if (detail.provider === "edge" || detail.provider === "cosyvoice") {
+            if (isTTSProvider(detail.provider)) {
                 setTTSProvider(detail.provider);
             }
             if (typeof detail.cosyvoiceSpeed === "number") {
@@ -2433,6 +2480,21 @@ export default function TTSStudioPage() {
             }
             if (typeof detail.cosyvoiceSeed === "number") {
                 setCosyvoiceSeed(detail.cosyvoiceSeed);
+            }
+            if (detail.cosyvoiceVoiceId === "yupinglu" || detail.cosyvoiceVoiceId === "tea") {
+                setCosyvoiceVoiceId(detail.cosyvoiceVoiceId);
+            }
+            if (isQwenTTSModel(detail.qwenTTSModel)) {
+                setQwenTTSModel(detail.qwenTTSModel);
+            }
+            if (isQwenTTSVoice(detail.qwenTTSVoice)) {
+                setQwenTTSVoice(detail.qwenTTSVoice);
+            }
+            if (isQwenTTSLanguageType(detail.qwenTTSLanguageType)) {
+                setQwenTTSLanguageType(detail.qwenTTSLanguageType);
+            }
+            if (typeof detail.qwenTTSInstructions === "string") {
+                setQwenTTSInstructions(detail.qwenTTSInstructions);
             }
         };
 
@@ -2447,6 +2509,11 @@ export default function TTSStudioPage() {
         cosyvoiceSpeed,
         cosyvoiceInstruction,
         cosyvoiceSeed,
+        cosyvoiceVoiceId,
+        qwenTTSModel,
+        qwenTTSVoice,
+        qwenTTSLanguageType,
+        qwenTTSInstructions,
     };
 
     const [editingCard, setEditingCard] = useState<TTSCard | null>(null);
