@@ -2948,34 +2948,34 @@ export default function TTSStudioPage() {
                     </div>
 
                     {/* 分类标签 */}
-                    <div className="flex gap-4 mt-8 mb-6 px-1 overflow-x-auto pb-2 scrollbar-hide">
+                    <div className="flex gap-4 mt-8 mb-6 px-1 overflow-x-auto pb-2 scrollbar-hide [-webkit-overflow-scrolling:touch]">
                         <button 
                             onClick={() => handleCategoryChange('all')} 
-                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all", activeCategory === 'all' ? "bg-white text-black shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10")}
+                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex-shrink-0 whitespace-nowrap", activeCategory === 'all' ? "bg-white text-black shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10")}
                         >
                             全部语料
                         </button>
                         <button 
                             onClick={() => handleCategoryChange('rain')} 
-                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2", activeCategory === 'rain' ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20" : "bg-rose-500/10 text-rose-300/80 hover:bg-rose-500/20")}
+                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap", activeCategory === 'rain' ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20" : "bg-rose-500/10 text-rose-300/80 hover:bg-rose-500/20")}
                         >
                             <span>🌊</span> RAIN 简易版
                         </button>
                         <button 
                             onClick={() => handleCategoryChange('rain-advanced')} 
-                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2", activeCategory === 'rain-advanced' ? "bg-purple-500 text-white shadow-lg shadow-purple-500/20" : "bg-purple-500/10 text-purple-300/80 hover:bg-purple-500/20")}
+                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap", activeCategory === 'rain-advanced' ? "bg-purple-500 text-white shadow-lg shadow-purple-500/20" : "bg-purple-500/10 text-purple-300/80 hover:bg-purple-500/20")}
                         >
                             <span>🔥</span> RAIN 进阶版
                         </button>
                         <button 
                             onClick={() => handleCategoryChange('emotion-anxiety')} 
-                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0", activeCategory === 'emotion-anxiety' ? "bg-teal-500 text-white shadow-lg shadow-teal-500/20" : "bg-teal-500/10 text-teal-300/80 hover:bg-teal-500/20")}
+                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap", activeCategory === 'emotion-anxiety' ? "bg-teal-500 text-white shadow-lg shadow-teal-500/20" : "bg-teal-500/10 text-teal-300/80 hover:bg-teal-500/20")}
                         >
                             <span>🌧️</span> 情绪：焦虑
                         </button>
                         <button 
                             onClick={() => handleCategoryChange('emotion-body-scan')} 
-                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0", activeCategory === 'emotion-body-scan' ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}
+                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap", activeCategory === 'emotion-body-scan' ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}
                         >
                             <span>🧘‍♀️</span> 身体扫描
                         </button>
@@ -2988,15 +2988,15 @@ export default function TTSStudioPage() {
                                 initial={{ opacity: 0, height: 0, marginTop: 0 }}
                                 animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
                                 exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                                className="flex overflow-x-auto pb-2 scrollbar-hide space-x-2"
+                                className="flex overflow-x-auto pb-2 scrollbar-hide space-x-2 [-webkit-overflow-scrolling:touch]"
                             >
-                                <button onClick={() => setActiveSubCategory('all')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'all' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>全部</button>
-                                <button onClick={() => setActiveSubCategory('quick')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'quick' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>⚡ 急救重置</button>
-                                <button onClick={() => setActiveSubCategory('basic')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'basic' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>⚖️ 基础练习</button>
-                                <button onClick={() => setActiveSubCategory('deep')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'deep' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>🌌 深度疗愈</button>
-                                <button onClick={() => setActiveSubCategory('sleep')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'sleep' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>💤 助眠冬眠</button>
-                                <button onClick={() => setActiveSubCategory('visual')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'visual' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>🌿 高级意象</button>
-                                <button onClick={() => setActiveSubCategory('active')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0", activeSubCategory === 'active' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>🏃 特殊情境</button>
+                                <button onClick={() => setActiveSubCategory('all')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'all' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>全部</button>
+                                <button onClick={() => setActiveSubCategory('quick')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'quick' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>⚡ 急救重置</button>
+                                <button onClick={() => setActiveSubCategory('basic')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'basic' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>⚖️ 基础练习</button>
+                                <button onClick={() => setActiveSubCategory('deep')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'deep' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>🌌 深度疗愈</button>
+                                <button onClick={() => setActiveSubCategory('sleep')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'sleep' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>💤 助眠冬眠</button>
+                                <button onClick={() => setActiveSubCategory('visual')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'visual' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>🌿 高级意象</button>
+                                <button onClick={() => setActiveSubCategory('active')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'active' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>🏃 特殊情境</button>
                             </motion.div>
                         )}
                     </AnimatePresence>
