@@ -112,6 +112,8 @@ export default function VectorsAdminPage() {
             // 确保使用 CDN 获取模型（国内可用）
             env.allowLocalModels = false;
             env.useBrowserCache = true;
+            // 强制使用国内镜像站点下载 HuggingFace 模型，防止 Network Error
+            env.remoteHost = 'https://hf-mirror.com';
 
             // 加载轻量级中文向量模型
             const extractor = await pipeline('feature-extraction', 'Xenova/bge-small-zh-v1.5', {
