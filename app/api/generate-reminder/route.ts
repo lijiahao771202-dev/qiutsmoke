@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { sql } from "@vercel/postgres";
 import { normalizeAISettings } from "../../../lib/ai-models";
+import { buildDeepSeekChatCompletionBody } from "../../../lib/deepseek-chat";
 import { ensureTables, hasDb } from "@/lib/db";
 
 async function resolveStoredAISettings() {
@@ -8,6 +9,8 @@ async function resolveStoredAISettings() {
     const cookieSettings = normalizeAISettings({
         provider: jar.get("ai_provider")?.value,
         model: jar.get("ai_model")?.value,
+        deepseekThinkingEnabled: jar.get("deepseek_thinking_enabled")?.value === "true",
+        deepseekReasoningEffort: jar.get("deepseek_reasoning_effort")?.value,
     });
 
     if (!hasDb()) {
@@ -20,25 +23,47 @@ async function resolveStoredAISettings() {
     }
 
     await ensureTables();
-    const rows = await sql`SELECT ai_provider, ai_model FROM user_settings WHERE user_id = ${uid}`;
+    const rows = await sql`
+        SELECT ai_provider, ai_model, deepseek_thinking_enabled, deepseek_reasoning_effort
+        FROM user_settings
+        WHERE user_id = ${uid}
+    `;
 
     return normalizeAISettings({
         provider: jar.get("ai_provider")?.value || rows.rows?.[0]?.ai_provider,
         model: jar.get("ai_model")?.value || rows.rows?.[0]?.ai_model,
+        deepseekThinkingEnabled:
+            jar.get("deepseek_thinking_enabled")?.value ?? rows.rows?.[0]?.deepseek_thinking_enabled,
+        deepseekReasoningEffort:
+            jar.get("deepseek_reasoning_effort")?.value || rows.rows?.[0]?.deepseek_reasoning_effort,
     });
 }
 
-function getUpstreamConfig(provider: "deepseek" | "nvidia", model: string, key: string) {
+function getUpstreamConfig(settings: ReturnType<typeof normalizeAISettings>, key: string) {
+    const { provider, model } = settings;
     const configWrapper = (messages: any[], tools?: any[], tool_choice?: any) => {
-        const payload: any = {
-            model,
-            messages,
-            temperature: provider === "nvidia" ? 1.2 : 0.6,
-            frequency_penalty: provider === "nvidia" ? 0.6 : 0.2,
-            presence_penalty: provider === "nvidia" ? 0.6 : 0.2,
-            stream: tools ? false : true,
-            max_tokens: tools ? 150 : undefined,
-        };
+        const payload: any =
+            provider === "nvidia"
+                ? {
+                    model,
+                    messages,
+                    temperature: 1.2,
+                    frequency_penalty: 0.6,
+                    presence_penalty: 0.6,
+                    stream: tools ? false : true,
+                    max_tokens: tools ? 150 : undefined,
+                }
+                : buildDeepSeekChatCompletionBody({
+                    model,
+                    messages,
+                    stream: tools ? false : true,
+                    thinkingEnabled: settings.deepseekThinkingEnabled,
+                    reasoningEffort: settings.deepseekReasoningEffort,
+                    maxTokens: tools ? 150 : undefined,
+                    temperature: 0.6,
+                    frequencyPenalty: 0.2,
+                    presencePenalty: 0.2,
+                });
         if (tools) {
             payload.tools = tools;
             payload.tool_choice = tool_choice;
@@ -68,6 +93,8 @@ function getUpstreamConfig(provider: "deepseek" | "nvidia", model: string, key: 
 }
 
 export async function POST(req: Request) {
+    const requestId = crypto.randomUUID().slice(0, 8);
+    const startedAt = Date.now();
     try {
         const body = await req.json();
         const { mood, mode, elapsedTime, totalTime, sessionPhase = "middle", history = [], userAction, practiceCount = 0, diagnosisProfile = "", customSystemPrompt, customSurfPrompts } = body;
@@ -76,12 +103,31 @@ export async function POST(req: Request) {
         const effectiveSettings = normalizeAISettings({
             provider: body?.provider ?? storedSettings.provider,
             model: body?.model ?? storedSettings.model,
+            deepseekThinkingEnabled:
+                body?.deepseekThinkingEnabled ?? storedSettings.deepseekThinkingEnabled,
+            deepseekReasoningEffort:
+                body?.deepseekReasoningEffort ?? storedSettings.deepseekReasoningEffort,
         });
 
         const key =
             effectiveSettings.provider === "nvidia"
                 ? process.env.NVIDIA_API_KEY
                 : body?.apiKey || process.env.DEEPSEEK_API_KEY;
+
+        console.log("[AI Request][generate-reminder][start]", JSON.stringify({
+            requestId,
+            provider: effectiveSettings.provider,
+            model: effectiveSettings.model,
+            deepseekThinkingEnabled: effectiveSettings.deepseekThinkingEnabled,
+            deepseekReasoningEffort:
+                effectiveSettings.provider === "deepseek" && effectiveSettings.deepseekThinkingEnabled
+                    ? effectiveSettings.deepseekReasoningEffort
+                    : null,
+            mode,
+            sessionPhase,
+            elapsedTime,
+            hasKey: Boolean(key),
+        }));
 
         if (!key) {
             return new Response(JSON.stringify({ error: "缺少 API Key" }), {
@@ -179,7 +225,7 @@ sessionPhase === 'end' ? '【当前为结束语】请生成温和的结语。引
 4. 不要一次输出多句话，只输出唯一一句当前阶段该说的贴心指引。`;
         }
 
-        const upstreamConfig = getUpstreamConfig(effectiveSettings.provider, effectiveSettings.model, key);
+        const upstreamConfig = getUpstreamConfig(effectiveSettings, key);
         
         let messages: any[] = [];
         let tools: any[] | undefined = undefined;
@@ -251,7 +297,19 @@ if (mode === 'urge_surfing') {
         if (!upstream.ok) {
             const status = upstream.status;
             const errorText = await upstream.text();
-            console.error("[Generate-Reminder API] Upstream error:", status, errorText);
+            console.error("[AI Request][generate-reminder][upstream_error]", {
+                requestId,
+                provider: effectiveSettings.provider,
+                model: effectiveSettings.model,
+                deepseekThinkingEnabled: effectiveSettings.deepseekThinkingEnabled,
+                deepseekReasoningEffort:
+                    effectiveSettings.provider === "deepseek" && effectiveSettings.deepseekThinkingEnabled
+                        ? effectiveSettings.deepseekReasoningEffort
+                        : null,
+                status,
+                elapsedMs: Date.now() - startedAt,
+                errorText,
+            });
             return new Response(JSON.stringify({ error: `上游错误: HTTP ${status}` }), {
                 status,
                 headers: { "Content-Type": "application/json" },
@@ -279,6 +337,7 @@ if (mode === 'urge_surfing') {
                 const reader = upstream.body.getReader();
                 const decoder = new TextDecoder("utf-8");
                 let buffer = "";
+                let streamedChars = 0;
                 
                 try {
                     while (true) {
@@ -297,6 +356,7 @@ if (mode === 'urge_surfing') {
                                     const json = JSON.parse(trimmed.slice(6));
                                     const content = json.choices?.[0]?.delta?.content;
                                     if (content) {
+                                        streamedChars += String(content).length;
                                         controller.enqueue(encoder.encode(content));
                                     }
                                 } catch (e) {
@@ -307,6 +367,18 @@ if (mode === 'urge_surfing') {
                     }
                 } finally {
                     reader.releaseLock();
+                    console.log("[AI Request][generate-reminder][done]", JSON.stringify({
+                        requestId,
+                        provider: effectiveSettings.provider,
+                        model: effectiveSettings.model,
+                        deepseekThinkingEnabled: effectiveSettings.deepseekThinkingEnabled,
+                        deepseekReasoningEffort:
+                            effectiveSettings.provider === "deepseek" && effectiveSettings.deepseekThinkingEnabled
+                                ? effectiveSettings.deepseekReasoningEffort
+                                : null,
+                        elapsedMs: Date.now() - startedAt,
+                        streamedChars,
+                    }));
                     controller.close();
                 }
             }
@@ -322,7 +394,11 @@ if (mode === 'urge_surfing') {
         });
 
     } catch (error: any) {
-        console.error("[Generate-Reminder API] Error:", error);
+        console.error("[AI Request][generate-reminder][request_error]", {
+            requestId,
+            elapsedMs: Date.now() - startedAt,
+            error: error?.message || error?.toString?.() || String(error),
+        });
         
         // Always provide a graceful fallback stream to prevent JSON error strings in the UI
         const encoder = new TextEncoder();

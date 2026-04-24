@@ -15,20 +15,50 @@ export async function ensureTables() {
     quit_date date,
     ai_provider text,
     ai_model text,
+    deepseek_thinking_enabled boolean,
+    deepseek_reasoning_effort text,
     tts_provider text,
     cosyvoice_speed double precision,
     cosyvoice_instruction text,
     cosyvoice_seed integer,
     cosyvoice_voice_id text,
+    qwen_tts_model text,
+    qwen_tts_voice text,
+    qwen_tts_voice_mode text,
+    qwen_tts_clone_voice_id text,
+    qwen_tts_clone_voice_cloud_id text,
+    qwen_tts_speed double precision,
+    qwen_tts_language_type text,
+    qwen_tts_instructions text,
+    cosyvoice_35_plus_voice_id text,
+    cosyvoice_35_plus_voice_profile_id text,
+    cosyvoice_35_plus_speed double precision,
+    cosyvoice_35_plus_instruction text,
+    cosyvoice_35_plus_language_hint text,
     updated_at timestamptz DEFAULT now()
   )`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ai_provider text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ai_model text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS deepseek_thinking_enabled boolean`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS deepseek_reasoning_effort text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS tts_provider text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_speed double precision`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_instruction text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_seed integer`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_voice_id text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_model text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_voice text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_voice_mode text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_clone_voice_id text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_clone_voice_cloud_id text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_speed double precision`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_language_type text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_instructions text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_35_plus_voice_id text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_35_plus_voice_profile_id text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_35_plus_speed double precision`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_35_plus_instruction text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_35_plus_language_hint text`;
   await sql`CREATE TABLE IF NOT EXISTS user_prompts (
     user_id text REFERENCES users(id) ON DELETE CASCADE,
     topic_id text,

@@ -5,10 +5,34 @@ import { cookies } from "next/headers";
 import { sql } from "@vercel/postgres";
 import { ensureTables, hasDb } from "@/lib/db";
 import {
+  isCosyVoice35PlusLanguageHint,
+  isCosyVoiceVoiceId,
+  isQwenTTSLanguageType,
+  isQwenTTSModel,
+  isQwenTTSVoice,
+  isQwenTTSVoiceMode,
   isTTSProvider,
   normalizeTTSSettings,
   type TTSSettings,
 } from "@/lib/tts-settings";
+import {
+  buildQwenTTSPayload,
+  downloadQwenTTSAudio,
+  extractQwenTTSAudioUrl,
+  fetchQwenTTS,
+  getQwenTTSGenerationEndpoint,
+  postQwenTTSJsonWithCurl,
+  shouldUseQwenTTSCurl,
+} from "@/lib/qwen-tts";
+import {
+  buildCosyVoice35PlusPayload,
+  extractCosyVoiceCloudAudioUrl,
+  fetchCosyVoiceCloud,
+  getCosyVoiceCloudEndpoint,
+  getCosyVoiceCloudErrorMessage,
+  postCosyVoiceCloudJsonWithCurl,
+  shouldUseCosyVoiceCloudCurl,
+} from "@/lib/cosyvoice-cloud";
 
 const DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural";
 const DEFAULT_RATE = "0%";
@@ -30,6 +54,19 @@ type TTSRequest = {
   cosyvoiceInstruction?: unknown;
   cosyvoiceSeed?: unknown;
   cosyvoiceVoiceId?: unknown;
+  qwenTTSModel?: unknown;
+  qwenTTSVoice?: unknown;
+  qwenTTSVoiceMode?: unknown;
+  qwenTTSCloneVoiceId?: unknown;
+  qwenTTSCloneVoiceCloudId?: unknown;
+  qwenTTSSpeed?: unknown;
+  qwenTTSLanguageType?: unknown;
+  qwenTTSInstructions?: unknown;
+  cosyvoice35PlusVoiceId?: unknown;
+  cosyvoice35PlusVoiceProfileId?: unknown;
+  cosyvoice35PlusSpeed?: unknown;
+  cosyvoice35PlusInstruction?: unknown;
+  cosyvoice35PlusLanguageHint?: unknown;
 };
 
 function getLangFromVoice(voice: string): string {
@@ -39,45 +76,88 @@ function getLangFromVoice(voice: string): string {
 
 async function getPersistedTTSSettings(): Promise<TTSSettings> {
   const jar = await cookies();
-  const cookieProvider = jar.get("tts_provider")?.value;
-  const cookieSpeed = jar.get("cosyvoice_speed")?.value;
-  const cookieInstruction = jar.get("cosyvoice_instruction")?.value;
-  const cookieSeed = jar.get("cosyvoice_seed")?.value;
-  const cookieVoiceId = jar.get("cosyvoice_voice_id")?.value;
+  const cookieValues = {
+    provider: jar.get("tts_provider")?.value,
+    cosyvoiceSpeed: jar.get("cosyvoice_speed")?.value,
+    cosyvoiceInstruction: jar.get("cosyvoice_instruction")?.value,
+    cosyvoiceSeed: jar.get("cosyvoice_seed")?.value,
+    cosyvoiceVoiceId: jar.get("cosyvoice_voice_id")?.value,
+    qwenTTSModel: jar.get("qwen_tts_model")?.value,
+    qwenTTSVoice: jar.get("qwen_tts_voice")?.value,
+    qwenTTSVoiceMode: jar.get("qwen_tts_voice_mode")?.value,
+    qwenTTSCloneVoiceId: jar.get("qwen_tts_clone_voice_id")?.value,
+    qwenTTSCloneVoiceCloudId: jar.get("qwen_tts_clone_voice_cloud_id")?.value,
+    qwenTTSSpeed: jar.get("qwen_tts_speed")?.value,
+    qwenTTSLanguageType: jar.get("qwen_tts_language_type")?.value,
+    qwenTTSInstructions: jar.get("qwen_tts_instructions")?.value,
+    cosyvoice35PlusVoiceId: jar.get("cosyvoice_35_plus_voice_id")?.value,
+    cosyvoice35PlusVoiceProfileId: jar.get("cosyvoice_35_plus_voice_profile_id")?.value,
+    cosyvoice35PlusSpeed: jar.get("cosyvoice_35_plus_speed")?.value,
+    cosyvoice35PlusInstruction: jar.get("cosyvoice_35_plus_instruction")?.value,
+    cosyvoice35PlusLanguageHint: jar.get("cosyvoice_35_plus_language_hint")?.value,
+  };
 
   if (!hasDb()) {
-    return normalizeTTSSettings({
-      provider: cookieProvider,
-      cosyvoiceSpeed: cookieSpeed,
-      cosyvoiceInstruction: cookieInstruction,
-      cosyvoiceSeed: cookieSeed,
-      cosyvoiceVoiceId: cookieVoiceId,
-    });
+    return normalizeTTSSettings(cookieValues);
   }
 
   const uid = jar.get("uid")?.value || "";
   if (!uid) {
-    return normalizeTTSSettings({
-      provider: cookieProvider,
-      cosyvoiceSpeed: cookieSpeed,
-      cosyvoiceInstruction: cookieInstruction,
-      cosyvoiceSeed: cookieSeed,
-      cosyvoiceVoiceId: cookieVoiceId,
-    });
+    return normalizeTTSSettings(cookieValues);
   }
 
   await ensureTables();
   const rows = await sql`
-    SELECT tts_provider, cosyvoice_speed, cosyvoice_instruction, cosyvoice_seed, cosyvoice_voice_id
+    SELECT
+      tts_provider,
+      cosyvoice_speed,
+      cosyvoice_instruction,
+      cosyvoice_seed,
+      cosyvoice_voice_id,
+      qwen_tts_model,
+      qwen_tts_voice,
+      qwen_tts_voice_mode,
+      qwen_tts_clone_voice_id,
+      qwen_tts_clone_voice_cloud_id,
+      qwen_tts_speed,
+      qwen_tts_language_type,
+      qwen_tts_instructions,
+      cosyvoice_35_plus_voice_id,
+      cosyvoice_35_plus_voice_profile_id,
+      cosyvoice_35_plus_speed,
+      cosyvoice_35_plus_instruction,
+      cosyvoice_35_plus_language_hint
     FROM user_settings
     WHERE user_id = ${uid}
   `;
   return normalizeTTSSettings({
-    provider: cookieProvider || rows.rows?.[0]?.tts_provider,
-    cosyvoiceSpeed: cookieSpeed || rows.rows?.[0]?.cosyvoice_speed,
-    cosyvoiceInstruction: cookieInstruction || rows.rows?.[0]?.cosyvoice_instruction,
-    cosyvoiceSeed: cookieSeed || rows.rows?.[0]?.cosyvoice_seed,
-    cosyvoiceVoiceId: cookieVoiceId || rows.rows?.[0]?.cosyvoice_voice_id,
+    provider: cookieValues.provider || rows.rows?.[0]?.tts_provider,
+    cosyvoiceSpeed: cookieValues.cosyvoiceSpeed || rows.rows?.[0]?.cosyvoice_speed,
+    cosyvoiceInstruction: cookieValues.cosyvoiceInstruction || rows.rows?.[0]?.cosyvoice_instruction,
+    cosyvoiceSeed: cookieValues.cosyvoiceSeed || rows.rows?.[0]?.cosyvoice_seed,
+    cosyvoiceVoiceId: cookieValues.cosyvoiceVoiceId || rows.rows?.[0]?.cosyvoice_voice_id,
+    qwenTTSModel: cookieValues.qwenTTSModel || rows.rows?.[0]?.qwen_tts_model,
+    qwenTTSVoice: cookieValues.qwenTTSVoice || rows.rows?.[0]?.qwen_tts_voice,
+    qwenTTSVoiceMode: cookieValues.qwenTTSVoiceMode || rows.rows?.[0]?.qwen_tts_voice_mode,
+    qwenTTSCloneVoiceId:
+      cookieValues.qwenTTSCloneVoiceId || rows.rows?.[0]?.qwen_tts_clone_voice_id,
+    qwenTTSCloneVoiceCloudId:
+      cookieValues.qwenTTSCloneVoiceCloudId || rows.rows?.[0]?.qwen_tts_clone_voice_cloud_id,
+    qwenTTSSpeed: cookieValues.qwenTTSSpeed || rows.rows?.[0]?.qwen_tts_speed,
+    qwenTTSLanguageType:
+      cookieValues.qwenTTSLanguageType || rows.rows?.[0]?.qwen_tts_language_type,
+    qwenTTSInstructions:
+      cookieValues.qwenTTSInstructions || rows.rows?.[0]?.qwen_tts_instructions,
+    cosyvoice35PlusVoiceId:
+      cookieValues.cosyvoice35PlusVoiceId || rows.rows?.[0]?.cosyvoice_35_plus_voice_id,
+    cosyvoice35PlusVoiceProfileId:
+      cookieValues.cosyvoice35PlusVoiceProfileId || rows.rows?.[0]?.cosyvoice_35_plus_voice_profile_id,
+    cosyvoice35PlusSpeed:
+      cookieValues.cosyvoice35PlusSpeed || rows.rows?.[0]?.cosyvoice_35_plus_speed,
+    cosyvoice35PlusInstruction:
+      cookieValues.cosyvoice35PlusInstruction || rows.rows?.[0]?.cosyvoice_35_plus_instruction,
+    cosyvoice35PlusLanguageHint:
+      cookieValues.cosyvoice35PlusLanguageHint || rows.rows?.[0]?.cosyvoice_35_plus_language_hint,
   });
 }
 
@@ -297,6 +377,121 @@ async function synthesizeCosyVoiceTTS(text: string, settings: TTSSettings) {
   }
 }
 
+async function synthesizeQwenTTSAudio(text: string, settings: TTSSettings) {
+  const apiKey = process.env.DASHSCOPE_API_KEY || process.env.QWEN_TTS_API_KEY;
+  if (!apiKey) {
+    return new Response(JSON.stringify({ error: "缺少 DASHSCOPE_API_KEY", provider: "qwentts" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const endpoint = getQwenTTSGenerationEndpoint();
+  const payload = buildQwenTTSPayload(text, settings);
+  const timeoutMs = Number(process.env.QWEN_TTS_TIMEOUT_MS || 120000);
+
+  let data: unknown;
+  if (shouldUseQwenTTSCurl()) {
+    data = await postQwenTTSJsonWithCurl(endpoint, apiKey, payload, timeoutMs);
+  } else {
+    const response = await fetchQwenTTS(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+    data = await response.json().catch(() => ({}));
+  }
+
+  const audioUrl = extractQwenTTSAudioUrl(data);
+  if (!audioUrl) {
+    return new Response(
+      JSON.stringify({
+        error: "Qwen-TTS synthesis failed",
+        provider: "qwentts",
+        details: typeof data === "object" ? JSON.stringify(data).slice(0, 500) : String(data),
+      }),
+      { status: 502, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const audioBuffer = await downloadQwenTTSAudio(audioUrl, timeoutMs);
+  return new Response(new Uint8Array(audioBuffer), {
+    status: 200,
+    headers: {
+      "Content-Type": "audio/wav",
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "no-cache",
+      "X-TTS-Impl": "qwentts",
+      "X-TTS-Model": settings.qwenTTSModel,
+    },
+  });
+}
+
+async function synthesizeCosyVoice35PlusTTS(text: string, settings: TTSSettings) {
+  const apiKey = process.env.DASHSCOPE_API_KEY || process.env.COSYVOICE_CLOUD_API_KEY;
+  if (!apiKey) {
+    return new Response(
+      JSON.stringify({ error: "缺少 DASHSCOPE_API_KEY", provider: "cosyvoice35plus" }),
+      {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  const endpoint = getCosyVoiceCloudEndpoint();
+  const payload = buildCosyVoice35PlusPayload(text, settings);
+  const timeoutMs = Number(process.env.COSYVOICE_CLOUD_TIMEOUT_MS || 120000);
+
+  let data: unknown;
+  if (shouldUseCosyVoiceCloudCurl()) {
+    data = await postCosyVoiceCloudJsonWithCurl(endpoint, apiKey, payload, timeoutMs);
+  } else {
+    const response = await fetchCosyVoiceCloud(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+    data = await response.json().catch(() => ({}));
+  }
+
+  const audioUrl = extractCosyVoiceCloudAudioUrl(data);
+  if (!audioUrl) {
+    return new Response(
+      JSON.stringify({
+        error: "CosyVoice 3.5 Plus synthesis failed",
+        provider: "cosyvoice35plus",
+        details:
+          getCosyVoiceCloudErrorMessage(data) ||
+          (typeof data === "object" ? JSON.stringify(data).slice(0, 500) : String(data)),
+      }),
+      {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  const audioBuffer = await downloadQwenTTSAudio(audioUrl, timeoutMs);
+  return new Response(new Uint8Array(audioBuffer), {
+    status: 200,
+    headers: {
+      "Content-Type": "audio/wav",
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "no-cache",
+      "X-TTS-Impl": "cosyvoice35plus",
+    },
+  });
+}
+
 export async function POST(req: Request) {
   try {
     let body: TTSRequest;
@@ -330,10 +525,51 @@ export async function POST(req: Request) {
       cosyvoiceInstruction: body.cosyvoiceInstruction ?? persistedSettings.cosyvoiceInstruction,
       cosyvoiceSeed: body.cosyvoiceSeed ?? persistedSettings.cosyvoiceSeed,
       cosyvoiceVoiceId: body.cosyvoiceVoiceId ?? persistedSettings.cosyvoiceVoiceId,
+      qwenTTSModel: isQwenTTSModel(body.qwenTTSModel) ? body.qwenTTSModel : persistedSettings.qwenTTSModel,
+      qwenTTSVoice: isQwenTTSVoice(body.qwenTTSVoice) ? body.qwenTTSVoice : persistedSettings.qwenTTSVoice,
+      qwenTTSVoiceMode: isQwenTTSVoiceMode(body.qwenTTSVoiceMode)
+        ? body.qwenTTSVoiceMode
+        : persistedSettings.qwenTTSVoiceMode,
+      qwenTTSCloneVoiceId: isCosyVoiceVoiceId(body.qwenTTSCloneVoiceId)
+        ? body.qwenTTSCloneVoiceId
+        : persistedSettings.qwenTTSCloneVoiceId,
+      qwenTTSCloneVoiceCloudId:
+        typeof body.qwenTTSCloneVoiceCloudId === "string"
+          ? body.qwenTTSCloneVoiceCloudId
+          : persistedSettings.qwenTTSCloneVoiceCloudId,
+      qwenTTSSpeed: body.qwenTTSSpeed ?? persistedSettings.qwenTTSSpeed,
+      qwenTTSLanguageType: isQwenTTSLanguageType(body.qwenTTSLanguageType)
+        ? body.qwenTTSLanguageType
+        : persistedSettings.qwenTTSLanguageType,
+      qwenTTSInstructions:
+        typeof body.qwenTTSInstructions === "string"
+          ? body.qwenTTSInstructions
+          : persistedSettings.qwenTTSInstructions,
+      cosyvoice35PlusVoiceId:
+        typeof body.cosyvoice35PlusVoiceId === "string"
+          ? body.cosyvoice35PlusVoiceId
+          : persistedSettings.cosyvoice35PlusVoiceId,
+      cosyvoice35PlusVoiceProfileId: isCosyVoiceVoiceId(body.cosyvoice35PlusVoiceProfileId)
+        ? body.cosyvoice35PlusVoiceProfileId
+        : persistedSettings.cosyvoice35PlusVoiceProfileId,
+      cosyvoice35PlusSpeed: body.cosyvoice35PlusSpeed ?? persistedSettings.cosyvoice35PlusSpeed,
+      cosyvoice35PlusInstruction:
+        typeof body.cosyvoice35PlusInstruction === "string"
+          ? body.cosyvoice35PlusInstruction
+          : persistedSettings.cosyvoice35PlusInstruction,
+      cosyvoice35PlusLanguageHint: isCosyVoice35PlusLanguageHint(body.cosyvoice35PlusLanguageHint)
+        ? body.cosyvoice35PlusLanguageHint
+        : persistedSettings.cosyvoice35PlusLanguageHint,
     });
     const provider = settings.provider;
     if (provider === "cosyvoice") {
       return synthesizeCosyVoiceTTS(text, settings);
+    }
+    if (provider === "qwentts") {
+      return synthesizeQwenTTSAudio(text, settings);
+    }
+    if (provider === "cosyvoice35plus") {
+      return synthesizeCosyVoice35PlusTTS(text, settings);
     }
 
     const voice = String(body.voice || DEFAULT_VOICE).trim() || DEFAULT_VOICE;

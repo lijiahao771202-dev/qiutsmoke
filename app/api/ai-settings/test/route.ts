@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { normalizeAISettings } from "@/lib/ai-models";
+import { buildDeepSeekChatCompletionBody } from "@/lib/deepseek-chat";
 
-function getUpstreamConfig(provider: "deepseek" | "nvidia", model: string, key: string) {
+function getUpstreamConfig(settings: ReturnType<typeof normalizeAISettings>, key: string) {
+  const { provider, model } = settings;
   if (provider === "nvidia") {
     return {
       url: "https://integrate.api.nvidia.com/v1/chat/completions",
@@ -25,23 +27,42 @@ function getUpstreamConfig(provider: "deepseek" | "nvidia", model: string, key: 
       "Content-Type": "application/json",
       Authorization: `Bearer ${key}`,
     },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "user", content: "Reply with OK only." }],
-      max_tokens: 16,
-      stream: false,
-      temperature: 0,
-    }),
+    body: JSON.stringify(
+      buildDeepSeekChatCompletionBody({
+        model,
+        messages: [{ role: "user", content: "Reply with OK only." }],
+        maxTokens: 16,
+        stream: false,
+        thinkingEnabled: settings.deepseekThinkingEnabled,
+        reasoningEffort: settings.deepseekReasoningEffort,
+        temperature: 0,
+      })
+    ),
   };
 }
 
 export async function POST(req: Request) {
+  const requestId = crypto.randomUUID().slice(0, 8);
+  const startedAt = Date.now();
   try {
     const body = await req.json().catch(() => ({}));
     const settings = normalizeAISettings({
       provider: body?.provider,
       model: body?.model,
+      deepseekThinkingEnabled: body?.deepseekThinkingEnabled,
+      deepseekReasoningEffort: body?.deepseekReasoningEffort,
     });
+
+    console.log("[AI Request][settings-test][start]", JSON.stringify({
+      requestId,
+      provider: settings.provider,
+      model: settings.model,
+      deepseekThinkingEnabled: settings.deepseekThinkingEnabled,
+      deepseekReasoningEffort:
+        settings.provider === "deepseek" && settings.deepseekThinkingEnabled
+          ? settings.deepseekReasoningEffort
+          : null,
+    }));
 
     const key =
       settings.provider === "nvidia"
@@ -55,7 +76,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const upstream = getUpstreamConfig(settings.provider, settings.model, key);
+    const upstream = getUpstreamConfig(settings, key);
     const res = await fetch(upstream.url, {
       method: "POST",
       headers: upstream.headers,
@@ -64,6 +85,14 @@ export async function POST(req: Request) {
 
     const text = await res.text();
     if (!res.ok) {
+      console.error("[AI Request][settings-test][upstream_error]", {
+        requestId,
+        provider: settings.provider,
+        model: settings.model,
+        status: res.status,
+        elapsedMs: Date.now() - startedAt,
+        error: text,
+      });
       return NextResponse.json(
         {
           ok: false,
@@ -88,6 +117,18 @@ export async function POST(req: Request) {
       preview = text.slice(0, 120);
     }
 
+    console.log("[AI Request][settings-test][done]", JSON.stringify({
+      requestId,
+      provider: settings.provider,
+      model: settings.model,
+      deepseekThinkingEnabled: settings.deepseekThinkingEnabled,
+      deepseekReasoningEffort:
+        settings.provider === "deepseek" && settings.deepseekThinkingEnabled
+          ? settings.deepseekReasoningEffort
+          : null,
+      elapsedMs: Date.now() - startedAt,
+    }));
+
     return NextResponse.json({
       ok: true,
       provider: settings.provider,
@@ -95,7 +136,11 @@ export async function POST(req: Request) {
       preview,
     });
   } catch (error) {
-    console.error("POST ai-settings/test error:", error);
+    console.error("[AI Request][settings-test][request_error]", {
+      requestId,
+      elapsedMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json({ ok: false, error: "测试失败" }, { status: 500 });
   }
 }

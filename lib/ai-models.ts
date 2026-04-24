@@ -1,4 +1,5 @@
 export type AIProvider = "deepseek" | "nvidia";
+export type AIReasoningEffort = "high" | "max";
 
 export type AIModelFamily =
   | "deepseek"
@@ -25,10 +26,18 @@ export interface AIModelFamilyOption {
   emptyMessage?: string;
 }
 
+export interface AISettings {
+  provider: AIProvider;
+  model: string;
+  deepseekThinkingEnabled: boolean;
+  deepseekReasoningEffort: AIReasoningEffort;
+}
+
 export const DEFAULT_AI_PROVIDER: AIProvider = "deepseek";
+export const DEFAULT_DEEPSEEK_REASONING_EFFORT: AIReasoningEffort = "high";
 
 export const DEFAULT_AI_MODEL_BY_PROVIDER: Record<AIProvider, string> = {
-  deepseek: "deepseek-chat",
+  deepseek: "deepseek-v4-flash",
   nvidia: "moonshotai/kimi-k2-instruct",
 };
 
@@ -37,12 +46,29 @@ export const AI_PROVIDER_LABELS: Record<AIProvider, string> = {
   nvidia: "NVIDIA NIM API",
 };
 
+export const DEEPSEEK_REASONING_EFFORT_OPTIONS: Array<{
+  id: AIReasoningEffort;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "high",
+    label: "High",
+    description: "标准深度思考，速度和质量更平衡。",
+  },
+  {
+    id: "max",
+    label: "Max",
+    description: "更强推理强度，通常更慢。",
+  },
+];
+
 export const AI_MODEL_FAMILY_OPTIONS: AIModelFamilyOption[] = [
   {
     id: "deepseek",
     provider: "deepseek",
     label: "DeepSeek 系列",
-    description: "当前项目的默认提供方。",
+    description: "官方 API，支持 V4 与深度思考。",
   },
   {
     id: "qwen",
@@ -67,7 +93,7 @@ export const AI_MODEL_FAMILY_OPTIONS: AIModelFamilyOption[] = [
     provider: "nvidia",
     label: "GLM 系列",
     description: "Z.ai / GLM 系列。",
-    emptyMessage: "当前这把 NVIDIA hosted trial key 下，GLM 系列还没有可直接使用的模型。",
+    emptyMessage: "当前这把 NVIDIA key 下，GLM 系列暂无可用 hosted 模型。",
   },
   {
     id: "moonshot",
@@ -85,11 +111,32 @@ export const AI_MODEL_FAMILY_OPTIONS: AIModelFamilyOption[] = [
 
 export const AI_MODEL_OPTIONS: AIModelOption[] = [
   {
+    id: "deepseek-v4-flash",
+    provider: "deepseek",
+    family: "deepseek",
+    label: "DeepSeek V4 Flash",
+    description: "V4 快速版，适合日常冥想脚本生成。",
+  },
+  {
+    id: "deepseek-v4-pro",
+    provider: "deepseek",
+    family: "deepseek",
+    label: "DeepSeek V4 Pro",
+    description: "V4 高质量版，适合更复杂、更长的脚本生成。",
+  },
+  {
     id: "deepseek-chat",
     provider: "deepseek",
     family: "deepseek",
     label: "DeepSeek Chat",
-    description: "当前项目默认模型，延续现有 DeepSeek 生成链路。",
+    description: "旧兼容别名，保留以兼容历史设置。",
+  },
+  {
+    id: "deepseek-reasoner",
+    provider: "deepseek",
+    family: "deepseek",
+    label: "DeepSeek Reasoner",
+    description: "旧兼容别名，强制开启深度思考。",
   },
   {
     id: "qwen/qwen3.5-122b-a10b",
@@ -117,28 +164,28 @@ export const AI_MODEL_OPTIONS: AIModelOption[] = [
     provider: "nvidia",
     family: "qwen",
     label: "Qwen3-Next 80B Instruct",
-    description: "更偏指令遵循和通用对话，适合日常生成。",
+    description: "偏指令遵循和通用对话，适合日常生成。",
   },
   {
     id: "qwen/qwen3-coder-480b-a35b-instruct",
     provider: "nvidia",
     family: "qwen",
     label: "Qwen3 Coder 480B Instruct",
-    description: "更适合编码和 agentic 任务，当前状态可能偶发波动。",
+    description: "更适合编码和 agentic 任务。",
   },
   {
     id: "qwen/qwen2.5-coder-32b-instruct",
     provider: "nvidia",
     family: "qwen",
     label: "Qwen2.5 Coder 32B Instruct",
-    description: "Qwen 2.5 代码模型，NVIDIA 官方目录当前标注为 Downloadable。",
+    description: "Qwen 2.5 代码模型。",
   },
   {
     id: "meta/llama-3.2-3b-instruct",
     provider: "nvidia",
     family: "meta",
     label: "Llama 3.2 3B Instruct",
-    description: "较轻量的 Meta 模型，适合通用文本任务。",
+    description: "轻量的 Meta 模型，适合通用文本任务。",
   },
   {
     id: "meta/llama-3.1-70b-instruct",
@@ -159,35 +206,35 @@ export const AI_MODEL_OPTIONS: AIModelOption[] = [
     provider: "nvidia",
     family: "meta",
     label: "Llama 4 Maverick 17B 128E",
-    description: "Meta 新一代多模态系模型，也支持聊天生成。",
+    description: "Meta 新一代模型，也支持聊天生成。",
   },
   {
     id: "google/gemma-3-27b-it",
     provider: "nvidia",
     family: "google",
     label: "Gemma 3 27B IT",
-    description: "Google Gemma 系中当前可用的较强选项。",
+    description: "Google Gemma 系的强选项。",
   },
   {
     id: "google/gemma-4-31b-it",
     provider: "nvidia",
     family: "google",
     label: "Gemma 4 31B IT",
-    description: "Gemma 4 新一代 31B 模型，官方目录存在，当前定位更偏 Downloadable / 高阶选项。",
+    description: "Gemma 4 新一代 31B 模型。",
   },
   {
     id: "google/gemma-2-2b-it",
     provider: "nvidia",
     family: "google",
     label: "Gemma 2 2B IT",
-    description: "更轻量的 Google Gemma 模型，适合低延迟试验。",
+    description: "更轻量的 Google Gemma 模型。",
   },
   {
     id: "moonshotai/kimi-k2-instruct",
     provider: "nvidia",
     family: "moonshot",
     label: "Kimi K2 Instruct",
-    description: "通用能力强，中文表现好，适合高质量冥想脚本生成。",
+    description: "通用能力强，中文表现好。",
   },
   {
     id: "moonshotai/kimi-k2-thinking",
@@ -201,16 +248,32 @@ export const AI_MODEL_OPTIONS: AIModelOption[] = [
     provider: "nvidia",
     family: "openai-oss",
     label: "GPT OSS 120B",
-    description: "大体量开源推理模型，适合更高质量的通用生成。",
+    description: "大体量开源推理模型。",
   },
   {
     id: "openai/gpt-oss-20b",
     provider: "nvidia",
     family: "openai-oss",
     label: "GPT OSS 20B",
-    description: "更轻更快，适合低延迟体验和快速试稿。",
+    description: "更轻更快，适合低延迟体验。",
   },
 ];
+
+function isDeepSeekAliasThatForcesThinking(model: string) {
+  return model === "deepseek-reasoner";
+}
+
+export function isAIProvider(value: unknown): value is AIProvider {
+  return value === "deepseek" || value === "nvidia";
+}
+
+export function isAIReasoningEffort(value: unknown): value is AIReasoningEffort {
+  return value === "high" || value === "max";
+}
+
+export function isValidAIModelForProvider(provider: AIProvider, model: unknown) {
+  return typeof model === "string" && getAIModelOptions(provider).some((option) => option.id === model);
+}
 
 export function getDefaultAIModel(provider: AIProvider) {
   return DEFAULT_AI_MODEL_BY_PROVIDER[provider];
@@ -232,19 +295,27 @@ export function getDefaultAIModelFamily(provider: AIProvider) {
   return getAIModelFamilyByModel(getDefaultAIModel(provider)) || getAIModelFamilies(provider)[0]?.id || "deepseek";
 }
 
-export function isAIProvider(value: unknown): value is AIProvider {
-  return value === "deepseek" || value === "nvidia";
-}
-
-export function isValidAIModelForProvider(provider: AIProvider, model: unknown) {
-  return typeof model === "string" && getAIModelOptions(provider).some((option) => option.id === model);
-}
-
-export function normalizeAISettings(input: { provider?: unknown; model?: unknown }) {
+export function normalizeAISettings(input: {
+  provider?: unknown;
+  model?: unknown;
+  deepseekThinkingEnabled?: unknown;
+  deepseekReasoningEffort?: unknown;
+}): AISettings {
   const provider = isAIProvider(input.provider) ? input.provider : DEFAULT_AI_PROVIDER;
   const model = isValidAIModelForProvider(provider, input.model)
     ? input.model
     : getDefaultAIModel(provider);
+  const requestedThinkingEnabled = Boolean(input.deepseekThinkingEnabled);
+  const deepseekThinkingEnabled =
+    provider === "deepseek" ? isDeepSeekAliasThatForcesThinking(model) || requestedThinkingEnabled : false;
+  const deepseekReasoningEffort = isAIReasoningEffort(input.deepseekReasoningEffort)
+    ? input.deepseekReasoningEffort
+    : DEFAULT_DEEPSEEK_REASONING_EFFORT;
 
-  return { provider, model };
+  return {
+    provider,
+    model,
+    deepseekThinkingEnabled,
+    deepseekReasoningEffort,
+  };
 }

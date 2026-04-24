@@ -21,6 +21,8 @@ export async function GET() {
     const cookieSettings = normalizeAISettings({
       provider: jar.get("ai_provider")?.value,
       model: jar.get("ai_model")?.value,
+      deepseekThinkingEnabled: jar.get("deepseek_thinking_enabled")?.value === "true",
+      deepseekReasoningEffort: jar.get("deepseek_reasoning_effort")?.value,
     });
 
     if (!hasDb()) {
@@ -33,10 +35,18 @@ export async function GET() {
 
     await ensureTables();
     await sql`INSERT INTO users(id) VALUES (${uid}) ON CONFLICT (id) DO NOTHING`;
-    const rows = await sql`SELECT ai_provider, ai_model FROM user_settings WHERE user_id = ${uid}`;
+    const rows = await sql`
+      SELECT ai_provider, ai_model, deepseek_thinking_enabled, deepseek_reasoning_effort
+      FROM user_settings
+      WHERE user_id = ${uid}
+    `;
     const settings = normalizeAISettings({
       provider: jar.get("ai_provider")?.value || rows.rows?.[0]?.ai_provider,
       model: jar.get("ai_model")?.value || rows.rows?.[0]?.ai_model,
+      deepseekThinkingEnabled:
+        jar.get("deepseek_thinking_enabled")?.value ?? rows.rows?.[0]?.deepseek_thinking_enabled,
+      deepseekReasoningEffort:
+        jar.get("deepseek_reasoning_effort")?.value || rows.rows?.[0]?.deepseek_reasoning_effort,
     });
 
     const res = NextResponse.json(settings, { status: 200 });
@@ -57,6 +67,8 @@ export async function POST(req: Request) {
     const settings = normalizeAISettings({
       provider: body?.provider,
       model: body?.model,
+      deepseekThinkingEnabled: body?.deepseekThinkingEnabled,
+      deepseekReasoningEffort: body?.deepseekReasoningEffort,
     });
 
     if (!hasDb()) {
@@ -66,23 +78,55 @@ export async function POST(req: Request) {
       }
       res.cookies.set("ai_provider", settings.provider, { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
       res.cookies.set("ai_model", settings.model, { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
+      res.cookies.set("deepseek_thinking_enabled", String(settings.deepseekThinkingEnabled), {
+        path: "/",
+        maxAge: 60 * 60 * 24 * 365 * 5,
+      });
+      res.cookies.set("deepseek_reasoning_effort", settings.deepseekReasoningEffort, {
+        path: "/",
+        maxAge: 60 * 60 * 24 * 365 * 5,
+      });
       return res;
     }
 
     await ensureTables();
     await sql`INSERT INTO users(id) VALUES (${uid}) ON CONFLICT (id) DO NOTHING`;
     await sql`
-      INSERT INTO user_settings(user_id, ai_provider, ai_model, updated_at)
-      VALUES (${uid}, ${settings.provider}, ${settings.model}, now())
+      INSERT INTO user_settings(
+        user_id,
+        ai_provider,
+        ai_model,
+        deepseek_thinking_enabled,
+        deepseek_reasoning_effort,
+        updated_at
+      )
+      VALUES (
+        ${uid},
+        ${settings.provider},
+        ${settings.model},
+        ${settings.deepseekThinkingEnabled},
+        ${settings.deepseekReasoningEffort},
+        now()
+      )
       ON CONFLICT (user_id) DO UPDATE
       SET ai_provider = EXCLUDED.ai_provider,
           ai_model = EXCLUDED.ai_model,
+          deepseek_thinking_enabled = EXCLUDED.deepseek_thinking_enabled,
+          deepseek_reasoning_effort = EXCLUDED.deepseek_reasoning_effort,
           updated_at = now()
     `;
 
     const res = NextResponse.json({ ok: true, ...settings }, { status: 200 });
     res.cookies.set("ai_provider", settings.provider, { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
     res.cookies.set("ai_model", settings.model, { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
+    res.cookies.set("deepseek_thinking_enabled", String(settings.deepseekThinkingEnabled), {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365 * 5,
+    });
+    res.cookies.set("deepseek_reasoning_effort", settings.deepseekReasoningEffort, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365 * 5,
+    });
     if (created || !jar.get("uid")?.value) {
       res.cookies.set("uid", uid, { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
     }

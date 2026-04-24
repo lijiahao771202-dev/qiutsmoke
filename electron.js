@@ -19,7 +19,7 @@ function buildElectronSystemPrompt(systemPrompt = "") {
     return `${basePrompt}${userPrompt}`;
 }
 
-function getElectronUpstreamConfig(provider, model, key) {
+function getElectronUpstreamConfig(provider, model, key, options = {}) {
     if (provider === 'nvidia') {
         return {
             url: 'https://integrate.api.nvidia.com/v1/chat/completions',
@@ -48,6 +48,12 @@ function getElectronUpstreamConfig(provider, model, key) {
             model,
             messages,
             stream: true,
+            thinking: {
+                type: options.deepseekThinkingEnabled ? 'enabled' : 'disabled',
+            },
+            ...(options.deepseekThinkingEnabled
+                ? { reasoning_effort: options.deepseekReasoningEffort || 'high' }
+                : { temperature: 0.6, frequency_penalty: 0.2, presence_penalty: 0.2 }),
         }),
     };
 }
@@ -150,6 +156,8 @@ ipcMain.handle('generate-tts', async (event, { text, provider, voice, rate, cosy
 });
 
 ipcMain.on('generate-meditation', async (event, payload) => {
+    const requestId = Math.random().toString(36).slice(2, 10);
+    const startedAt = Date.now();
     const provider = payload?.provider === 'nvidia' ? 'nvidia' : 'deepseek';
     const model = typeof payload?.model === 'string' && payload.model
         ? payload.model
@@ -166,7 +174,22 @@ ipcMain.on('generate-meditation', async (event, payload) => {
             return;
         }
 
-        const upstream = getElectronUpstreamConfig(provider, model, key);
+        console.log("[AI Request][electron][start]", JSON.stringify({
+            requestId,
+            provider,
+            model,
+            deepseekThinkingEnabled: provider === 'deepseek' ? Boolean(payload?.deepseekThinkingEnabled) : null,
+            deepseekReasoningEffort:
+                provider === 'deepseek' && payload?.deepseekThinkingEnabled
+                    ? payload?.deepseekReasoningEffort || 'high'
+                    : null,
+            hasKey: Boolean(key),
+        }));
+
+        const upstream = getElectronUpstreamConfig(provider, model, key, {
+            deepseekThinkingEnabled: Boolean(payload?.deepseekThinkingEnabled),
+            deepseekReasoningEffort: payload?.deepseekReasoningEffort || 'high',
+        });
         const messages = [
             {
                 role: "system",
@@ -185,7 +208,13 @@ ipcMain.on('generate-meditation', async (event, payload) => {
 
         if (!response.ok) {
             const error = await response.text();
-            console.error("Meditation API Error:", { provider, model, error });
+            console.error("[AI Request][electron][upstream_error]", {
+                requestId,
+                provider,
+                model,
+                elapsedMs: Date.now() - startedAt,
+                error,
+            });
             event.reply('meditation-error', `API Error: ${response.status}`);
             return;
         }
@@ -197,6 +226,7 @@ ipcMain.on('generate-meditation', async (event, payload) => {
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let streamedChars = 0;
 
         while (true) {
             const { done, value } = await reader.read();
@@ -217,6 +247,7 @@ ipcMain.on('generate-meditation', async (event, payload) => {
                         const json = JSON.parse(data);
                         const content = json.choices[0]?.delta?.content;
                         if (content) {
+                            streamedChars += String(content).length;
                             event.reply('meditation-chunk', content);
                         }
                     } catch (e) {
@@ -225,10 +256,28 @@ ipcMain.on('generate-meditation', async (event, payload) => {
                 }
             }
         }
+        console.log("[AI Request][electron][done]", JSON.stringify({
+            requestId,
+            provider,
+            model,
+            deepseekThinkingEnabled: provider === 'deepseek' ? Boolean(payload?.deepseekThinkingEnabled) : null,
+            deepseekReasoningEffort:
+                provider === 'deepseek' && payload?.deepseekThinkingEnabled
+                    ? payload?.deepseekReasoningEffort || 'high'
+                    : null,
+            elapsedMs: Date.now() - startedAt,
+            streamedChars,
+        }));
         event.reply('meditation-done');
 
     } catch (error) {
-        console.error("Generation failed:", error);
+        console.error("[AI Request][electron][request_error]", {
+            requestId,
+            provider,
+            model,
+            elapsedMs: Date.now() - startedAt,
+            error: error.message,
+        });
         event.reply('meditation-error', error.message);
     }
 });

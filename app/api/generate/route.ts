@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { sql } from "@vercel/postgres";
 import { normalizeAISettings } from "../../../lib/ai-models";
+import { buildDeepSeekChatCompletionBody } from "../../../lib/deepseek-chat";
 import { ensureTables, hasDb } from "@/lib/db";
 
 function buildDynamicRules(durationMinutes: number, guidanceLevel: string) {
@@ -79,6 +80,8 @@ async function resolveStoredAISettings() {
   const cookieSettings = normalizeAISettings({
     provider: jar.get("ai_provider")?.value,
     model: jar.get("ai_model")?.value,
+    deepseekThinkingEnabled: jar.get("deepseek_thinking_enabled")?.value === "true",
+    deepseekReasoningEffort: jar.get("deepseek_reasoning_effort")?.value,
   });
 
   if (!hasDb()) {
@@ -91,15 +94,27 @@ async function resolveStoredAISettings() {
   }
 
   await ensureTables();
-  const rows = await sql`SELECT ai_provider, ai_model FROM user_settings WHERE user_id = ${uid}`;
+  const rows = await sql`
+    SELECT ai_provider, ai_model, deepseek_thinking_enabled, deepseek_reasoning_effort
+    FROM user_settings
+    WHERE user_id = ${uid}
+  `;
 
   return normalizeAISettings({
     provider: jar.get("ai_provider")?.value || rows.rows?.[0]?.ai_provider,
     model: jar.get("ai_model")?.value || rows.rows?.[0]?.ai_model,
+    deepseekThinkingEnabled:
+      jar.get("deepseek_thinking_enabled")?.value ?? rows.rows?.[0]?.deepseek_thinking_enabled,
+    deepseekReasoningEffort:
+      jar.get("deepseek_reasoning_effort")?.value || rows.rows?.[0]?.deepseek_reasoning_effort,
   });
 }
 
-function getUpstreamConfig(provider: "deepseek" | "nvidia", model: string, key: string) {
+function getUpstreamConfig(
+  settings: ReturnType<typeof normalizeAISettings>,
+  key: string
+) {
+  const { provider, model } = settings;
   if (provider === "nvidia") {
     return {
       url: "https://integrate.api.nvidia.com/v1/chat/completions",
@@ -126,15 +141,24 @@ function getUpstreamConfig(provider: "deepseek" | "nvidia", model: string, key: 
       Authorization: `Bearer ${key}`,
     },
     body: (messages: Array<{ role: string; content: string }>) =>
-      JSON.stringify({
-        model,
-        messages,
-        stream: true,
-      }),
+      JSON.stringify(
+        buildDeepSeekChatCompletionBody({
+          model,
+          messages,
+          stream: true,
+          thinkingEnabled: settings.deepseekThinkingEnabled,
+          reasoningEffort: settings.deepseekReasoningEffort,
+          temperature: 0.6,
+          frequencyPenalty: 0.2,
+          presencePenalty: 0.2,
+        })
+      ),
   };
 }
 
 export async function POST(req: Request) {
+  const requestId = crypto.randomUUID().slice(0, 8);
+  const startedAt = Date.now();
   try {
     const body = await req.json();
     const duration = Number(body?.duration) || 10;
@@ -144,6 +168,10 @@ export async function POST(req: Request) {
     const effectiveSettings = normalizeAISettings({
       provider: body?.provider ?? storedSettings.provider,
       model: body?.model ?? storedSettings.model,
+      deepseekThinkingEnabled:
+        body?.deepseekThinkingEnabled ?? storedSettings.deepseekThinkingEnabled,
+      deepseekReasoningEffort:
+        body?.deepseekReasoningEffort ?? storedSettings.deepseekReasoningEffort,
     });
 
     const key =
@@ -151,16 +179,19 @@ export async function POST(req: Request) {
         ? process.env.NVIDIA_API_KEY
         : body?.apiKey || process.env.DEEPSEEK_API_KEY;
 
-    console.log(
-      "[Generate API]",
-      JSON.stringify({
-        provider: effectiveSettings.provider,
-        model: effectiveSettings.model,
-        duration,
-        guidanceLevel,
-        hasKey: Boolean(key),
-      })
-    );
+    console.log("[AI Request][generate][start]", JSON.stringify({
+      requestId,
+      provider: effectiveSettings.provider,
+      model: effectiveSettings.model,
+      deepseekThinkingEnabled: effectiveSettings.deepseekThinkingEnabled,
+      deepseekReasoningEffort:
+        effectiveSettings.provider === "deepseek" && effectiveSettings.deepseekThinkingEnabled
+          ? effectiveSettings.deepseekReasoningEffort
+          : null,
+      duration,
+      guidanceLevel,
+      hasKey: Boolean(key),
+    }));
 
     if (!key) {
       const label = effectiveSettings.provider === "nvidia" ? "NVIDIA_API_KEY" : "DeepSeek API Key";
@@ -171,7 +202,7 @@ export async function POST(req: Request) {
     }
 
     const finalSystemPrompt = buildSystemPrompt(duration, guidanceLevel, body?.systemPrompt);
-    const upstreamConfig = getUpstreamConfig(effectiveSettings.provider, effectiveSettings.model, key);
+    const upstreamConfig = getUpstreamConfig(effectiveSettings, key);
     const messages = [
       { role: "system", content: finalSystemPrompt },
       { role: "user", content: prompt },
@@ -186,10 +217,17 @@ export async function POST(req: Request) {
     if (!upstream.ok || !upstream.body) {
       const status = upstream.status || 500;
       const errorText = await upstream.text().catch(() => "");
-      console.error("[Generate API] Upstream error", {
+      console.error("[AI Request][generate][upstream_error]", {
+        requestId,
         provider: effectiveSettings.provider,
         model: effectiveSettings.model,
+        deepseekThinkingEnabled: effectiveSettings.deepseekThinkingEnabled,
+        deepseekReasoningEffort:
+          effectiveSettings.provider === "deepseek" && effectiveSettings.deepseekThinkingEnabled
+            ? effectiveSettings.deepseekReasoningEffort
+            : null,
         status,
+        elapsedMs: Date.now() - startedAt,
         errorText,
       });
       return new Response(
@@ -214,6 +252,7 @@ export async function POST(req: Request) {
       const reader = upstream.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let streamedChars = 0;
 
       try {
         while (true) {
@@ -234,6 +273,7 @@ export async function POST(req: Request) {
               const json = JSON.parse(data);
               const content = json?.choices?.[0]?.delta?.content;
               if (content) {
+                streamedChars += String(content).length;
                 await writer.write(encoder.encode(content));
               }
             } catch (error) {
@@ -242,13 +282,31 @@ export async function POST(req: Request) {
           }
         }
       } catch (error) {
-        console.error("[Generate API] Stream processing error:", error);
+        console.error("[AI Request][generate][stream_error]", {
+          requestId,
+          provider: effectiveSettings.provider,
+          model: effectiveSettings.model,
+          elapsedMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        });
       } finally {
         try {
           await writer.close();
         } catch {
           // Client already disconnected.
         }
+        console.log("[AI Request][generate][done]", JSON.stringify({
+          requestId,
+          provider: effectiveSettings.provider,
+          model: effectiveSettings.model,
+          deepseekThinkingEnabled: effectiveSettings.deepseekThinkingEnabled,
+          deepseekReasoningEffort:
+            effectiveSettings.provider === "deepseek" && effectiveSettings.deepseekThinkingEnabled
+              ? effectiveSettings.deepseekReasoningEffort
+              : null,
+          elapsedMs: Date.now() - startedAt,
+          streamedChars,
+        }));
       }
     })();
 
@@ -257,7 +315,11 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (error) {
-    console.error("[Generate API] Request parsing error:", error);
+    console.error("[AI Request][generate][request_error]", {
+      requestId,
+      elapsedMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return new Response(JSON.stringify({ error: "请求解析失败" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },

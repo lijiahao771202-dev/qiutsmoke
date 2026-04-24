@@ -17,6 +17,8 @@ declare global {
         apiKey?: string;
         provider?: "deepseek" | "nvidia";
         model?: string;
+        deepseekThinkingEnabled?: boolean;
+        deepseekReasoningEffort?: "high" | "max";
         systemPrompt?: string;
         duration?: number;
         guidanceLevel?: "light" | "medium" | "heavy";

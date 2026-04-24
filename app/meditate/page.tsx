@@ -1103,6 +1103,13 @@ export default function MeditatePage() {
                     console.warn("[Meditate] Failed to load AI settings for Electron:", error);
                 }
 
+                console.log("[AI Request][client][electron_dispatch]", {
+                    provider: aiSettings.provider,
+                    model: aiSettings.model,
+                    deepseekThinkingEnabled: aiSettings.deepseekThinkingEnabled,
+                    deepseekReasoningEffort: aiSettings.deepseekReasoningEffort,
+                });
+
                 (window as any).electron.generateMeditation({
                     prompt,
                     apiKey,
@@ -1113,6 +1120,11 @@ export default function MeditatePage() {
                     guidanceLevel: cardGuidance
                 });
             } else {
+                console.log("[AI Request][client][web_dispatch]", {
+                    endpoint: "/api/generate",
+                    duration: cardDuration,
+                    guidanceLevel: cardGuidance,
+                });
                 const res = await fetch(getApiUrl('/api/generate'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

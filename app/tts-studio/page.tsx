@@ -12,7 +12,7 @@ import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
 import { getApiUrl } from "@/lib/config";
 import {
     COSYVOICE_PROFILE,
-    DEFAULT_COSYVOICE_VOICE_ID,DEFAULT_TTS_PROVIDER,isTTSProvider,
+    DEFAULT_COSYVOICE_VOICE_ID,DEFAULT_TTS_PROVIDER,isTTSProvider, normalizeTTSSettings,
     type CosyVoiceVoiceId,type TTSProvider,
     type TTSSettings,
 } from "@/lib/tts-settings";
@@ -2434,12 +2434,13 @@ export default function TTSStudioPage() {
         };
     }, []);
 
-    const ttsSettings: TTSSettings = {
+    const ttsSettings = normalizeTTSSettings({
         provider: ttsProvider,
         cosyvoiceSpeed,
         cosyvoiceInstruction,
         cosyvoiceSeed,
-        cosyvoiceVoiceId,};
+        cosyvoiceVoiceId,
+    });
 
     const [editingCard, setEditingCard] = useState<TTSCard | null>(null);
     // 👁️ 阅读模式：查看完整文案（只读）

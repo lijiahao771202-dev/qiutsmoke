@@ -15,6 +15,7 @@ import ReminderSettings from "./ReminderSettings";
 import {
     AI_MODEL_FAMILY_OPTIONS,
     AI_MODEL_OPTIONS,
+    DEEPSEEK_REASONING_EFFORT_OPTIONS,
     AI_PROVIDER_LABELS,
     DEFAULT_AI_MODEL_BY_PROVIDER,
     getAIModelFamilies,
@@ -22,19 +23,47 @@ import {
     getDefaultAIModelFamily,
     type AIModelFamily,
     type AIProvider,
+    type AIReasoningEffort,
 } from "@/lib/ai-models";
 import {
     COSYVOICE_INSTRUCTION_PRESETS,
     COSYVOICE_PROFILE,
     COSYVOICE_VOICE_PROFILES,
+    DEFAULT_COSYVOICE_35_PLUS_INSTRUCTION,
+    DEFAULT_COSYVOICE_35_PLUS_LANGUAGE_HINT,
+    DEFAULT_COSYVOICE_35_PLUS_SPEED,
+    DEFAULT_COSYVOICE_35_PLUS_VOICE_ID,
+    DEFAULT_COSYVOICE_35_PLUS_VOICE_PROFILE_ID,
     DEFAULT_COSYVOICE_VOICE_ID,
+    DEFAULT_QWEN_TTS_CLONE_VOICE_CLOUD_ID,
+    DEFAULT_QWEN_TTS_CLONE_VOICE_ID,
+    DEFAULT_QWEN_TTS_INSTRUCTIONS,
+    DEFAULT_QWEN_TTS_LANGUAGE_TYPE,
+    DEFAULT_QWEN_TTS_MODEL,
+    DEFAULT_QWEN_TTS_SPEED,
+    DEFAULT_QWEN_TTS_VOICE,
+    DEFAULT_QWEN_TTS_VOICE_MODE,
     DEFAULT_TTS_PROVIDER,
+    QWEN_TTS_MODELS,
+    QWEN_TTS_VOICES,
     TTS_PROVIDER_DESCRIPTIONS,
     TTS_PROVIDER_LABELS,
+    isCosyVoice35PlusLanguageHint,
     isCosyVoiceVoiceId,
+    isQwenTTSCloneModel,
+    isQwenTTSInstructionModel,
+    isQwenTTSLanguageType,
+    isQwenTTSModel,
+    isQwenTTSVoice,
+    isQwenTTSVoiceMode,
     isTTSProvider,
     normalizeTTSSettings,
+    type CosyVoice35PlusLanguageHint,
     type CosyVoiceVoiceId,
+    type QwenTTSLanguageType,
+    type QwenTTSModel,
+    type QwenTTSVoice,
+    type QwenTTSVoiceMode,
     type TTSSettings,
     type TTSProvider,
 } from "@/lib/tts-settings";
@@ -59,6 +88,8 @@ export default function UserProfile() {
     const [aiProvider, setAIProvider] = useState<AIProvider>("deepseek");
     const [aiModel, setAIModel] = useState(DEFAULT_AI_MODEL_BY_PROVIDER.deepseek);
     const [aiFamily, setAIFamily] = useState<AIModelFamily>(getDefaultAIModelFamily("deepseek"));
+    const [deepseekThinkingEnabled, setDeepseekThinkingEnabled] = useState(false);
+    const [deepseekReasoningEffort, setDeepseekReasoningEffort] = useState<AIReasoningEffort>("high");
     const [isLoadingAISettings, setIsLoadingAISettings] = useState(true);
     const [isSavingAISettings, setIsSavingAISettings] = useState(false);
     const [isTestingAISettings, setIsTestingAISettings] = useState(false);
@@ -68,6 +99,19 @@ export default function UserProfile() {
     const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
     const [cosyvoiceSeed, setCosyvoiceSeed] = useState<number>(COSYVOICE_PROFILE.seed);
     const [cosyvoiceVoiceId, setCosyvoiceVoiceId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_VOICE_ID);
+    const [qwenTTSModel, setQwenTTSModel] = useState<QwenTTSModel>(DEFAULT_QWEN_TTS_MODEL);
+    const [qwenTTSVoice, setQwenTTSVoice] = useState<QwenTTSVoice>(DEFAULT_QWEN_TTS_VOICE);
+    const [qwenTTSVoiceMode, setQwenTTSVoiceMode] = useState<QwenTTSVoiceMode>(DEFAULT_QWEN_TTS_VOICE_MODE);
+    const [qwenTTSCloneVoiceId, setQwenTTSCloneVoiceId] = useState<CosyVoiceVoiceId>(DEFAULT_QWEN_TTS_CLONE_VOICE_ID);
+    const [qwenTTSCloneVoiceCloudId, setQwenTTSCloneVoiceCloudId] = useState<string>(DEFAULT_QWEN_TTS_CLONE_VOICE_CLOUD_ID);
+    const [qwenTTSSpeed, setQwenTTSSpeed] = useState<number>(DEFAULT_QWEN_TTS_SPEED);
+    const [qwenTTSLanguageType, setQwenTTSLanguageType] = useState<QwenTTSLanguageType>(DEFAULT_QWEN_TTS_LANGUAGE_TYPE);
+    const [qwenTTSInstructions, setQwenTTSInstructions] = useState<string>(DEFAULT_QWEN_TTS_INSTRUCTIONS);
+    const [cosyvoice35PlusVoiceId, setCosyvoice35PlusVoiceId] = useState<string>(DEFAULT_COSYVOICE_35_PLUS_VOICE_ID);
+    const [cosyvoice35PlusVoiceProfileId, setCosyvoice35PlusVoiceProfileId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_35_PLUS_VOICE_PROFILE_ID);
+    const [cosyvoice35PlusSpeed, setCosyvoice35PlusSpeed] = useState<number>(DEFAULT_COSYVOICE_35_PLUS_SPEED);
+    const [cosyvoice35PlusInstruction, setCosyvoice35PlusInstruction] = useState<string>(DEFAULT_COSYVOICE_35_PLUS_INSTRUCTION);
+    const [cosyvoice35PlusLanguageHint, setCosyvoice35PlusLanguageHint] = useState<CosyVoice35PlusLanguageHint>(DEFAULT_COSYVOICE_35_PLUS_LANGUAGE_HINT);
     const [isLoadingTTSSettings, setIsLoadingTTSSettings] = useState(true);
     const [isSavingTTSSettings, setIsSavingTTSSettings] = useState(false);
     const [isTestingTTSSettings, setIsTestingTTSSettings] = useState(false);
@@ -125,6 +169,10 @@ export default function UserProfile() {
                     setAIFamily(family);
                 }
             }
+            setDeepseekThinkingEnabled(Boolean(data?.deepseekThinkingEnabled));
+            if (data?.deepseekReasoningEffort === "high" || data?.deepseekReasoningEffort === "max") {
+                setDeepseekReasoningEffort(data.deepseekReasoningEffort);
+            }
         } catch (error) {
             console.error("Load ai settings failed:", error);
         } finally {
@@ -155,6 +203,45 @@ export default function UserProfile() {
             }
             if (data?.cosyvoiceVoiceId === "yupinglu" || data?.cosyvoiceVoiceId === "tea") {
                 setCosyvoiceVoiceId(data.cosyvoiceVoiceId);
+            }
+            if (isQwenTTSModel(data?.qwenTTSModel)) {
+                setQwenTTSModel(data.qwenTTSModel);
+            }
+            if (isQwenTTSVoice(data?.qwenTTSVoice)) {
+                setQwenTTSVoice(data.qwenTTSVoice);
+            }
+            if (isQwenTTSVoiceMode(data?.qwenTTSVoiceMode)) {
+                setQwenTTSVoiceMode(data.qwenTTSVoiceMode);
+            }
+            if (isCosyVoiceVoiceId(data?.qwenTTSCloneVoiceId)) {
+                setQwenTTSCloneVoiceId(data.qwenTTSCloneVoiceId);
+            }
+            if (typeof data?.qwenTTSCloneVoiceCloudId === "string") {
+                setQwenTTSCloneVoiceCloudId(data.qwenTTSCloneVoiceCloudId);
+            }
+            if (typeof data?.qwenTTSSpeed === "number") {
+                setQwenTTSSpeed(data.qwenTTSSpeed);
+            }
+            if (isQwenTTSLanguageType(data?.qwenTTSLanguageType)) {
+                setQwenTTSLanguageType(data.qwenTTSLanguageType);
+            }
+            if (typeof data?.qwenTTSInstructions === "string") {
+                setQwenTTSInstructions(data.qwenTTSInstructions);
+            }
+            if (typeof data?.cosyvoice35PlusVoiceId === "string") {
+                setCosyvoice35PlusVoiceId(data.cosyvoice35PlusVoiceId);
+            }
+            if (isCosyVoiceVoiceId(data?.cosyvoice35PlusVoiceProfileId)) {
+                setCosyvoice35PlusVoiceProfileId(data.cosyvoice35PlusVoiceProfileId);
+            }
+            if (typeof data?.cosyvoice35PlusSpeed === "number") {
+                setCosyvoice35PlusSpeed(data.cosyvoice35PlusSpeed);
+            }
+            if (typeof data?.cosyvoice35PlusInstruction === "string") {
+                setCosyvoice35PlusInstruction(data.cosyvoice35PlusInstruction);
+            }
+            if (isCosyVoice35PlusLanguageHint(data?.cosyvoice35PlusLanguageHint)) {
+                setCosyvoice35PlusLanguageHint(data.cosyvoice35PlusLanguageHint);
             }
         } catch (error) {
             console.error("Load tts settings failed:", error);
@@ -239,6 +326,9 @@ export default function UserProfile() {
         setAIProvider(provider);
         setAIModel(DEFAULT_AI_MODEL_BY_PROVIDER[provider]);
         setAIFamily(getDefaultAIModelFamily(provider));
+        if (provider !== "deepseek") {
+            setDeepseekThinkingEnabled(false);
+        }
         setAITestResult(null);
     };
 
@@ -267,6 +357,8 @@ export default function UserProfile() {
                 body: JSON.stringify({
                     provider: aiProvider,
                     model: aiModel,
+                    deepseekThinkingEnabled,
+                    deepseekReasoningEffort,
                     apiKey: deepseekApiKey,
                 }),
             });
@@ -300,7 +392,12 @@ export default function UserProfile() {
             const res = await fetch(getApiUrl("/api/ai-settings"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ provider: aiProvider, model: aiModel }),
+                body: JSON.stringify({
+                    provider: aiProvider,
+                    model: aiModel,
+                    deepseekThinkingEnabled,
+                    deepseekReasoningEffort,
+                }),
             });
             if (res.ok) {
                 setShowAISettings(false);
@@ -321,6 +418,19 @@ export default function UserProfile() {
                 cosyvoiceInstruction,
                 cosyvoiceSeed,
                 cosyvoiceVoiceId,
+                qwenTTSModel,
+                qwenTTSVoice,
+                qwenTTSVoiceMode,
+                qwenTTSCloneVoiceId,
+                qwenTTSCloneVoiceCloudId,
+                qwenTTSSpeed,
+                qwenTTSLanguageType,
+                qwenTTSInstructions,
+                cosyvoice35PlusVoiceId,
+                cosyvoice35PlusVoiceProfileId,
+                cosyvoice35PlusSpeed,
+                cosyvoice35PlusInstruction,
+                cosyvoice35PlusLanguageHint,
             });
             const res = await fetch(getApiUrl("/api/tts-settings"), {
                 method: "POST",
@@ -334,12 +444,21 @@ export default function UserProfile() {
                 setCosyvoiceInstruction(savedSettings.cosyvoiceInstruction);
                 setCosyvoiceSeed(savedSettings.cosyvoiceSeed);
                 setCosyvoiceVoiceId(savedSettings.cosyvoiceVoiceId);
+                setQwenTTSModel(savedSettings.qwenTTSModel);
+                setQwenTTSVoice(savedSettings.qwenTTSVoice);
+                setQwenTTSVoiceMode(savedSettings.qwenTTSVoiceMode);
+                setQwenTTSCloneVoiceId(savedSettings.qwenTTSCloneVoiceId);
+                setQwenTTSCloneVoiceCloudId(savedSettings.qwenTTSCloneVoiceCloudId);
+                setQwenTTSSpeed(savedSettings.qwenTTSSpeed);
+                setQwenTTSLanguageType(savedSettings.qwenTTSLanguageType);
+                setQwenTTSInstructions(savedSettings.qwenTTSInstructions);
+                setCosyvoice35PlusVoiceId(savedSettings.cosyvoice35PlusVoiceId);
+                setCosyvoice35PlusVoiceProfileId(savedSettings.cosyvoice35PlusVoiceProfileId);
+                setCosyvoice35PlusSpeed(savedSettings.cosyvoice35PlusSpeed);
+                setCosyvoice35PlusInstruction(savedSettings.cosyvoice35PlusInstruction);
+                setCosyvoice35PlusLanguageHint(savedSettings.cosyvoice35PlusLanguageHint);
                 if (typeof window !== "undefined") {
                     localStorage.setItem("tts_provider", savedSettings.provider);
-                    localStorage.setItem("cosyvoice_speed", String(savedSettings.cosyvoiceSpeed));
-                    localStorage.setItem("cosyvoice_instruction", savedSettings.cosyvoiceInstruction);
-                    localStorage.setItem("cosyvoice_seed", String(savedSettings.cosyvoiceSeed));
-                    localStorage.setItem("cosyvoice_voice_id", savedSettings.cosyvoiceVoiceId);
                     window.dispatchEvent(new CustomEvent("tts-provider-changed", {
                         detail: savedSettings,
                     }));
@@ -363,6 +482,19 @@ export default function UserProfile() {
             cosyvoiceInstruction,
             cosyvoiceSeed,
             cosyvoiceVoiceId,
+            qwenTTSModel,
+            qwenTTSVoice,
+            qwenTTSVoiceMode,
+            qwenTTSCloneVoiceId,
+            qwenTTSCloneVoiceCloudId,
+            qwenTTSSpeed,
+            qwenTTSLanguageType,
+            qwenTTSInstructions,
+            cosyvoice35PlusVoiceId,
+            cosyvoice35PlusVoiceProfileId,
+            cosyvoice35PlusSpeed,
+            cosyvoice35PlusInstruction,
+            cosyvoice35PlusLanguageHint,
         });
 
         if (nextSettings.provider === "edge") {
@@ -376,8 +508,10 @@ export default function UserProfile() {
 
         try {
             const res = await fetch(getApiUrl("/api/tts-settings/test"), {
-                method: "GET",
+                method: "POST",
                 cache: "no-store",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(nextSettings),
             });
             const data = await res.json().catch(() => ({}));
 
@@ -390,8 +524,9 @@ export default function UserProfile() {
             }
 
             const summary = [
-                "CosyVoice 连通成功",
-                data?.model_dir ? `模型 ${data.model_dir}` : "",
+                data?.provider ? `${TTS_PROVIDER_LABELS[data.provider as TTSProvider]} 连通成功` : "TTS 连通成功",
+                data?.model ? `模型 ${data.model}` : "",
+                data?.voice ? `音色 ${data.voice}` : "",
                 data?.mode ? `模式 ${data.mode}` : "",
                 data?.sample_rate ? `采样率 ${data.sample_rate}Hz` : "",
             ].filter(Boolean).join(" | ");
@@ -426,6 +561,8 @@ export default function UserProfile() {
     const selectedModelMeta = AI_MODEL_OPTIONS.find((option) => option.id === aiModel);
     const selectedFamilyMeta = AI_MODEL_FAMILY_OPTIONS.find((family) => family.provider === aiProvider && family.id === aiFamily);
     const canSubmitAISettings = visibleModels.length > 0;
+    const qwenIsInstructionModel = isQwenTTSInstructionModel(qwenTTSModel);
+    const qwenIsCloneModel = isQwenTTSCloneModel(qwenTTSModel);
 
     return (
         <>
@@ -869,6 +1006,64 @@ export default function UserProfile() {
                                     </div>
                                 </div>
 
+                                {aiProvider === "deepseek" && (
+                                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 space-y-4">
+                                        <div>
+                                            <div className="text-sm text-white/90">深度思考</div>
+                                            <div className="text-xs text-white/45 mt-1">
+                                                V4 Flash / Pro 可手动开关，`deepseek-reasoner` 会强制开启。
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/10 px-3 py-3">
+                                            <div>
+                                                <div className="text-sm text-white/85">开启深度思考</div>
+                                                <div className="text-[11px] text-white/40 mt-1">关闭时按普通聊天参数生成。</div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setDeepseekThinkingEnabled((prev) => !prev)}
+                                                className={cn(
+                                                    "relative h-7 w-12 rounded-full transition-colors",
+                                                    deepseekThinkingEnabled ? "bg-cyan-500" : "bg-white/15"
+                                                )}
+                                            >
+                                                <span
+                                                    className={cn(
+                                                        "absolute top-1 h-5 w-5 rounded-full bg-white transition-transform",
+                                                        deepseekThinkingEnabled ? "translate-x-6" : "translate-x-1"
+                                                    )}
+                                                />
+                                            </button>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm text-white/85 mb-2">推理强度</label>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {DEEPSEEK_REASONING_EFFORT_OPTIONS.map((option) => {
+                                                    const active = deepseekReasoningEffort === option.id;
+                                                    return (
+                                                        <button
+                                                            key={option.id}
+                                                            type="button"
+                                                            disabled={!deepseekThinkingEnabled}
+                                                            onClick={() => setDeepseekReasoningEffort(option.id)}
+                                                            className={cn(
+                                                                "rounded-xl border px-3 py-3 text-left transition-all disabled:opacity-40",
+                                                                active
+                                                                    ? "border-cyan-400/70 bg-cyan-500/10 text-cyan-100"
+                                                                    : "border-white/10 bg-black/10 text-white/70 hover:bg-white/10"
+                                                            )}
+                                                        >
+                                                            <div className="text-sm">{option.label}</div>
+                                                            <div className="mt-1 text-[11px] text-white/40">{option.description}</div>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {aiTestResult && (
                                     <div
                                         className={cn(
@@ -1118,6 +1313,303 @@ export default function UserProfile() {
                                             </button>
                                         </div>
                                     </div>
+                                    </div>
+                                )}
+
+                                {ttsProvider === "qwentts" && (
+                                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 space-y-4">
+                                        <div>
+                                            <div className="text-sm text-white/90">Qwen-TTS 详细设置</div>
+                                            <div className="text-xs text-white/45 mt-1">
+                                                Instruct 支持自然语言指令，VC 支持克隆音色，Flash 是普通低延迟模型。
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="block text-sm text-white/85">模型</label>
+                                            <div className="space-y-2">
+                                                {QWEN_TTS_MODELS.map((model) => {
+                                                    const active = qwenTTSModel === model.id;
+                                                    return (
+                                                        <button
+                                                            key={model.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setQwenTTSModel(model.id);
+                                                                setQwenTTSVoiceMode(isQwenTTSCloneModel(model.id) ? "clone" : "system");
+                                                                setTTSTestResult(null);
+                                                            }}
+                                                            className={cn(
+                                                                "w-full rounded-xl border px-3 py-3 text-left transition-all",
+                                                                active
+                                                                    ? "border-cyan-400/70 bg-cyan-500/10 text-cyan-100"
+                                                                    : "border-white/10 bg-black/10 text-white/70 hover:bg-white/10"
+                                                            )}
+                                                        >
+                                                            <div className="text-sm">{model.label}</div>
+                                                            <div className="mt-1 text-[11px] text-white/40">{model.id}</div>
+                                                            <div className="mt-2 text-[11px] text-white/50">{model.description}</div>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {!qwenIsCloneModel && (
+                                            <div className="space-y-2">
+                                                <label className="block text-sm text-white/85">系统音色</label>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                    {QWEN_TTS_VOICES.map((voice) => {
+                                                        const active = qwenTTSVoice === voice.id;
+                                                        return (
+                                                            <button
+                                                                key={voice.id}
+                                                                type="button"
+                                                                onClick={() => setQwenTTSVoice(voice.id)}
+                                                                className={cn(
+                                                                    "rounded-xl border px-3 py-3 text-left transition-all",
+                                                                    active
+                                                                        ? "border-cyan-400/70 bg-cyan-500/10 text-cyan-100"
+                                                                        : "border-white/10 bg-black/10 text-white/70 hover:bg-white/10"
+                                                                )}
+                                                            >
+                                                                <div className="text-sm">{voice.label}</div>
+                                                                <div className="mt-1 text-[11px] text-white/40">{voice.description}</div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {qwenIsCloneModel && (
+                                            <div className="space-y-3">
+                                                <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3 text-xs text-white/55">
+                                                    当前是克隆模型，只显示克隆音色相关设置，不显示系统音色和自然语言指令。
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm text-white/85">克隆音色 Profile</label>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        {COSYVOICE_VOICE_PROFILES.map((profile) => {
+                                                            const active = qwenTTSCloneVoiceId === profile.id;
+                                                            return (
+                                                                <button
+                                                                    key={profile.id}
+                                                                    type="button"
+                                                                    onClick={() => setQwenTTSCloneVoiceId(profile.id)}
+                                                                    className={cn(
+                                                                        "rounded-xl border px-3 py-3 text-left transition-all",
+                                                                        active
+                                                                            ? "border-cyan-400/70 bg-cyan-500/10 text-cyan-100"
+                                                                            : "border-white/10 bg-black/10 text-white/70 hover:bg-white/10"
+                                                                    )}
+                                                                >
+                                                                    <div className="text-sm">{profile.label}</div>
+                                                                    <div className="mt-1 text-[11px] text-white/40">{profile.cloneAudioName}</div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm text-white/85">Qwen 克隆 voice_id</label>
+                                                    <input
+                                                        type="text"
+                                                        value={qwenTTSCloneVoiceCloudId}
+                                                        onChange={(e) => setQwenTTSCloneVoiceCloudId(e.target.value)}
+                                                        className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="space-y-2">
+                                            <label className="block text-sm text-white/85">语言</label>
+                                            <select
+                                                value={qwenTTSLanguageType}
+                                                onChange={(e) => {
+                                                    if (isQwenTTSLanguageType(e.target.value)) {
+                                                        setQwenTTSLanguageType(e.target.value);
+                                                    }
+                                                }}
+                                                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"
+                                            >
+                                                <option value="Chinese">Chinese</option>
+                                                <option value="English">English</option>
+                                            </select>
+                                        </div>
+
+                                        {qwenIsInstructionModel && (
+                                            <>
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm text-white/85">语速倾向</label>
+                                                    <input
+                                                        type="number"
+                                                        min={0.5}
+                                                        max={2}
+                                                        step={0.1}
+                                                        value={qwenTTSSpeed}
+                                                        onChange={(e) => setQwenTTSSpeed(Number.parseFloat(e.target.value) || DEFAULT_QWEN_TTS_SPEED)}
+                                                        className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm text-white/85">自然语言预设</label>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                                        {COSYVOICE_INSTRUCTION_PRESETS.map((preset) => {
+                                                            const active = qwenTTSInstructions.trim() === preset.prompt;
+                                                            return (
+                                                                <button
+                                                                    key={preset.id}
+                                                                    type="button"
+                                                                    onClick={() => setQwenTTSInstructions(preset.prompt)}
+                                                                    className={cn(
+                                                                        "rounded-xl border px-3 py-3 text-left transition-all",
+                                                                        active
+                                                                            ? "border-cyan-400/70 bg-cyan-500/10 text-cyan-100"
+                                                                            : "border-white/10 bg-black/10 text-white/70 hover:bg-white/10"
+                                                                    )}
+                                                                >
+                                                                    <div className="flex items-center justify-between gap-2">
+                                                                        <div className="text-sm">{preset.label}</div>
+                                                                        <div className="text-[10px] text-white/40">{preset.description}</div>
+                                                                    </div>
+                                                                    <div className="mt-2 text-[11px] text-white/45 line-clamp-3">{preset.prompt}</div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm text-white/85">自然语言指令</label>
+                                                    <textarea
+                                                        rows={4}
+                                                        value={qwenTTSInstructions}
+                                                        onChange={(e) => setQwenTTSInstructions(e.target.value)}
+                                                        className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none resize-none"
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {!qwenIsInstructionModel && !qwenIsCloneModel && (
+                                            <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3 text-xs text-white/55">
+                                                当前模型不支持自然语言指令，也不支持克隆音色。
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {ttsProvider === "cosyvoice35plus" && (
+                                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 space-y-4">
+                                        <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3 text-xs text-white/55">
+                                            这是 `克隆音色 + 自然语言指令 + 硬语速` 的云端模式。
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="block text-sm text-white/85">云端克隆音色 Profile</label>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {COSYVOICE_VOICE_PROFILES.map((profile) => {
+                                                    const active = cosyvoice35PlusVoiceProfileId === profile.id;
+                                                    return (
+                                                        <button
+                                                            key={profile.id}
+                                                            type="button"
+                                                            onClick={() => setCosyvoice35PlusVoiceProfileId(profile.id)}
+                                                            className={cn(
+                                                                "rounded-xl border px-3 py-3 text-left transition-all",
+                                                                active
+                                                                    ? "border-cyan-400/70 bg-cyan-500/10 text-cyan-100"
+                                                                    : "border-white/10 bg-black/10 text-white/70 hover:bg-white/10"
+                                                            )}
+                                                        >
+                                                            <div className="text-sm">{profile.label}</div>
+                                                            <div className="mt-1 text-[11px] text-white/40">{profile.cloneAudioName}</div>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="block text-sm text-white/85">CosyVoice 3.5 Plus voice_id</label>
+                                            <input
+                                                type="text"
+                                                value={cosyvoice35PlusVoiceId}
+                                                onChange={(e) => setCosyvoice35PlusVoiceId(e.target.value)}
+                                                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div className="space-y-2">
+                                                <label className="block text-sm text-white/85">语言提示</label>
+                                                <select
+                                                    value={cosyvoice35PlusLanguageHint}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        if (isCosyVoice35PlusLanguageHint(value)) {
+                                                            setCosyvoice35PlusLanguageHint(value);
+                                                        }
+                                                    }}
+                                                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"
+                                                >
+                                                    <option value="zh">zh</option>
+                                                    <option value="en">en</option>
+                                                </select>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <label className="block text-sm text-white/85">硬语速</label>
+                                                <input
+                                                    type="number"
+                                                    min={0.5}
+                                                    max={2}
+                                                    step={0.1}
+                                                    value={cosyvoice35PlusSpeed}
+                                                    onChange={(e) => setCosyvoice35PlusSpeed(Number.parseFloat(e.target.value) || DEFAULT_COSYVOICE_35_PLUS_SPEED)}
+                                                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="block text-sm text-white/85">自然语言预设</label>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                                {COSYVOICE_INSTRUCTION_PRESETS.map((preset) => {
+                                                    const active = cosyvoice35PlusInstruction.trim() === preset.prompt;
+                                                    return (
+                                                        <button
+                                                            key={preset.id}
+                                                            type="button"
+                                                            onClick={() => setCosyvoice35PlusInstruction(preset.prompt)}
+                                                            className={cn(
+                                                                "rounded-xl border px-3 py-3 text-left transition-all",
+                                                                active
+                                                                    ? "border-cyan-400/70 bg-cyan-500/10 text-cyan-100"
+                                                                    : "border-white/10 bg-black/10 text-white/70 hover:bg-white/10"
+                                                            )}
+                                                        >
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <div className="text-sm">{preset.label}</div>
+                                                                <div className="text-[10px] text-white/40">{preset.description}</div>
+                                                            </div>
+                                                            <div className="mt-2 text-[11px] text-white/45 line-clamp-3">{preset.prompt}</div>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="block text-sm text-white/85">自然语言指令</label>
+                                            <textarea
+                                                rows={4}
+                                                value={cosyvoice35PlusInstruction}
+                                                onChange={(e) => setCosyvoice35PlusInstruction(e.target.value)}
+                                                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none resize-none"
+                                            />
+                                        </div>
                                     </div>
                                 )}
 

@@ -19,29 +19,27 @@ test("defaults to cosyvoice and cosyvoice defaults when values are missing or in
     DEFAULT_COSYVOICE_INSTRUCTION,
     "请用非常轻柔、缓慢、安定的睡前冥想语气朗读，音量感偏低，语尾自然下落，不要有明显情绪起伏。每句话之间保留充分停顿，让听众有时间呼吸和放松，整体像安静陪伴而不是教学"
   );
-  assert.deepEqual(normalizeTTSSettings({}), {
-    provider: "cosyvoice",
-    cosyvoiceSpeed: DEFAULT_COSYVOICE_SPEED,
-    cosyvoiceInstruction: DEFAULT_COSYVOICE_INSTRUCTION,
-    cosyvoiceSeed: DEFAULT_COSYVOICE_SEED,
-    cosyvoiceVoiceId: DEFAULT_COSYVOICE_VOICE_ID,
+  const defaults = normalizeTTSSettings({});
+  assert.equal(defaults.provider, "cosyvoice");
+  assert.equal(defaults.cosyvoiceSpeed, DEFAULT_COSYVOICE_SPEED);
+  assert.equal(defaults.cosyvoiceInstruction, DEFAULT_COSYVOICE_INSTRUCTION);
+  assert.equal(defaults.cosyvoiceSeed, DEFAULT_COSYVOICE_SEED);
+  assert.equal(defaults.cosyvoiceVoiceId, DEFAULT_COSYVOICE_VOICE_ID);
+  assert.equal(defaults.qwenTTSModel, "qwen3-tts-instruct-flash");
+  assert.equal(defaults.cosyvoice35PlusLanguageHint, "zh");
+
+  const invalid = normalizeTTSSettings({
+    provider: "invalid",
+    cosyvoiceSpeed: "oops",
+    cosyvoiceInstruction: "",
+    cosyvoiceSeed: "-1",
+    cosyvoiceVoiceId: "missing",
   });
-  assert.deepEqual(
-    normalizeTTSSettings({
-      provider: "invalid",
-      cosyvoiceSpeed: "oops",
-      cosyvoiceInstruction: "",
-      cosyvoiceSeed: "-1",
-      cosyvoiceVoiceId: "missing",
-    }),
-    {
-      provider: "cosyvoice",
-      cosyvoiceSpeed: DEFAULT_COSYVOICE_SPEED,
-      cosyvoiceInstruction: DEFAULT_COSYVOICE_INSTRUCTION,
-      cosyvoiceSeed: DEFAULT_COSYVOICE_SEED,
-      cosyvoiceVoiceId: DEFAULT_COSYVOICE_VOICE_ID,
-    }
-  );
+  assert.equal(invalid.provider, "cosyvoice");
+  assert.equal(invalid.cosyvoiceSpeed, DEFAULT_COSYVOICE_SPEED);
+  assert.equal(invalid.cosyvoiceInstruction, DEFAULT_COSYVOICE_INSTRUCTION);
+  assert.equal(invalid.cosyvoiceSeed, DEFAULT_COSYVOICE_SEED);
+  assert.equal(invalid.cosyvoiceVoiceId, DEFAULT_COSYVOICE_VOICE_ID);
 });
 
 test("exposes six cosyvoice instruction presets including the new default", () => {
@@ -52,22 +50,18 @@ test("exposes six cosyvoice instruction presets including the new default", () =
 });
 
 test("accepts cosyvoice provider and normalizes runtime controls", () => {
-  assert.deepEqual(
-    normalizeTTSSettings({
-      provider: "cosyvoice",
-      cosyvoiceSpeed: "1.26",
-      cosyvoiceInstruction: "  自定义冥想引导  ",
-      cosyvoiceSeed: "42",
-      cosyvoiceVoiceId: "tea",
-    }),
-    {
-      provider: "cosyvoice",
-      cosyvoiceSpeed: 1.3,
-      cosyvoiceInstruction: "自定义冥想引导",
-      cosyvoiceSeed: 42,
-      cosyvoiceVoiceId: "tea",
-    }
-  );
+  const settings = normalizeTTSSettings({
+    provider: "cosyvoice",
+    cosyvoiceSpeed: "1.26",
+    cosyvoiceInstruction: "  自定义冥想引导  ",
+    cosyvoiceSeed: "42",
+    cosyvoiceVoiceId: "tea",
+  });
+  assert.equal(settings.provider, "cosyvoice");
+  assert.equal(settings.cosyvoiceSpeed, 1.3);
+  assert.equal(settings.cosyvoiceInstruction, "自定义冥想引导");
+  assert.equal(settings.cosyvoiceSeed, 42);
+  assert.equal(settings.cosyvoiceVoiceId, "tea");
 
   assert.equal(DEFAULT_COSYVOICE_VOICE_ID, "yupinglu");
   assert.equal(COSYVOICE_VOICE_PROFILES.length, 2);
