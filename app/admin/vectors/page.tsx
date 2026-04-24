@@ -105,8 +105,9 @@ export default function VectorsAdminPage() {
 
             setBuildProgress("初始化本地 AI 引擎 (首次会自动下载模型权重，请耐心等待 1-2 分钟)...");
 
-            // 动态导入避免 SSR 报错，由于我们使用客户端进行向量提取，完全零 API 成本
-            const { pipeline, env } = await import("@xenova/transformers");
+            // 动态原生导入绕过 Webpack/Turbopack 编译报错，直接由浏览器从国内/国际 CDN 加载 ESM
+            const transformers = await new Function('return import("https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2")')();
+            const { pipeline, env } = transformers;
             
             // 确保使用 CDN 获取模型（国内可用）
             env.allowLocalModels = false;
