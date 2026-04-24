@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { sql } from "@vercel/postgres";
 import { ensureTables, hasDb } from "@/lib/db";
 import {
+  isCosyVoice35Model,
   isCosyVoice35PlusLanguageHint,
   isCosyVoiceVoiceId,
   isQwenTTSLanguageType,
@@ -37,13 +38,13 @@ import {
 const DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural";
 const DEFAULT_RATE = "0%";
 const DEFAULT_TIMEOUT_MS = 15000;
-const DEFAULT_COSYVOICE_TIMEOUT_MS = 60000;
+const DEFAULT_COSYVOICE_TIMEOUT_MS = 180000;
 
 const GOOGLE_TTS_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const GOOGLE_TTS_SPLIT_RE = /[\u3002\uFF0C\uFF01\uFF1F\uFF1B,.!?;\n]/;
 const COSYVOICE_UNAVAILABLE_HINT =
-  "CosyVoice local mode is selected. Start http://127.0.0.1:50000 or switch back to EdgeTTS.";
+  "CosyVoice3 mode is selected. Check COSYVOICE_BASE_URL or switch back to EdgeTTS.";
 
 type TTSRequest = {
   text?: string;
@@ -63,7 +64,9 @@ type TTSRequest = {
   qwenTTSSpeed?: unknown;
   qwenTTSLanguageType?: unknown;
   qwenTTSInstructions?: unknown;
+  cosyvoice35PlusModel?: unknown;
   cosyvoice35PlusVoiceId?: unknown;
+  cosyvoice35FlashVoiceId?: unknown;
   cosyvoice35PlusVoiceProfileId?: unknown;
   cosyvoice35PlusSpeed?: unknown;
   cosyvoice35PlusInstruction?: unknown;
@@ -91,7 +94,9 @@ async function getPersistedTTSSettings(): Promise<TTSSettings> {
     qwenTTSSpeed: jar.get("qwen_tts_speed")?.value,
     qwenTTSLanguageType: jar.get("qwen_tts_language_type")?.value,
     qwenTTSInstructions: jar.get("qwen_tts_instructions")?.value,
+    cosyvoice35PlusModel: jar.get("cosyvoice_35_plus_model")?.value,
     cosyvoice35PlusVoiceId: jar.get("cosyvoice_35_plus_voice_id")?.value,
+    cosyvoice35FlashVoiceId: jar.get("cosyvoice_35_flash_voice_id")?.value,
     cosyvoice35PlusVoiceProfileId: jar.get("cosyvoice_35_plus_voice_profile_id")?.value,
     cosyvoice35PlusSpeed: jar.get("cosyvoice_35_plus_speed")?.value,
     cosyvoice35PlusInstruction: jar.get("cosyvoice_35_plus_instruction")?.value,
@@ -123,7 +128,9 @@ async function getPersistedTTSSettings(): Promise<TTSSettings> {
       qwen_tts_speed,
       qwen_tts_language_type,
       qwen_tts_instructions,
+      cosyvoice_35_plus_model,
       cosyvoice_35_plus_voice_id,
+      cosyvoice_35_flash_voice_id,
       cosyvoice_35_plus_voice_profile_id,
       cosyvoice_35_plus_speed,
       cosyvoice_35_plus_instruction,
@@ -149,8 +156,12 @@ async function getPersistedTTSSettings(): Promise<TTSSettings> {
       cookieValues.qwenTTSLanguageType || rows.rows?.[0]?.qwen_tts_language_type,
     qwenTTSInstructions:
       cookieValues.qwenTTSInstructions || rows.rows?.[0]?.qwen_tts_instructions,
+    cosyvoice35PlusModel:
+      cookieValues.cosyvoice35PlusModel || rows.rows?.[0]?.cosyvoice_35_plus_model,
     cosyvoice35PlusVoiceId:
       cookieValues.cosyvoice35PlusVoiceId || rows.rows?.[0]?.cosyvoice_35_plus_voice_id,
+    cosyvoice35FlashVoiceId:
+      cookieValues.cosyvoice35FlashVoiceId || rows.rows?.[0]?.cosyvoice_35_flash_voice_id,
     cosyvoice35PlusVoiceProfileId:
       cookieValues.cosyvoice35PlusVoiceProfileId || rows.rows?.[0]?.cosyvoice_35_plus_voice_profile_id,
     cosyvoice35PlusSpeed:
@@ -453,6 +464,15 @@ async function synthesizeCosyVoice35PlusTTS(
     enableSSML: Boolean(options.enableSSML),
   });
   const timeoutMs = Number(process.env.COSYVOICE_CLOUD_TIMEOUT_MS || 120000);
+  const startedAt = Date.now();
+  const requestMeta = {
+    model: settings.cosyvoice35PlusModel,
+    profile: settings.cosyvoice35PlusVoiceProfileId,
+    ssml: Boolean(options.enableSSML),
+    textChars: text.length,
+    breakTags: (text.match(/<break\b/g) || []).length,
+  };
+  console.log("[TTS][CosyVoice35] request", requestMeta);
 
   let data: unknown;
   if (shouldUseCosyVoiceCloudCurl()) {
@@ -472,10 +492,16 @@ async function synthesizeCosyVoice35PlusTTS(
 
   const audioUrl = extractCosyVoiceCloudAudioUrl(data);
   if (!audioUrl) {
+    console.warn("[TTS][CosyVoice35] failed", {
+      ...requestMeta,
+      elapsedMs: Date.now() - startedAt,
+      details: getCosyVoiceCloudErrorMessage(data) || null,
+    });
     return new Response(
       JSON.stringify({
-        error: "CosyVoice 3.5 Plus synthesis failed",
+        error: "CosyVoice 3.5 synthesis failed",
         provider: "cosyvoice35plus",
+        model: settings.cosyvoice35PlusModel,
         details:
           getCosyVoiceCloudErrorMessage(data) ||
           (typeof data === "object" ? JSON.stringify(data).slice(0, 500) : String(data)),
@@ -488,6 +514,11 @@ async function synthesizeCosyVoice35PlusTTS(
   }
 
   const audioBuffer = await downloadQwenTTSAudio(audioUrl, timeoutMs);
+  console.log("[TTS][CosyVoice35] ok", {
+    ...requestMeta,
+    elapsedMs: Date.now() - startedAt,
+    bytes: audioBuffer.byteLength,
+  });
   return new Response(new Uint8Array(audioBuffer), {
     status: 200,
     headers: {
@@ -495,6 +526,7 @@ async function synthesizeCosyVoice35PlusTTS(
       "Access-Control-Allow-Origin": "*",
       "Cache-Control": "no-cache",
       "X-TTS-Impl": "cosyvoice35plus",
+      "X-TTS-Model": settings.cosyvoice35PlusModel,
     },
   });
 }
@@ -552,10 +584,17 @@ export async function POST(req: Request) {
         typeof body.qwenTTSInstructions === "string"
           ? body.qwenTTSInstructions
           : persistedSettings.qwenTTSInstructions,
+      cosyvoice35PlusModel: isCosyVoice35Model(body.cosyvoice35PlusModel)
+        ? body.cosyvoice35PlusModel
+        : persistedSettings.cosyvoice35PlusModel,
       cosyvoice35PlusVoiceId:
         typeof body.cosyvoice35PlusVoiceId === "string"
           ? body.cosyvoice35PlusVoiceId
           : persistedSettings.cosyvoice35PlusVoiceId,
+      cosyvoice35FlashVoiceId:
+        typeof body.cosyvoice35FlashVoiceId === "string"
+          ? body.cosyvoice35FlashVoiceId
+          : persistedSettings.cosyvoice35FlashVoiceId,
       cosyvoice35PlusVoiceProfileId: isCosyVoiceVoiceId(body.cosyvoice35PlusVoiceProfileId)
         ? body.cosyvoice35PlusVoiceProfileId
         : persistedSettings.cosyvoice35PlusVoiceProfileId,

@@ -3,8 +3,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildCosyVoice35PlusPayload,
+  COSYVOICE_35_FLASH_CLOUD_MODEL,
   extractCosyVoiceCloudAudioUrl,
   getCosyVoiceCloudErrorMessage,
+  getCosyVoice35CloudModel,
   getCosyVoice35PlusVoiceId,
   getCosyVoiceCloudEndpoint,
   shouldUseCosyVoiceCloudCurl,
@@ -29,6 +31,28 @@ test("builds a CosyVoice 3.5 Plus DashScope payload", () => {
       rate: 1,
       language_hints: ["zh"],
       instruction: "请用轻柔缓慢的冥想语气。",
+    },
+  });
+});
+
+test("uses the selected CosyVoice 3.5 model in payload generation", () => {
+  const settings = normalizeTTSSettings({
+    provider: "cosyvoice35plus",
+    cosyvoice35PlusModel: "cosyvoice-v3.5-flash",
+    cosyvoice35FlashVoiceId: "voice-flash",
+  });
+
+  assert.equal(getCosyVoice35CloudModel(settings), COSYVOICE_35_FLASH_CLOUD_MODEL);
+  assert.deepEqual(buildCosyVoice35PlusPayload("测试", settings), {
+    model: "cosyvoice-v3.5-flash",
+    input: {
+      text: "测试",
+      voice: "voice-flash",
+      format: "wav",
+      sample_rate: 24000,
+      rate: 1,
+      language_hints: ["zh"],
+      instruction: "请用轻柔、缓慢、安定的睡前冥想语气朗读。",
     },
   });
 });
@@ -73,6 +97,22 @@ test("uses env voice id when CosyVoice 3.5 Plus setting is empty", () => {
       COSYVOICE_35_PLUS_VOICE_ID: "env-voice",
     }),
     "env-voice"
+  );
+});
+
+test("uses model-specific env voice id for CosyVoice 3.5 Flash", () => {
+  const settings = normalizeTTSSettings({
+    provider: "cosyvoice35plus",
+    cosyvoice35PlusModel: "cosyvoice-v3.5-flash",
+    cosyvoice35PlusVoiceId: "plus-voice",
+    cosyvoice35FlashVoiceId: "",
+  });
+
+  assert.equal(
+    getCosyVoice35PlusVoiceId(settings, {
+      COSYVOICE_35_FLASH_YUPINGLU_VOICE_ID: "flash-env-voice",
+    }),
+    "flash-env-voice"
   );
 });
 

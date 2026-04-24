@@ -7,10 +7,11 @@ import { cn } from "@/lib/utils";
 import { shouldBypassWebAudioForBackgroundPlayback } from "@/lib/audio-platform";
 import AuthGuard from "@/components/AuthGuard";
 import { saveAudioCache, getAudioCache, hasAudioCache, deleteAudioCache } from "@/lib/audioCache";
+import { deleteCloudAudioCache, getCloudAudioCache, hasCloudAudioCache, saveCloudAudioCache } from "@/lib/cloudAudioCache";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
 import { getApiUrl } from "@/lib/config";
-import { buildCosyVoiceCardSSML } from "@/lib/cosyvoice-card-ssml";
+import { buildCosyVoiceCardSSMLChunks } from "@/lib/cosyvoice-card-ssml";
 import {
     COSYVOICE_PROFILE,
     DEFAULT_COSYVOICE_VOICE_ID,DEFAULT_TTS_PROVIDER,isTTSProvider, normalizeTTSSettings,
@@ -40,6 +41,72 @@ const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
     heavy: { label: "🧘 多引导", color: "bg-purple-500/20 text-purple-300 border-purple-500/20" }
 };
 
+const COSYVOICE_SSML_CHUNK_CONCURRENCY = 4;
+const cloudAudioUploadAttempts = new Set<string>();
+
+function isMeteredTTSProvider(provider: TTSProvider) {
+    return provider === "cosyvoice35plus" || provider === "qwentts";
+}
+
+function buildAudioChunkCacheKey(audioCacheKey: string, chunkIndex: number) {
+    return `${audioCacheKey}::chunk::${chunkIndex}`;
+}
+
+async function deleteAudioChunkCaches(audioCacheKey: string, content: string) {
+    const chunks = buildCosyVoiceCardSSMLChunks(content);
+    const chunkIndexes = chunks
+        .map((chunk, index) => (chunk.type === "ssml" ? index : null))
+        .filter((index): index is number => index !== null);
+
+    await Promise.all(
+        chunkIndexes.map(async (index) => {
+            try {
+                await deleteAudioCache(buildAudioChunkCacheKey(audioCacheKey, index));
+            } catch (error) {
+                console.warn(`[AudioCache] 删除分块缓存失败: ${index}`, error);
+            }
+        })
+    );
+}
+
+async function getAudioCacheWithCloud(audioCacheKey: string) {
+    const localBlob = await getAudioCache(audioCacheKey);
+    if (localBlob) {
+        queueCloudAudioCacheUpload(audioCacheKey, localBlob);
+        return localBlob;
+    }
+
+    const cloudBlob = await getCloudAudioCache(audioCacheKey);
+    if (!cloudBlob) return null;
+
+    await saveAudioCache(audioCacheKey, cloudBlob).catch((error) => {
+        console.warn("[AudioCache] 云端缓存回填 IndexedDB 失败", error);
+    });
+    return cloudBlob;
+}
+
+async function saveAudioCacheWithCloud(audioCacheKey: string, blob: Blob) {
+    await saveAudioCache(audioCacheKey, blob);
+    cloudAudioUploadAttempts.add(audioCacheKey);
+    const uploaded = await saveCloudAudioCache(audioCacheKey, blob);
+    if (!uploaded) cloudAudioUploadAttempts.delete(audioCacheKey);
+}
+
+async function deleteAudioCacheEverywhere(audioCacheKey: string) {
+    await deleteAudioCache(audioCacheKey);
+    cloudAudioUploadAttempts.delete(audioCacheKey);
+    await deleteCloudAudioCache(audioCacheKey);
+}
+
+function queueCloudAudioCacheUpload(audioCacheKey: string, blob: Blob) {
+    if (cloudAudioUploadAttempts.has(audioCacheKey)) return;
+    cloudAudioUploadAttempts.add(audioCacheKey);
+
+    void saveCloudAudioCache(audioCacheKey, blob).then((uploaded) => {
+        if (!uploaded) cloudAudioUploadAttempts.delete(audioCacheKey);
+    });
+}
+
 const hashCacheSignature = (value: string) => {
     let hash = 5381;
     for (let i = 0; i < value.length; i++) {
@@ -48,18 +115,51 @@ const hashCacheSignature = (value: string) => {
     return (hash >>> 0).toString(36);
 };
 
-const buildAudioCacheKey = (cardId: string, settings: TTSSettings) => {
-    if (settings.provider === "edge") {
-        return `edge:${cardId}`;
+const buildAudioCacheKey = (card: Pick<TTSCard, "id" | "content" | "voice_id" | "rate">, settings: TTSSettings) => {
+    const baseSignature = {
+        provider: settings.provider,
+        contentHash: hashCacheSignature(card.content),
+        cardVoiceId: card.voice_id,
+        cardRate: card.rate || "0%",
+    };
+
+    let providerSettings: Record<string, unknown> = {};
+
+    if (settings.provider === "cosyvoice") {
+        providerSettings = {
+            speed: settings.cosyvoiceSpeed,
+            instruction: settings.cosyvoiceInstruction.trim(),
+            seed: settings.cosyvoiceSeed,
+            voiceId: settings.cosyvoiceVoiceId,
+        };
+    } else if (settings.provider === "qwentts") {
+        providerSettings = {
+            model: settings.qwenTTSModel,
+            voice: settings.qwenTTSVoice,
+            voiceMode: settings.qwenTTSVoiceMode,
+            cloneVoiceId: settings.qwenTTSCloneVoiceId,
+            cloneVoiceCloudId: settings.qwenTTSCloneVoiceCloudId.trim(),
+            speed: settings.qwenTTSSpeed,
+            languageType: settings.qwenTTSLanguageType,
+            instructions: settings.qwenTTSInstructions.trim(),
+        };
+    } else if (settings.provider === "cosyvoice35plus") {
+        providerSettings = {
+            model: settings.cosyvoice35PlusModel,
+            plusVoiceId: settings.cosyvoice35PlusVoiceId.trim(),
+            flashVoiceId: settings.cosyvoice35FlashVoiceId.trim(),
+            voiceProfileId: settings.cosyvoice35PlusVoiceProfileId,
+            speed: settings.cosyvoice35PlusSpeed,
+            instruction: settings.cosyvoice35PlusInstruction.trim(),
+            languageHint: settings.cosyvoice35PlusLanguageHint,
+        };
     }
 
     const signature = hashCacheSignature(JSON.stringify({
-        speed: settings.cosyvoiceSpeed,
-        instruction: settings.cosyvoiceInstruction.trim(),
-        seed: settings.cosyvoiceSeed,
-        voiceId: settings.cosyvoiceVoiceId,
+        ...baseSignature,
+        ...providerSettings,
     }));
-    return `cosyvoice:${signature}:${cardId}`;
+    return `${settings.provider}:${signature}:${card.id}`;
 };
 
 // -----------------------------------------------------------------------------
@@ -560,6 +660,98 @@ const applyFadeIn = (audioBuffer: AudioBuffer, fadeDurationMs: number = 30) => {
     }
 };
 
+const encodeWAV = (audioBuffer: AudioBuffer): ArrayBuffer => {
+    const numChannels = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const format = 1;
+    const bitDepth = 16;
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const length = audioBuffer.length;
+    const buffer = new ArrayBuffer(44 + length * blockAlign);
+    const view = new DataView(buffer);
+
+    const writeString = (offset: number, str: string) => {
+        for (let i = 0; i < str.length; i++) {
+            view.setUint8(offset + i, str.charCodeAt(i));
+        }
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + length * blockAlign, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, format, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitDepth, true);
+    writeString(36, 'data');
+    view.setUint32(40, length * blockAlign, true);
+
+    let offset = 44;
+    const channels: Float32Array[] = [];
+    for (let i = 0; i < numChannels; i++) {
+        channels.push(audioBuffer.getChannelData(i));
+    }
+
+    for (let i = 0; i < length; i++) {
+        for (let ch = 0; ch < numChannels; ch++) {
+            const sample = Math.max(-1, Math.min(1, channels[ch][i]));
+            const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+            view.setInt16(offset, int16, true);
+            offset += 2;
+        }
+    }
+
+    return buffer;
+};
+
+const mergeAudioBuffersToWavBlob = (
+    ctx: AudioContext,
+    buffers: AudioBuffer[],
+    numberOfChannels: number,
+    sampleRate: number
+) => {
+    const totalLength = buffers.reduce((sum, buf) => sum + buf.length, 0);
+    const mergedBuffer = ctx.createBuffer(numberOfChannels, totalLength, sampleRate);
+
+    for (let channel = 0; channel < numberOfChannels; channel++) {
+        const channelData = mergedBuffer.getChannelData(channel);
+        let offset = 0;
+
+        for (const buf of buffers) {
+            const sourceChannel = Math.min(channel, buf.numberOfChannels - 1);
+            const data = buf.getChannelData(sourceChannel);
+            channelData.set(data, offset);
+            offset += buf.length;
+        }
+    }
+
+    return new Blob([encodeWAV(mergedBuffer)], { type: 'audio/wav' });
+};
+
+const runLimitedConcurrency = async <T,>(
+    items: T[],
+    limit: number,
+    worker: (item: T, index: number) => Promise<void>
+) => {
+    const workerCount = Math.min(Math.max(1, limit), items.length);
+    let nextIndex = 0;
+
+    await Promise.all(
+        Array.from({ length: workerCount }, async () => {
+            while (nextIndex < items.length) {
+                const currentIndex = nextIndex;
+                nextIndex++;
+                await worker(items[currentIndex], currentIndex);
+            }
+        })
+    );
+};
+
 // -----------------------------------------------------------------------------
 // Component: TTS Card with Audio Logic
 // -----------------------------------------------------------------------------
@@ -683,7 +875,7 @@ function TTSCardItem({
     const [showCardMenu, setShowCardMenu] = useState(false);
     const [deleteCacheConfirm, setDeleteCacheConfirm] = useState(false); // iOS的确认弹窗
     const [useCachedPlayback, setUseCachedPlayback] = useState(true); // 默认使用缓存播放
-    const audioCacheKey = buildAudioCacheKey(card.id, ttsSettings);
+    const audioCacheKey = buildAudioCacheKey(card, ttsSettings);
 
     // 播放进度状态 (用于缓存音频)
     const [playbackProgress, setPlaybackProgress] = useState({ currentTime: 0, duration: 0 });
@@ -710,20 +902,30 @@ function TTSCardItem({
         // 防止重复检测
         if (hasCheckedCacheRef.current) return;
         hasCheckedCacheRef.current = true;
+        let cancelled = false;
 
         hasAudioCache(audioCacheKey).then(async (exists) => {
+            if (cancelled) return;
             setHasCachedAudio(exists);
             if (exists) {
                 try {
                     const blob = await getAudioCache(audioCacheKey);
-                    if (blob) {
+                    if (blob && !cancelled) {
                         const duration = await getBlobDuration(blob);
-                        setAudioDuration(duration);
+                        if (!cancelled) setAudioDuration(duration);
                     }
                 } catch (e) {
                     console.error("Failed to get audio duration via cache", e);
                 }
             } else {
+                const cloudExists = await hasCloudAudioCache(audioCacheKey);
+                if (cancelled) return;
+                if (cloudExists) {
+                    setHasCachedAudio(true);
+                    console.log(`[TTSCard] 卡片 "${card.title || card.id}" 命中云端音频缓存，播放时回填本地。`);
+                    return;
+                }
+
                 // ✨ 统一等待手动点击合成，不再自动合成
                 if (synthesizingCardsSet.has(card.id)) {
                     setIsSynthesizing(true); // 显示合成状态
@@ -732,6 +934,10 @@ function TTSCardItem({
                 }
             }
         });
+
+        return () => {
+            cancelled = true;
+        };
     }, [audioCacheKey, card.id, ttsSettings.provider]);
 
     // Refs
@@ -966,6 +1172,10 @@ function TTSCardItem({
         maxConcurrent: number = 2,
         onProgress?: (loaded: number, total: number) => void
     ) => {
+        if (isMeteredTTSProvider(ttsSettings.provider)) {
+            return;
+        }
+
         const ctx = initAudioContext(); // Use init, DO NOT resume here to avoid unpausing
         if (!ctx) return;
 
@@ -997,6 +1207,13 @@ function TTSCardItem({
                         cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
                         cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
                         cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
+                        cosyvoice35PlusModel: ttsSettings.cosyvoice35PlusModel,
+                        cosyvoice35PlusVoiceId: ttsSettings.cosyvoice35PlusVoiceId,
+                        cosyvoice35FlashVoiceId: ttsSettings.cosyvoice35FlashVoiceId,
+                        cosyvoice35PlusVoiceProfileId: ttsSettings.cosyvoice35PlusVoiceProfileId,
+                        cosyvoice35PlusSpeed: ttsSettings.cosyvoice35PlusSpeed,
+                        cosyvoice35PlusInstruction: ttsSettings.cosyvoice35PlusInstruction,
+                        cosyvoice35PlusLanguageHint: ttsSettings.cosyvoice35PlusLanguageHint,
                         cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,voice: item.voiceId,
                         rate: item.rate
                     }),
@@ -1226,43 +1443,126 @@ function TTSCardItem({
 
         try {
             if (ttsSettings.provider === "cosyvoice35plus") {
-                updateSynthesisProgress(card.id, { current: 0, total: 1 });
+                const ssmlChunks = buildCosyVoiceCardSSMLChunks(card.content);
+                const ssmlAudioChunks = ssmlChunks.filter((chunk) => chunk.type === "ssml");
+                updateSynthesisProgress(card.id, { current: 0, total: ssmlAudioChunks.length });
 
                 try {
-                    const ssml = buildCosyVoiceCardSSML(card.content);
-                    const res = await fetchWithRetry("/api/tts", {
-                        method: "POST",
-                        body: JSON.stringify({
-                            text: ssml,
-                            provider: ttsSettings.provider,
-                            cosyvoice35PlusVoiceId: ttsSettings.cosyvoice35PlusVoiceId,
-                            cosyvoice35PlusVoiceProfileId: ttsSettings.cosyvoice35PlusVoiceProfileId,
-                            cosyvoice35PlusSpeed: ttsSettings.cosyvoice35PlusSpeed,
-                            cosyvoice35PlusInstruction: ttsSettings.cosyvoice35PlusInstruction,
-                            cosyvoice35PlusLanguageHint: ttsSettings.cosyvoice35PlusLanguageHint,
-                            enableSSML: true,
-                        }),
+                    const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+                    const ctx = new AC();
+                    type AudioOrPause = AudioBuffer | { type: "pause"; duration: number };
+                    const isPauseChunk = (buf: AudioOrPause): buf is { type: "pause"; duration: number } =>
+                        "type" in buf && buf.type === "pause";
+                    const audioBuffers: AudioOrPause[] = new Array(ssmlChunks.length);
+                    let completedAudioChunks = 0;
+                    const ssmlWork = ssmlChunks
+                        .map((chunk, index) => ({ chunk, index }))
+                        .filter((item): item is { chunk: { type: "ssml"; ssml: string }; index: number } => item.chunk.type === "ssml");
+
+                    ssmlChunks.forEach((chunk, index) => {
+                        if (chunk.type === "pause") {
+                            audioBuffers[index] = { type: "pause", duration: chunk.durationSeconds };
+                        }
                     });
 
-                    if (!res || !res.ok) {
-                        throw new Error(`SSML synth failed: ${res?.status || "no-response"}`);
+                    console.log(
+                        `[Synthesize] CosyVoice SSML 分块: ${ssmlAudioChunks.length} 段音频 + ${ssmlChunks.length - ssmlAudioChunks.length} 段本地静音，并发 ${COSYVOICE_SSML_CHUNK_CONCURRENCY}`
+                    );
+
+                    await runLimitedConcurrency(ssmlWork, COSYVOICE_SSML_CHUNK_CONCURRENCY, async ({ chunk, index }) => {
+                        const startedAt = performance.now();
+                        const chunkCacheKey = buildAudioChunkCacheKey(audioCacheKey, index);
+                        const cachedChunkBlob = await getAudioCache(chunkCacheKey);
+                        if (cachedChunkBlob) {
+                            try {
+                                const arrayBuffer = await cachedChunkBlob.arrayBuffer();
+                                const decoded = await ctx.decodeAudioData(arrayBuffer);
+                                audioBuffers[index] = decoded;
+                                completedAudioChunks++;
+                                console.log(`[Synthesize] SSML chunk ${completedAudioChunks}/${ssmlAudioChunks.length} 命中分块缓存`);
+                                updateSynthesisProgress(card.id, {
+                                    current: completedAudioChunks,
+                                    total: ssmlAudioChunks.length,
+                                });
+                                return;
+                            } catch (error) {
+                                console.warn(`[Synthesize] SSML chunk ${index} 分块缓存损坏，删除后重新合成`, error);
+                                await deleteAudioCache(chunkCacheKey).catch(() => undefined);
+                            }
+                        }
+
+                        const res = await fetchWithRetry("/api/tts", {
+                            method: "POST",
+                            body: JSON.stringify({
+                                text: chunk.ssml,
+                                provider: ttsSettings.provider,
+                                cosyvoice35PlusModel: ttsSettings.cosyvoice35PlusModel,
+                                cosyvoice35PlusVoiceId: ttsSettings.cosyvoice35PlusVoiceId,
+                                cosyvoice35FlashVoiceId: ttsSettings.cosyvoice35FlashVoiceId,
+                                cosyvoice35PlusVoiceProfileId: ttsSettings.cosyvoice35PlusVoiceProfileId,
+                                cosyvoice35PlusSpeed: ttsSettings.cosyvoice35PlusSpeed,
+                                cosyvoice35PlusInstruction: ttsSettings.cosyvoice35PlusInstruction,
+                                cosyvoice35PlusLanguageHint: ttsSettings.cosyvoice35PlusLanguageHint,
+                                enableSSML: true,
+                            }),
+                        });
+
+                        if (!res || !res.ok) {
+                            const details = res ? await res.text().catch(() => "") : "";
+                            throw new Error(
+                                `SSML synth failed: ${res?.status || "no-response"} ${details}`.trim()
+                            );
+                        }
+
+                        const arrayBuffer = await res.arrayBuffer();
+                        const chunkBlob = new Blob([arrayBuffer], { type: "audio/wav" });
+                        const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0));
+                        applyFadeIn(decoded, 30);
+                        await saveAudioCache(chunkCacheKey, chunkBlob);
+                        audioBuffers[index] = decoded;
+                        completedAudioChunks++;
+                        console.log(
+                            `[Synthesize] SSML chunk ${completedAudioChunks}/${ssmlAudioChunks.length} 完成，用时 ${Math.round(performance.now() - startedAt)}ms`
+                        );
+                        updateSynthesisProgress(card.id, {
+                            current: completedAudioChunks,
+                            total: ssmlAudioChunks.length,
+                        });
+                    });
+
+                    const firstAudioBuffer = audioBuffers.find((buf): buf is AudioBuffer => Boolean(buf && (buf as AudioBuffer).sampleRate));
+                    const actualSampleRate = firstAudioBuffer?.sampleRate || 24000;
+                    const numberOfChannels = audioBuffers.reduce((maxChannels, buf) => {
+                        if (!buf || isPauseChunk(buf)) return maxChannels;
+                        return Math.max(maxChannels, (buf as AudioBuffer).numberOfChannels);
+                    }, 1);
+
+                    const finalBuffers: AudioBuffer[] = [];
+                    for (const buf of audioBuffers) {
+                        if (!buf) continue;
+                        if (isPauseChunk(buf)) {
+                            const samples = Math.floor(actualSampleRate * buf.duration);
+                            finalBuffers.push(ctx.createBuffer(numberOfChannels, samples, actualSampleRate));
+                        } else {
+                            finalBuffers.push(buf);
+                        }
                     }
 
-                    const blob = await res.blob();
-                    await saveAudioCache(audioCacheKey, blob);
+                    const mergedBlob = await mergeAudioBuffersToWavBlob(ctx, finalBuffers, numberOfChannels, actualSampleRate);
+                    await saveAudioCacheWithCloud(audioCacheKey, mergedBlob);
                     setHasCachedAudio(true);
                     setCachedAudioUrl((prev) => {
                         if (prev?.startsWith("blob:")) {
                             URL.revokeObjectURL(prev);
                         }
-                        return URL.createObjectURL(blob);
+                        return URL.createObjectURL(mergedBlob);
                     });
-                    updateSynthesisProgress(card.id, { current: 1, total: 1 });
-                    console.log("[Synthesize] ✅ CosyVoice 3.5 Plus SSML 合成完成并已缓存");
+                    updateSynthesisProgress(card.id, { current: ssmlAudioChunks.length, total: ssmlAudioChunks.length });
+                    console.log(`[Synthesize] ✅ ${ttsSettings.cosyvoice35PlusModel} SSML 分块合成完成并已缓存`);
                     triggerSuccess();
                     return;
                 } catch (ssmlError) {
-                    console.warn("[Synthesize] CosyVoice 3.5 Plus SSML 快路径失败，回退逐段模式", ssmlError);
+                    console.warn("[Synthesize] CosyVoice 3.5 SSML 快路径失败，回退逐段模式", ssmlError);
                 }
             }
 
@@ -1320,6 +1620,13 @@ function TTSCardItem({
                                 cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
                                 cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
                                 cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
+                                cosyvoice35PlusModel: ttsSettings.cosyvoice35PlusModel,
+                                cosyvoice35PlusVoiceId: ttsSettings.cosyvoice35PlusVoiceId,
+                                cosyvoice35FlashVoiceId: ttsSettings.cosyvoice35FlashVoiceId,
+                                cosyvoice35PlusVoiceProfileId: ttsSettings.cosyvoice35PlusVoiceProfileId,
+                                cosyvoice35PlusSpeed: ttsSettings.cosyvoice35PlusSpeed,
+                                cosyvoice35PlusInstruction: ttsSettings.cosyvoice35PlusInstruction,
+                                cosyvoice35PlusLanguageHint: ttsSettings.cosyvoice35PlusLanguageHint,
                                 cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,voice: seg.voiceId,
                                 rate: seg.rate
                             }),
@@ -1379,85 +1686,12 @@ function TTSCardItem({
 
             // ✅ 移除结尾静音 - 使用 crossfade 代替
 
-            const totalLength = finalBuffers.reduce((sum, buf) => sum + buf.length, 0);
-            const mergedBuffer = ctx.createBuffer(numberOfChannels, totalLength, actualSampleRate);
+            const blob = mergeAudioBuffersToWavBlob(ctx, finalBuffers, numberOfChannels, actualSampleRate);
 
-            // 逐声道拼接
-            for (let channel = 0; channel < numberOfChannels; channel++) {
-                const channelData = mergedBuffer.getChannelData(channel);
-                let offset = 0;
-
-                for (const buf of finalBuffers) {
-                    // 如果源音频声道数少于目标，使用第一个声道
-                    const sourceChannel = Math.min(channel, buf.numberOfChannels - 1);
-                    const data = buf.getChannelData(sourceChannel);
-                    channelData.set(data, offset);
-                    offset += buf.length;
-                }
-            }
-
-            // 5. 手动编码为 WAV 格式（比 toWav 库更可靠）
-            const encodeWAV = (audioBuffer: AudioBuffer): ArrayBuffer => {
-                const numChannels = audioBuffer.numberOfChannels;
-                const sampleRate = audioBuffer.sampleRate;
-                const format = 1; // PCM
-                const bitDepth = 16;
-
-                const bytesPerSample = bitDepth / 8;
-                const blockAlign = numChannels * bytesPerSample;
-
-                // 获取交错的音频数据
-                const length = audioBuffer.length;
-                const buffer = new ArrayBuffer(44 + length * blockAlign);
-                const view = new DataView(buffer);
-
-                // WAV 文件头
-                const writeString = (offset: number, str: string) => {
-                    for (let i = 0; i < str.length; i++) {
-                        view.setUint8(offset + i, str.charCodeAt(i));
-                    }
-                };
-
-                writeString(0, 'RIFF');
-                view.setUint32(4, 36 + length * blockAlign, true);
-                writeString(8, 'WAVE');
-                writeString(12, 'fmt ');
-                view.setUint32(16, 16, true); // fmt chunk size
-                view.setUint16(20, format, true);
-                view.setUint16(22, numChannels, true);
-                view.setUint32(24, sampleRate, true);
-                view.setUint32(28, sampleRate * blockAlign, true);
-                view.setUint16(32, blockAlign, true);
-                view.setUint16(34, bitDepth, true);
-                writeString(36, 'data');
-                view.setUint32(40, length * blockAlign, true);
-
-                // 写入音频数据（交错格式）
-                let offset = 44;
-                const channels: Float32Array[] = [];
-                for (let i = 0; i < numChannels; i++) {
-                    channels.push(audioBuffer.getChannelData(i));
-                }
-
-                for (let i = 0; i < length; i++) {
-                    for (let ch = 0; ch < numChannels; ch++) {
-                        const sample = Math.max(-1, Math.min(1, channels[ch][i]));
-                        const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
-                        view.setInt16(offset, int16, true);
-                        offset += 2;
-                    }
-                }
-
-                return buffer;
-            };
-
-            const wavArrayBuffer = encodeWAV(mergedBuffer);
-            const blob = new Blob([wavArrayBuffer], { type: 'audio/wav' });
-
-            console.log("[Synthesize] WAV 大小:", (wavArrayBuffer.byteLength / 1024).toFixed(1), "KB");
+            console.log("[Synthesize] WAV 大小:", (blob.size / 1024).toFixed(1), "KB");
 
             // 保存到 IndexedDB
-            await saveAudioCache(audioCacheKey, blob);
+            await saveAudioCacheWithCloud(audioCacheKey, blob);
             setHasCachedAudio(true);
 
             // 创建可播放的 URL
@@ -1571,7 +1805,7 @@ function TTSCardItem({
         const textSegments = segments.filter(s => s.type === 'text') as Extract<QueueItem, { type: 'text' }>[];
         const bufferTarget = Math.min(INITIAL_BUFFER_COUNT, textSegments.length);
 
-        if (bufferTarget > 0) {
+        if (bufferTarget > 0 && !isMeteredTTSProvider(ttsSettings.provider)) {
             setIsBuffering(true);
             setBufferProgress({ loaded: 0, total: bufferTarget });
             console.log(`[TTS] 🚀 开始初始缓冲，目标: ${bufferTarget} 个片段`);
@@ -1593,6 +1827,13 @@ function TTSCardItem({
                                 cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
                                 cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
                                 cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
+                                cosyvoice35PlusModel: ttsSettings.cosyvoice35PlusModel,
+                                cosyvoice35PlusVoiceId: ttsSettings.cosyvoice35PlusVoiceId,
+                                cosyvoice35FlashVoiceId: ttsSettings.cosyvoice35FlashVoiceId,
+                                cosyvoice35PlusVoiceProfileId: ttsSettings.cosyvoice35PlusVoiceProfileId,
+                                cosyvoice35PlusSpeed: ttsSettings.cosyvoice35PlusSpeed,
+                                cosyvoice35PlusInstruction: ttsSettings.cosyvoice35PlusInstruction,
+                                cosyvoice35PlusLanguageHint: ttsSettings.cosyvoice35PlusLanguageHint,
                                 cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,voice: item.voiceId,
                                 rate: item.rate
                             }),
@@ -1726,7 +1967,7 @@ function TTSCardItem({
         setIsLoadingAudio(true);
         try {
             // 从 IndexedDB 获取缓存
-            const cachedBlob = await getAudioCache(audioCacheKey);
+            const cachedBlob = await getAudioCacheWithCloud(audioCacheKey);
             if (!cachedBlob) {
                 console.warn("[Play] 缓存不存在，回退到流式播放");
                 setIsLoadingAudio(false);
@@ -2085,7 +2326,7 @@ function TTSCardItem({
                                                         onClick={async (e) => {
                                                             e.stopPropagation();
                                                             setShowCardMenu(false);
-                                                            const blob = await getAudioCache(audioCacheKey);
+                                                            const blob = await getAudioCacheWithCloud(audioCacheKey);
                                                             if (blob) {
                                                                 const filename = `${card.title || '未命名'}_合成音频.wav`;
                                                                 // 尝试使用 Web Share API (iOS 支持更好)
@@ -2378,7 +2619,10 @@ function TTSCardItem({
                                 <button
                                     onClick={async () => {
                                         triggerHeavy();
-                                        await deleteAudioCache(audioCacheKey);
+                                        await deleteAudioCacheEverywhere(audioCacheKey);
+                                        if (ttsSettings.provider === "cosyvoice35plus") {
+                                            await deleteAudioChunkCaches(audioCacheKey, card.content);
+                                        }
                                         setHasCachedAudio(false);
                                         setCachedAudioUrl(null);
                                         setDeleteCacheConfirm(false);
@@ -2652,7 +2896,7 @@ export default function TTSStudioPage() {
 
         // 尝试获取缓存并播放
         try {
-            const blob = await getAudioCache(buildAudioCacheKey(card.id, ttsSettings));
+            const blob = await getAudioCacheWithCloud(buildAudioCacheKey(card, ttsSettings));
             if (blob && playerAudioRef.current) {
                 const url = URL.createObjectURL(blob);
                 playerAudioRef.current.src = url;
@@ -2701,12 +2945,13 @@ export default function TTSStudioPage() {
 
         if (activeCategory === 'emotion-body-scan' && activeSubCategory !== 'all') {
             list = list.filter(card => {
-                if (activeSubCategory === 'quick') return card.title.includes('⚡');
-                if (activeSubCategory === 'basic') return card.title.includes('⚖️') || card.title.includes('🧘‍♀️');
-                if (activeSubCategory === 'deep') return card.title.includes('🌌') || card.title.includes('🛡️') || card.title.includes('🌬️');
-                if (activeSubCategory === 'sleep') return card.title.includes('💤');
-                if (activeSubCategory === 'visual') return card.title.includes('🌿');
-                if (activeSubCategory === 'active') return card.title.includes('🏃');
+                const title = card.title || "";
+                if (activeSubCategory === 'quick') return title.includes('⚡');
+                if (activeSubCategory === 'basic') return title.includes('⚖️') || title.includes('🧘‍♀️');
+                if (activeSubCategory === 'deep') return title.includes('🌌') || title.includes('🛡️') || title.includes('🌬️');
+                if (activeSubCategory === 'sleep') return title.includes('💤');
+                if (activeSubCategory === 'visual') return title.includes('🌿');
+                if (activeSubCategory === 'active') return title.includes('🏃');
                 return true;
             });
         }
@@ -3003,7 +3248,7 @@ export default function TTSStudioPage() {
                                 >
                                     {displayCards.map((card: TTSCard, index: number) => (
                                         <TTSCardItem
-                                            key={buildAudioCacheKey(card.id, ttsSettings)}
+                                            key={buildAudioCacheKey(card, ttsSettings)}
                                             card={card}
                                             onDelete={handleDelete}
                                             onEdit={handleEdit}

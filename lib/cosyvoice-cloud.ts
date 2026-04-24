@@ -3,6 +3,7 @@ import type { TTSSettings } from "./tts-settings";
 export const DEFAULT_COSYVOICE_CLOUD_BASE_URL = "https://dashscope.aliyuncs.com/api/v1";
 export const COSYVOICE_CLOUD_TTS_PATH = "/services/audio/tts/SpeechSynthesizer";
 export const COSYVOICE_35_PLUS_CLOUD_MODEL = "cosyvoice-v3.5-plus";
+export const COSYVOICE_35_FLASH_CLOUD_MODEL = "cosyvoice-v3.5-flash";
 
 export type CosyVoiceCloudPayload = {
   model: string;
@@ -43,13 +44,19 @@ export function getCosyVoice35PlusVoiceId(
   settings: TTSSettings,
   env: NodeJS.ProcessEnv = process.env
 ) {
-  const envProfileKey = `COSYVOICE_35_PLUS_${settings.cosyvoice35PlusVoiceProfileId.toUpperCase()}_VOICE_ID`;
+  const isFlash = settings.cosyvoice35PlusModel === COSYVOICE_35_FLASH_CLOUD_MODEL;
+  const envPrefix = isFlash ? "COSYVOICE_35_FLASH" : "COSYVOICE_35_PLUS";
+  const envProfileKey = `${envPrefix}_${settings.cosyvoice35PlusVoiceProfileId.toUpperCase()}_VOICE_ID`;
   return (
-    settings.cosyvoice35PlusVoiceId ||
+    (isFlash ? settings.cosyvoice35FlashVoiceId : settings.cosyvoice35PlusVoiceId) ||
     env[envProfileKey] ||
-    env.COSYVOICE_35_PLUS_VOICE_ID ||
+    env[`${envPrefix}_VOICE_ID`] ||
     settings.cosyvoice35PlusVoiceProfileId
   );
+}
+
+export function getCosyVoice35CloudModel(settings: TTSSettings) {
+  return settings.cosyvoice35PlusModel || COSYVOICE_35_PLUS_CLOUD_MODEL;
 }
 
 export function buildCosyVoice35PlusPayload(
@@ -59,7 +66,7 @@ export function buildCosyVoice35PlusPayload(
   options: BuildCosyVoice35PlusPayloadOptions = {}
 ): CosyVoiceCloudPayload {
   return {
-    model: COSYVOICE_35_PLUS_CLOUD_MODEL,
+    model: getCosyVoice35CloudModel(settings),
     input: {
       text,
       voice: voiceId,

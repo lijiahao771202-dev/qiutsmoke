@@ -1,5 +1,6 @@
 export type TTSProvider = "edge" | "cosyvoice" | "qwentts" | "cosyvoice35plus";
 export type CosyVoiceVoiceId = "yupinglu" | "tea";
+export type CosyVoice35Model = "cosyvoice-v3.5-plus" | "cosyvoice-v3.5-flash";
 export type QwenTTSVoiceMode = "system" | "clone";
 export type QwenTTSLanguageType = "Chinese" | "English";
 export type CosyVoice35PlusLanguageHint = "zh" | "en";
@@ -33,7 +34,9 @@ export type TTSSettings = {
   qwenTTSSpeed: number;
   qwenTTSLanguageType: QwenTTSLanguageType;
   qwenTTSInstructions: string;
+  cosyvoice35PlusModel: CosyVoice35Model;
   cosyvoice35PlusVoiceId: string;
+  cosyvoice35FlashVoiceId: string;
   cosyvoice35PlusVoiceProfileId: CosyVoiceVoiceId;
   cosyvoice35PlusSpeed: number;
   cosyvoice35PlusInstruction: string;
@@ -59,6 +62,12 @@ export type QwenTTSVoiceOption = {
   description: string;
 };
 
+export type CosyVoice35ModelOption = {
+  id: CosyVoice35Model;
+  label: string;
+  description: string;
+};
+
 export const DEFAULT_TTS_PROVIDER: TTSProvider = "cosyvoice";
 export const DEFAULT_COSYVOICE_SPEED = 0.9;
 export const DEFAULT_COSYVOICE_SEED = 0;
@@ -75,7 +84,9 @@ export const DEFAULT_QWEN_TTS_SPEED = 1;
 export const DEFAULT_QWEN_TTS_LANGUAGE_TYPE: QwenTTSLanguageType = "Chinese";
 export const DEFAULT_QWEN_TTS_INSTRUCTIONS = DEFAULT_COSYVOICE_INSTRUCTION;
 
+export const DEFAULT_COSYVOICE_35_PLUS_MODEL: CosyVoice35Model = "cosyvoice-v3.5-plus";
 export const DEFAULT_COSYVOICE_35_PLUS_VOICE_ID = "";
+export const DEFAULT_COSYVOICE_35_FLASH_VOICE_ID = "";
 export const DEFAULT_COSYVOICE_35_PLUS_VOICE_PROFILE_ID: CosyVoiceVoiceId = "yupinglu";
 export const DEFAULT_COSYVOICE_35_PLUS_SPEED = 1;
 export const DEFAULT_COSYVOICE_35_PLUS_INSTRUCTION = "请用轻柔、缓慢、安定的睡前冥想语气朗读。";
@@ -176,18 +187,31 @@ export const QWEN_TTS_VOICES: readonly QwenTTSVoiceOption[] = [
   { id: "Li", label: "Li", description: "中文自然" },
 ] as const;
 
+export const COSYVOICE_35_MODELS: readonly CosyVoice35ModelOption[] = [
+  {
+    id: "cosyvoice-v3.5-plus",
+    label: "CosyVoice 3.5 Plus",
+    description: "高质量成品档，支持克隆、自然语言指令和硬语速，价格更高。",
+  },
+  {
+    id: "cosyvoice-v3.5-flash",
+    label: "CosyVoice 3.5 Flash",
+    description: "预览和频繁重合成更合适，支持克隆、自然语言指令和硬语速，价格更低。",
+  },
+] as const;
+
 export const TTS_PROVIDER_LABELS: Record<TTSProvider, string> = {
   edge: "EdgeTTS",
   cosyvoice: "CosyVoice3",
   qwentts: "Qwen-TTS",
-  cosyvoice35plus: "CosyVoice 3.5 Plus",
+  cosyvoice35plus: "CosyVoice 3.5",
 };
 
 export const TTS_PROVIDER_DESCRIPTIONS: Record<TTSProvider, string> = {
   edge: "浏览器兼容性最好，零配置。",
   cosyvoice: "本地 CosyVoice3，自然语言控制。",
   qwentts: "阿里 Qwen-TTS，可选系统音色或 VC 克隆。",
-  cosyvoice35plus: "阿里 CosyVoice 3.5 Plus，支持克隆、自然语言和硬语速。",
+  cosyvoice35plus: "阿里 CosyVoice 3.5，可切换 Plus / Flash，支持克隆、自然语言和硬语速。",
 };
 
 export const COSYVOICE_PROFILE = {
@@ -219,6 +243,10 @@ export function isQwenTTSLanguageType(value: unknown): value is QwenTTSLanguageT
 
 export function isCosyVoice35PlusLanguageHint(value: unknown): value is CosyVoice35PlusLanguageHint {
   return value === "zh" || value === "en";
+}
+
+export function isCosyVoice35Model(value: unknown): value is CosyVoice35Model {
+  return value === "cosyvoice-v3.5-plus" || value === "cosyvoice-v3.5-flash";
 }
 
 export function isQwenTTSModel(value: unknown): value is QwenTTSModel {
@@ -301,7 +329,11 @@ export function normalizeTTSSettings(input: TTSSettingsInput): TTSSettings {
       ? input.qwenTTSLanguageType
       : DEFAULT_QWEN_TTS_LANGUAGE_TYPE,
     qwenTTSInstructions: normalizeInstruction(input.qwenTTSInstructions, DEFAULT_QWEN_TTS_INSTRUCTIONS),
+    cosyvoice35PlusModel: isCosyVoice35Model(input.cosyvoice35PlusModel)
+      ? input.cosyvoice35PlusModel
+      : DEFAULT_COSYVOICE_35_PLUS_MODEL,
     cosyvoice35PlusVoiceId: normalizeString(input.cosyvoice35PlusVoiceId, DEFAULT_COSYVOICE_35_PLUS_VOICE_ID),
+    cosyvoice35FlashVoiceId: normalizeString(input.cosyvoice35FlashVoiceId, DEFAULT_COSYVOICE_35_FLASH_VOICE_ID),
     cosyvoice35PlusVoiceProfileId: isCosyVoiceVoiceId(input.cosyvoice35PlusVoiceProfileId)
       ? input.cosyvoice35PlusVoiceProfileId
       : DEFAULT_COSYVOICE_35_PLUS_VOICE_PROFILE_ID,

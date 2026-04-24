@@ -22,12 +22,13 @@ import {
 } from "@/lib/cosyvoice-cloud";
 
 const DEFAULT_COSYVOICE_BASE_URL = "http://127.0.0.1:50000";
-const DEFAULT_TIMEOUT_MS = 8000;
+const DEFAULT_TIMEOUT_MS = 30000;
 
 async function testLocalCosyVoice() {
   const baseUrl = process.env.COSYVOICE_BASE_URL || DEFAULT_COSYVOICE_BASE_URL;
+  const timeoutMs = Number(process.env.COSYVOICE_HEALTH_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${baseUrl.replace(/\/$/, "")}/api/cosyvoice/health`, {
@@ -146,6 +147,7 @@ async function testCosyVoice35Plus(settings: TTSSettings) {
       {
         ok: false,
         provider: "cosyvoice35plus",
+        model: settings.cosyvoice35PlusModel,
         error:
           getCosyVoiceCloudErrorMessage(data) ||
           (typeof data === "object" ? JSON.stringify(data).slice(0, 500) : String(data)),
@@ -157,6 +159,7 @@ async function testCosyVoice35Plus(settings: TTSSettings) {
   return NextResponse.json({
     ok: true,
     provider: "cosyvoice35plus",
+    model: settings.cosyvoice35PlusModel,
     audioUrl,
   });
 }

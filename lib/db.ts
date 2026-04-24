@@ -30,7 +30,9 @@ export async function ensureTables() {
     qwen_tts_speed double precision,
     qwen_tts_language_type text,
     qwen_tts_instructions text,
+    cosyvoice_35_plus_model text,
     cosyvoice_35_plus_voice_id text,
+    cosyvoice_35_flash_voice_id text,
     cosyvoice_35_plus_voice_profile_id text,
     cosyvoice_35_plus_speed double precision,
     cosyvoice_35_plus_instruction text,
@@ -54,7 +56,9 @@ export async function ensureTables() {
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_speed double precision`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_language_type text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_instructions text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_35_plus_model text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_35_plus_voice_id text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_35_flash_voice_id text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_35_plus_voice_profile_id text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_35_plus_speed double precision`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_35_plus_instruction text`;

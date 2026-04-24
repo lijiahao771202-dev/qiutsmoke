@@ -2,10 +2,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  COSYVOICE_35_MODELS,
   COSYVOICE_INSTRUCTION_PRESETS,
   COSYVOICE_PROFILE,
   COSYVOICE_VOICE_PROFILES,
   DEFAULT_COSYVOICE_INSTRUCTION,
+  DEFAULT_COSYVOICE_35_PLUS_MODEL,
   DEFAULT_COSYVOICE_SEED,
   DEFAULT_COSYVOICE_SPEED,
   DEFAULT_COSYVOICE_VOICE_ID,
@@ -26,6 +28,7 @@ test("defaults to cosyvoice and cosyvoice defaults when values are missing or in
   assert.equal(defaults.cosyvoiceSeed, DEFAULT_COSYVOICE_SEED);
   assert.equal(defaults.cosyvoiceVoiceId, DEFAULT_COSYVOICE_VOICE_ID);
   assert.equal(defaults.qwenTTSModel, "qwen3-tts-instruct-flash");
+  assert.equal(defaults.cosyvoice35PlusModel, DEFAULT_COSYVOICE_35_PLUS_MODEL);
   assert.equal(defaults.cosyvoice35PlusLanguageHint, "zh");
 
   const invalid = normalizeTTSSettings({
@@ -73,4 +76,24 @@ test("accepts cosyvoice provider and normalizes runtime controls", () => {
   assert.equal(COSYVOICE_PROFILE.speed, DEFAULT_COSYVOICE_SPEED);
   assert.equal(COSYVOICE_PROFILE.stream, true);
   assert.equal(COSYVOICE_PROFILE.cloneAudioName, "玉屏路 9_16k_mono.wav");
+});
+
+test("accepts CosyVoice 3.5 plus and flash model selection", () => {
+  assert.equal(COSYVOICE_35_MODELS.length, 2);
+  assert.equal(COSYVOICE_35_MODELS[0].id, "cosyvoice-v3.5-plus");
+  assert.equal(COSYVOICE_35_MODELS[1].id, "cosyvoice-v3.5-flash");
+
+  const flash = normalizeTTSSettings({
+    provider: "cosyvoice35plus",
+    cosyvoice35PlusModel: "cosyvoice-v3.5-flash",
+    cosyvoice35FlashVoiceId: "  flash-voice  ",
+  });
+  assert.equal(flash.cosyvoice35PlusModel, "cosyvoice-v3.5-flash");
+  assert.equal(flash.cosyvoice35FlashVoiceId, "flash-voice");
+
+  const invalid = normalizeTTSSettings({
+    provider: "cosyvoice35plus",
+    cosyvoice35PlusModel: "not-a-model",
+  });
+  assert.equal(invalid.cosyvoice35PlusModel, DEFAULT_COSYVOICE_35_PLUS_MODEL);
 });

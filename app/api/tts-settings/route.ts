@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { sql } from "@vercel/postgres";
 import { ensureTables, hasDb } from "@/lib/db";
-import { normalizeTTSSettings } from "@/lib/tts-settings";
+import { normalizeTTSSettings, type TTSSettings } from "@/lib/tts-settings";
 
 async function ensureUid() {
   const jar = await cookies();
@@ -30,12 +30,29 @@ function readCookieSettings(jar: Awaited<ReturnType<typeof cookies>>) {
     qwenTTSSpeed: jar.get("qwen_tts_speed")?.value,
     qwenTTSLanguageType: jar.get("qwen_tts_language_type")?.value,
     qwenTTSInstructions: jar.get("qwen_tts_instructions")?.value,
+    cosyvoice35PlusModel: jar.get("cosyvoice_35_plus_model")?.value,
     cosyvoice35PlusVoiceId: jar.get("cosyvoice_35_plus_voice_id")?.value,
+    cosyvoice35FlashVoiceId: jar.get("cosyvoice_35_flash_voice_id")?.value,
     cosyvoice35PlusVoiceProfileId: jar.get("cosyvoice_35_plus_voice_profile_id")?.value,
     cosyvoice35PlusSpeed: jar.get("cosyvoice_35_plus_speed")?.value,
     cosyvoice35PlusInstruction: jar.get("cosyvoice_35_plus_instruction")?.value,
     cosyvoice35PlusLanguageHint: jar.get("cosyvoice_35_plus_language_hint")?.value,
   });
+}
+
+function getEnvVoiceId(prefix: "COSYVOICE_35_PLUS" | "COSYVOICE_35_FLASH", profileId: string) {
+  const profileKey = `${prefix}_${profileId.toUpperCase()}_VOICE_ID`;
+  return process.env[profileKey] || process.env[`${prefix}_VOICE_ID`] || "";
+}
+
+function applyServerVoiceDefaults(settings: TTSSettings): TTSSettings {
+  return {
+    ...settings,
+    cosyvoice35PlusVoiceId:
+      settings.cosyvoice35PlusVoiceId || getEnvVoiceId("COSYVOICE_35_PLUS", settings.cosyvoice35PlusVoiceProfileId),
+    cosyvoice35FlashVoiceId:
+      settings.cosyvoice35FlashVoiceId || getEnvVoiceId("COSYVOICE_35_FLASH", settings.cosyvoice35PlusVoiceProfileId),
+  };
 }
 
 function setTTSCookies(res: NextResponse, settings: ReturnType<typeof normalizeTTSSettings>) {
@@ -53,7 +70,9 @@ function setTTSCookies(res: NextResponse, settings: ReturnType<typeof normalizeT
   res.cookies.set("qwen_tts_speed", String(settings.qwenTTSSpeed), { path: "/", maxAge });
   res.cookies.set("qwen_tts_language_type", settings.qwenTTSLanguageType, { path: "/", maxAge });
   res.cookies.set("qwen_tts_instructions", settings.qwenTTSInstructions, { path: "/", maxAge });
+  res.cookies.set("cosyvoice_35_plus_model", settings.cosyvoice35PlusModel, { path: "/", maxAge });
   res.cookies.set("cosyvoice_35_plus_voice_id", settings.cosyvoice35PlusVoiceId, { path: "/", maxAge });
+  res.cookies.set("cosyvoice_35_flash_voice_id", settings.cosyvoice35FlashVoiceId, { path: "/", maxAge });
   res.cookies.set("cosyvoice_35_plus_voice_profile_id", settings.cosyvoice35PlusVoiceProfileId, {
     path: "/",
     maxAge,
@@ -72,7 +91,7 @@ function setTTSCookies(res: NextResponse, settings: ReturnType<typeof normalizeT
 export async function GET() {
   try {
     const { jar, uid, created } = await ensureUid();
-    const cookieSettings = readCookieSettings(jar);
+    const cookieSettings = applyServerVoiceDefaults(readCookieSettings(jar));
 
     if (!hasDb()) {
       const res = NextResponse.json(cookieSettings, { status: 200 });
@@ -99,7 +118,9 @@ export async function GET() {
         qwen_tts_speed,
         qwen_tts_language_type,
         qwen_tts_instructions,
+        cosyvoice_35_plus_model,
         cosyvoice_35_plus_voice_id,
+        cosyvoice_35_flash_voice_id,
         cosyvoice_35_plus_voice_profile_id,
         cosyvoice_35_plus_speed,
         cosyvoice_35_plus_instruction,
@@ -109,7 +130,7 @@ export async function GET() {
     `;
 
     const row = rows.rows?.[0] || {};
-    const settings = normalizeTTSSettings({
+    const settings = applyServerVoiceDefaults(normalizeTTSSettings({
       provider: jar.get("tts_provider")?.value || row.tts_provider,
       cosyvoiceSpeed: jar.get("cosyvoice_speed")?.value || row.cosyvoice_speed,
       cosyvoiceInstruction: jar.get("cosyvoice_instruction")?.value || row.cosyvoice_instruction,
@@ -124,8 +145,11 @@ export async function GET() {
       qwenTTSSpeed: jar.get("qwen_tts_speed")?.value || row.qwen_tts_speed,
       qwenTTSLanguageType: jar.get("qwen_tts_language_type")?.value || row.qwen_tts_language_type,
       qwenTTSInstructions: jar.get("qwen_tts_instructions")?.value || row.qwen_tts_instructions,
+      cosyvoice35PlusModel: jar.get("cosyvoice_35_plus_model")?.value || row.cosyvoice_35_plus_model,
       cosyvoice35PlusVoiceId:
         jar.get("cosyvoice_35_plus_voice_id")?.value || row.cosyvoice_35_plus_voice_id,
+      cosyvoice35FlashVoiceId:
+        jar.get("cosyvoice_35_flash_voice_id")?.value || row.cosyvoice_35_flash_voice_id,
       cosyvoice35PlusVoiceProfileId:
         jar.get("cosyvoice_35_plus_voice_profile_id")?.value || row.cosyvoice_35_plus_voice_profile_id,
       cosyvoice35PlusSpeed: jar.get("cosyvoice_35_plus_speed")?.value || row.cosyvoice_35_plus_speed,
@@ -133,7 +157,7 @@ export async function GET() {
         jar.get("cosyvoice_35_plus_instruction")?.value || row.cosyvoice_35_plus_instruction,
       cosyvoice35PlusLanguageHint:
         jar.get("cosyvoice_35_plus_language_hint")?.value || row.cosyvoice_35_plus_language_hint,
-    });
+    }));
 
     const res = NextResponse.json(settings, { status: 200 });
     if (created) {
@@ -179,7 +203,9 @@ export async function POST(req: Request) {
         qwen_tts_speed,
         qwen_tts_language_type,
         qwen_tts_instructions,
+        cosyvoice_35_plus_model,
         cosyvoice_35_plus_voice_id,
+        cosyvoice_35_flash_voice_id,
         cosyvoice_35_plus_voice_profile_id,
         cosyvoice_35_plus_speed,
         cosyvoice_35_plus_instruction,
@@ -201,7 +227,9 @@ export async function POST(req: Request) {
         ${settings.qwenTTSSpeed},
         ${settings.qwenTTSLanguageType},
         ${settings.qwenTTSInstructions},
+        ${settings.cosyvoice35PlusModel},
         ${settings.cosyvoice35PlusVoiceId},
+        ${settings.cosyvoice35FlashVoiceId},
         ${settings.cosyvoice35PlusVoiceProfileId},
         ${settings.cosyvoice35PlusSpeed},
         ${settings.cosyvoice35PlusInstruction},
@@ -222,7 +250,9 @@ export async function POST(req: Request) {
           qwen_tts_speed = EXCLUDED.qwen_tts_speed,
           qwen_tts_language_type = EXCLUDED.qwen_tts_language_type,
           qwen_tts_instructions = EXCLUDED.qwen_tts_instructions,
+          cosyvoice_35_plus_model = EXCLUDED.cosyvoice_35_plus_model,
           cosyvoice_35_plus_voice_id = EXCLUDED.cosyvoice_35_plus_voice_id,
+          cosyvoice_35_flash_voice_id = EXCLUDED.cosyvoice_35_flash_voice_id,
           cosyvoice_35_plus_voice_profile_id = EXCLUDED.cosyvoice_35_plus_voice_profile_id,
           cosyvoice_35_plus_speed = EXCLUDED.cosyvoice_35_plus_speed,
           cosyvoice_35_plus_instruction = EXCLUDED.cosyvoice_35_plus_instruction,

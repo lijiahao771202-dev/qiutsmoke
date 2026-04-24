@@ -27,10 +27,13 @@ import {
 } from "@/lib/ai-models";
 import {
     COSYVOICE_INSTRUCTION_PRESETS,
+    COSYVOICE_35_MODELS,
     COSYVOICE_PROFILE,
     COSYVOICE_VOICE_PROFILES,
     DEFAULT_COSYVOICE_35_PLUS_INSTRUCTION,
+    DEFAULT_COSYVOICE_35_FLASH_VOICE_ID,
     DEFAULT_COSYVOICE_35_PLUS_LANGUAGE_HINT,
+    DEFAULT_COSYVOICE_35_PLUS_MODEL,
     DEFAULT_COSYVOICE_35_PLUS_SPEED,
     DEFAULT_COSYVOICE_35_PLUS_VOICE_ID,
     DEFAULT_COSYVOICE_35_PLUS_VOICE_PROFILE_ID,
@@ -49,6 +52,7 @@ import {
     TTS_PROVIDER_DESCRIPTIONS,
     TTS_PROVIDER_LABELS,
     isCosyVoice35PlusLanguageHint,
+    isCosyVoice35Model,
     isCosyVoiceVoiceId,
     isQwenTTSCloneModel,
     isQwenTTSInstructionModel,
@@ -59,6 +63,7 @@ import {
     isTTSProvider,
     normalizeTTSSettings,
     type CosyVoice35PlusLanguageHint,
+    type CosyVoice35Model,
     type CosyVoiceVoiceId,
     type QwenTTSLanguageType,
     type QwenTTSModel,
@@ -107,7 +112,9 @@ export default function UserProfile() {
     const [qwenTTSSpeed, setQwenTTSSpeed] = useState<number>(DEFAULT_QWEN_TTS_SPEED);
     const [qwenTTSLanguageType, setQwenTTSLanguageType] = useState<QwenTTSLanguageType>(DEFAULT_QWEN_TTS_LANGUAGE_TYPE);
     const [qwenTTSInstructions, setQwenTTSInstructions] = useState<string>(DEFAULT_QWEN_TTS_INSTRUCTIONS);
+    const [cosyvoice35PlusModel, setCosyvoice35PlusModel] = useState<CosyVoice35Model>(DEFAULT_COSYVOICE_35_PLUS_MODEL);
     const [cosyvoice35PlusVoiceId, setCosyvoice35PlusVoiceId] = useState<string>(DEFAULT_COSYVOICE_35_PLUS_VOICE_ID);
+    const [cosyvoice35FlashVoiceId, setCosyvoice35FlashVoiceId] = useState<string>(DEFAULT_COSYVOICE_35_FLASH_VOICE_ID);
     const [cosyvoice35PlusVoiceProfileId, setCosyvoice35PlusVoiceProfileId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_35_PLUS_VOICE_PROFILE_ID);
     const [cosyvoice35PlusSpeed, setCosyvoice35PlusSpeed] = useState<number>(DEFAULT_COSYVOICE_35_PLUS_SPEED);
     const [cosyvoice35PlusInstruction, setCosyvoice35PlusInstruction] = useState<string>(DEFAULT_COSYVOICE_35_PLUS_INSTRUCTION);
@@ -228,8 +235,14 @@ export default function UserProfile() {
             if (typeof data?.qwenTTSInstructions === "string") {
                 setQwenTTSInstructions(data.qwenTTSInstructions);
             }
+            if (isCosyVoice35Model(data?.cosyvoice35PlusModel)) {
+                setCosyvoice35PlusModel(data.cosyvoice35PlusModel);
+            }
             if (typeof data?.cosyvoice35PlusVoiceId === "string") {
                 setCosyvoice35PlusVoiceId(data.cosyvoice35PlusVoiceId);
+            }
+            if (typeof data?.cosyvoice35FlashVoiceId === "string") {
+                setCosyvoice35FlashVoiceId(data.cosyvoice35FlashVoiceId);
             }
             if (isCosyVoiceVoiceId(data?.cosyvoice35PlusVoiceProfileId)) {
                 setCosyvoice35PlusVoiceProfileId(data.cosyvoice35PlusVoiceProfileId);
@@ -426,7 +439,9 @@ export default function UserProfile() {
                 qwenTTSSpeed,
                 qwenTTSLanguageType,
                 qwenTTSInstructions,
+                cosyvoice35PlusModel,
                 cosyvoice35PlusVoiceId,
+                cosyvoice35FlashVoiceId,
                 cosyvoice35PlusVoiceProfileId,
                 cosyvoice35PlusSpeed,
                 cosyvoice35PlusInstruction,
@@ -452,7 +467,9 @@ export default function UserProfile() {
                 setQwenTTSSpeed(savedSettings.qwenTTSSpeed);
                 setQwenTTSLanguageType(savedSettings.qwenTTSLanguageType);
                 setQwenTTSInstructions(savedSettings.qwenTTSInstructions);
+                setCosyvoice35PlusModel(savedSettings.cosyvoice35PlusModel);
                 setCosyvoice35PlusVoiceId(savedSettings.cosyvoice35PlusVoiceId);
+                setCosyvoice35FlashVoiceId(savedSettings.cosyvoice35FlashVoiceId);
                 setCosyvoice35PlusVoiceProfileId(savedSettings.cosyvoice35PlusVoiceProfileId);
                 setCosyvoice35PlusSpeed(savedSettings.cosyvoice35PlusSpeed);
                 setCosyvoice35PlusInstruction(savedSettings.cosyvoice35PlusInstruction);
@@ -490,7 +507,9 @@ export default function UserProfile() {
             qwenTTSSpeed,
             qwenTTSLanguageType,
             qwenTTSInstructions,
+            cosyvoice35PlusModel,
             cosyvoice35PlusVoiceId,
+            cosyvoice35FlashVoiceId,
             cosyvoice35PlusVoiceProfileId,
             cosyvoice35PlusSpeed,
             cosyvoice35PlusInstruction,
@@ -516,9 +535,10 @@ export default function UserProfile() {
             const data = await res.json().catch(() => ({}));
 
             if (!res.ok || !data?.ok) {
+                const modelHint = typeof data?.model === "string" ? `模型 ${data.model} | ` : "";
                 setTTSTestResult({
                     ok: false,
-                    message: data?.error || `HTTP ${res.status}`,
+                    message: `${modelHint}${data?.error || `HTTP ${res.status}`}`,
                 });
                 return;
             }
@@ -1503,7 +1523,37 @@ export default function UserProfile() {
                                 {ttsProvider === "cosyvoice35plus" && (
                                     <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 space-y-4">
                                         <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3 text-xs text-white/55">
-                                            这是 `克隆音色 + 自然语言指令 + 硬语速` 的云端模式。
+                                            这是 `克隆音色 + 自然语言指令 + 硬语速` 的云端模式。`Plus` 更适合最终成品，
+                                            `Flash` 更适合预览和频繁重合成。
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="block text-sm text-white/85">模型</label>
+                                            <div className="space-y-2">
+                                                {COSYVOICE_35_MODELS.map((model) => {
+                                                    const active = cosyvoice35PlusModel === model.id;
+                                                    return (
+                                                        <button
+                                                            key={model.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setCosyvoice35PlusModel(model.id);
+                                                                setTTSTestResult(null);
+                                                            }}
+                                                            className={cn(
+                                                                "w-full rounded-xl border px-3 py-3 text-left transition-all",
+                                                                active
+                                                                    ? "border-cyan-400/70 bg-cyan-500/10 text-cyan-100"
+                                                                    : "border-white/10 bg-black/10 text-white/70 hover:bg-white/10"
+                                                            )}
+                                                        >
+                                                            <div className="text-sm">{model.label}</div>
+                                                            <div className="mt-1 text-[11px] text-white/40">{model.id}</div>
+                                                            <div className="mt-2 text-[11px] text-white/50">{model.description}</div>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
 
                                         <div className="space-y-2">
@@ -1532,11 +1582,23 @@ export default function UserProfile() {
                                         </div>
 
                                         <div className="space-y-2">
-                                            <label className="block text-sm text-white/85">CosyVoice 3.5 Plus voice_id</label>
+                                            <label className="block text-sm text-white/85">
+                                                {cosyvoice35PlusModel === "cosyvoice-v3.5-flash" ? "Flash voice_id" : "Plus voice_id"}
+                                            </label>
                                             <input
                                                 type="text"
-                                                value={cosyvoice35PlusVoiceId}
-                                                onChange={(e) => setCosyvoice35PlusVoiceId(e.target.value)}
+                                                value={
+                                                    cosyvoice35PlusModel === "cosyvoice-v3.5-flash"
+                                                        ? cosyvoice35FlashVoiceId
+                                                        : cosyvoice35PlusVoiceId
+                                                }
+                                                onChange={(e) => {
+                                                    if (cosyvoice35PlusModel === "cosyvoice-v3.5-flash") {
+                                                        setCosyvoice35FlashVoiceId(e.target.value);
+                                                    } else {
+                                                        setCosyvoice35PlusVoiceId(e.target.value);
+                                                    }
+                                                }}
                                                 className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"
                                             />
                                         </div>

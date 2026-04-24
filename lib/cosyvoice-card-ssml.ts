@@ -1,5 +1,14 @@
 const CARD_TTS_DIRECTIVE_RE = /(\[(?:pause|rate)[^\]]+\])/g;
 const COSYVOICE_SSML_MAX_BREAK_MS = 10_000;
+const COSYVOICE_SSML_MAX_BREAK_SECONDS = COSYVOICE_SSML_MAX_BREAK_MS / 1000;
+
+type CosyVoiceCardSSMLOptions = {
+  splitLongPauses?: boolean;
+};
+
+export type CosyVoiceCardSSMLChunk =
+  | { type: "ssml"; ssml: string }
+  | { type: "pause"; durationSeconds: number };
 
 function escapeXML(text: string) {
   return text
@@ -27,7 +36,11 @@ function parsePauseDirectiveMs(part: string) {
   return Math.round(rawValue);
 }
 
-function renderPauseAsSSML(durationMs: number) {
+function renderPauseAsSSML(durationMs: number, options: CosyVoiceCardSSMLOptions) {
+  if (options.splitLongPauses !== true) {
+    return `<break time="${Math.max(0, durationMs)}ms"/>`;
+  }
+
   let remainingMs = Math.max(0, durationMs);
   const parts: string[] = [];
 
@@ -43,7 +56,10 @@ function renderPauseAsSSML(durationMs: number) {
   return parts.join("");
 }
 
-export function buildCosyVoiceCardSSML(content: string) {
+export function buildCosyVoiceCardSSML(
+  content: string,
+  options: CosyVoiceCardSSMLOptions = {}
+) {
   const parts = content.split(CARD_TTS_DIRECTIVE_RE);
   const ssml: string[] = ["<speak>"];
 
@@ -55,7 +71,7 @@ export function buildCosyVoiceCardSSML(content: string) {
       if (!trimmed.includes("pause")) continue;
       const pauseMs = parsePauseDirectiveMs(trimmed);
       if (pauseMs) {
-        ssml.push(renderPauseAsSSML(pauseMs));
+        ssml.push(renderPauseAsSSML(pauseMs, options));
       }
       continue;
     }
@@ -65,4 +81,45 @@ export function buildCosyVoiceCardSSML(content: string) {
 
   ssml.push("</speak>");
   return ssml.join("");
+}
+
+export function buildCosyVoiceCardSSMLChunks(
+  content: string,
+  maxSSMLBreakSeconds = COSYVOICE_SSML_MAX_BREAK_SECONDS
+): CosyVoiceCardSSMLChunk[] {
+  const maxBreakMs = Math.max(0, Math.round(maxSSMLBreakSeconds * 1000));
+  const parts = content.split(CARD_TTS_DIRECTIVE_RE);
+  const chunks: CosyVoiceCardSSMLChunk[] = [];
+  let ssmlParts: string[] = [];
+
+  const flushSSML = () => {
+    if (ssmlParts.length === 0) return;
+    chunks.push({ type: "ssml", ssml: `<speak>${ssmlParts.join("")}</speak>` });
+    ssmlParts = [];
+  };
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+
+    if (trimmed.startsWith("[")) {
+      if (!trimmed.includes("pause")) continue;
+      const pauseMs = parsePauseDirectiveMs(trimmed);
+      if (!pauseMs) continue;
+
+      if (maxBreakMs > 0 && pauseMs <= maxBreakMs) {
+        ssmlParts.push(`<break time="${pauseMs}ms"/>`);
+        continue;
+      }
+
+      flushSSML();
+      chunks.push({ type: "pause", durationSeconds: pauseMs / 1000 });
+      continue;
+    }
+
+    ssmlParts.push(escapeXML(trimmed));
+  }
+
+  flushSSML();
+  return chunks;
 }
