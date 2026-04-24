@@ -25,6 +25,7 @@ export default function VectorsAdminPage() {
     const [samples, setSamples] = useState<Sample[]>([]);
     const [status, setStatus] = useState<VectorStatus | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [selectedSample, setSelectedSample] = useState<Sample | null>(null);
     
     // Build state
     const [isBuilding, setIsBuilding] = useState(false);
@@ -39,7 +40,7 @@ export default function VectorsAdminPage() {
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch("/api/admin/vectors/list");
+            const res = await fetch("/api/admin/vectors/list?full=true");
             const data = await res.json();
             if (data.ok) {
                 setSamples(data.samples);
@@ -329,7 +330,11 @@ export default function VectorsAdminPage() {
                                 </div>
                             ) : (
                                 samples.map(sample => (
-                                    <div key={sample.id} className="bg-black/40 border border-white/5 hover:border-white/15 p-4 rounded-xl transition-colors group">
+                                    <div 
+                                        key={sample.id} 
+                                        onClick={() => setSelectedSample(sample)}
+                                        className="bg-black/40 border border-white/5 hover:border-white/15 p-4 rounded-xl transition-colors group cursor-pointer"
+                                    >
                                         <div className="flex justify-between items-start mb-2">
                                             <h3 className="font-medium text-white/90 group-hover:text-indigo-300 transition-colors">
                                                 {sample.id}
@@ -352,6 +357,41 @@ export default function VectorsAdminPage() {
 
                 </div>
             </div>
+
+            {/* Modal for viewing sample content */}
+            {selectedSample && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedSample(null)}>
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between p-5 border-b border-white/10 bg-black/20">
+                            <h3 className="text-lg font-medium text-white flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-indigo-400" />
+                                {selectedSample.id}
+                            </h3>
+                            <button 
+                                onClick={() => setSelectedSample(null)}
+                                className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors text-white/60 hover:text-white"
+                            >
+                                <AlertCircle className="w-4 h-4 opacity-0 hidden" /> {/* Placeholder for alignment if needed, using custom close icon */}
+                                <span className="text-sm font-medium px-1">关闭</span>
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-black/10">
+                            <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-white/80">
+                                {selectedSample.content || "正在加载内容或该文件无内容..."}
+                            </pre>
+                        </div>
+                        <div className="p-4 border-t border-white/10 bg-black/20 text-xs text-white/40 flex justify-between">
+                            <span>文件: {selectedSample.filename}</span>
+                            <span>大小: {(selectedSample.size / 1024).toFixed(1)} KB</span>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
             
             <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar {
