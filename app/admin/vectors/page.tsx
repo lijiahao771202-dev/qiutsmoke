@@ -30,6 +30,7 @@ export default function VectorsAdminPage() {
     // Build state
     const [isBuilding, setIsBuilding] = useState(false);
     const [buildProgress, setBuildProgress] = useState("");
+    const [buildProgressPercent, setBuildProgressPercent] = useState<number | null>(null);
     
     // Form state
     const [title, setTitle] = useState("");
@@ -94,6 +95,7 @@ export default function VectorsAdminPage() {
         setIsBuilding(true);
         setMessage(null);
         setBuildProgress("准备拉取完整样本数据...");
+        setBuildProgressPercent(0);
 
         try {
             // 1. 获取包含全文的完整列表
@@ -121,8 +123,12 @@ export default function VectorsAdminPage() {
                 progress_callback: (info: any) => {
                     if (info.status === 'downloading') {
                         setBuildProgress(`正在下载模型: ${info.file} (${Math.round(info.progress || 0)}%)`);
+                        setBuildProgressPercent(info.progress || 0);
                     } else if (info.status === 'ready') {
                         setBuildProgress("模型加载完成，准备生成向量...");
+                        setBuildProgressPercent(100);
+                    } else if (info.status === 'init') {
+                        setBuildProgressPercent(0);
                     }
                 }
             });
@@ -134,6 +140,7 @@ export default function VectorsAdminPage() {
                 if (!sample.content) continue;
                 
                 setBuildProgress(`正在处理 (${i + 1}/${fullSamples.length}): ${sample.id}`);
+                setBuildProgressPercent((i / fullSamples.length) * 100);
                 
                 // 获取 Embedding
                 const output = await extractor(sample.content, { pooling: 'cls', normalize: true });
@@ -147,7 +154,8 @@ export default function VectorsAdminPage() {
                 });
             }
 
-            setBuildProgress("正在保存向量库...");
+            setBuildProgressPercent(100);
+            setBuildProgress("向量生成完成，正在上传保存...");
 
             // 将生成的向量保存到服务器
             const saveRes = await fetch("/api/admin/vectors/build", {
@@ -209,9 +217,19 @@ export default function VectorsAdminPage() {
                             <span>{isBuilding ? "向量构建中..." : "纯本地构建向量库"}</span>
                         </button>
                         {isBuilding && buildProgress && (
-                            <span className="text-xs text-indigo-400 animate-pulse font-mono max-w-[250px] truncate text-right">
-                                {buildProgress}
-                            </span>
+                            <div className="flex flex-col items-end gap-1.5 w-full max-w-[280px]">
+                                <span className="text-xs text-indigo-400 font-mono truncate text-right w-full">
+                                    {buildProgress}
+                                </span>
+                                {buildProgressPercent !== null && (
+                                    <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden shadow-inner">
+                                        <div 
+                                            className="h-full bg-indigo-500 transition-all duration-300 ease-out"
+                                            style={{ width: `${buildProgressPercent}%` }}
+                                        />
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
