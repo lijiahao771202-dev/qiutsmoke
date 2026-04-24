@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ArrowLeft, Database, Plus, RefreshCw, FileText, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -9,6 +9,7 @@ interface Sample {
     id: string;
     filename: string;
     preview: string;
+    content?: string;
     size: number;
     updatedAt: string;
 }
@@ -24,7 +25,10 @@ export default function VectorsAdminPage() {
     const [samples, setSamples] = useState<Sample[]>([]);
     const [status, setStatus] = useState<VectorStatus | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    
+    // Build state
     const [isBuilding, setIsBuilding] = useState(false);
+    const [buildProgress, setBuildProgress] = useState("");
     
     // Form state
     const [title, setTitle] = useState("");
@@ -88,23 +92,79 @@ export default function VectorsAdminPage() {
     const handleBuild = async () => {
         setIsBuilding(true);
         setMessage(null);
+        setBuildProgress("准备拉取完整样本数据...");
 
         try {
-            const res = await fetch("/api/admin/vectors/build", {
-                method: "POST"
-            });
-            const data = await res.json();
+            // 1. 获取包含全文的完整列表
+            const listRes = await fetch("/api/admin/vectors/list?full=true");
+            const listData = await listRes.json();
+            if (!listData.ok || listData.samples.length === 0) {
+                throw new Error("没有可用的样本数据");
+            }
+            const fullSamples: Sample[] = listData.samples;
 
-            if (data.ok) {
-                setMessage({ type: 'success', text: `构建成功！共处理了 ${data.count} 条样本。` });
+            setBuildProgress("初始化本地 AI 引擎 (首次会自动下载模型权重，请耐心等待 1-2 分钟)...");
+
+            // 动态导入避免 SSR 报错，由于我们使用客户端进行向量提取，完全零 API 成本
+            const { pipeline, env } = await import("@xenova/transformers");
+            
+            // 确保使用 CDN 获取模型（国内可用）
+            env.allowLocalModels = false;
+            env.useBrowserCache = true;
+
+            // 加载轻量级中文向量模型
+            const extractor = await pipeline('feature-extraction', 'Xenova/bge-small-zh-v1.5', {
+                progress_callback: (info: any) => {
+                    if (info.status === 'downloading') {
+                        setBuildProgress(`正在下载模型: ${info.file} (${Math.round(info.progress || 0)}%)`);
+                    } else if (info.status === 'ready') {
+                        setBuildProgress("模型加载完成，准备生成向量...");
+                    }
+                }
+            });
+
+            const vectorDB = [];
+            
+            for (let i = 0; i < fullSamples.length; i++) {
+                const sample = fullSamples[i];
+                if (!sample.content) continue;
+                
+                setBuildProgress(`正在处理 (${i + 1}/${fullSamples.length}): ${sample.id}`);
+                
+                // 获取 Embedding
+                const output = await extractor(sample.content, { pooling: 'cls', normalize: true });
+                const embedding = Array.from(output.data);
+                
+                vectorDB.push({
+                    id: sample.id,
+                    tags: [sample.id],
+                    content: sample.content,
+                    embedding: embedding
+                });
+            }
+
+            setBuildProgress("正在保存向量库...");
+
+            // 将生成的向量保存到服务器
+            const saveRes = await fetch("/api/admin/vectors/build", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ vectors: vectorDB })
+            });
+            const saveData = await saveRes.json();
+
+            if (saveData.ok) {
+                setMessage({ type: 'success', text: `构建成功！纯本地处理了 ${saveData.count} 条样本。` });
                 fetchData();
             } else {
-                setMessage({ type: 'error', text: data.error || '构建失败' });
+                throw new Error(saveData.error || '保存向量库失败');
             }
         } catch (error: any) {
-            setMessage({ type: 'error', text: error.message || '网络错误' });
+            console.error(error);
+            setMessage({ type: 'error', text: error.message || '构建过程中发生错误' });
         } finally {
             setIsBuilding(false);
+            setBuildProgress("");
         }
     };
 
@@ -125,24 +185,31 @@ export default function VectorsAdminPage() {
                                 <Database className="w-6 h-6 text-indigo-400" />
                             </div>
                             <div>
-                                <h1 className="text-2xl font-medium tracking-tight">向量知识库管理</h1>
-                                <p className="text-sm text-white/50 mt-1">管理和重构用于 RAG 检索的本地冥想文本样本</p>
+                                <h1 className="text-2xl font-medium tracking-tight">纯本地向量库管理</h1>
+                                <p className="text-sm text-white/50 mt-1">完全不依赖外部 API 的本地终端侧 RAG 向量引擎</p>
                             </div>
                         </div>
                     </div>
                     
-                    <button
-                        onClick={handleBuild}
-                        disabled={isBuilding || isLoading}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:hover:bg-indigo-500 rounded-xl font-medium transition-all shadow-lg shadow-indigo-500/20"
-                    >
-                        {isBuilding ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <RefreshCw className="w-4 h-4" />
+                    <div className="flex flex-col items-end gap-2">
+                        <button
+                            onClick={handleBuild}
+                            disabled={isBuilding || isLoading}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:hover:bg-indigo-500 rounded-xl font-medium transition-all shadow-lg shadow-indigo-500/20"
+                        >
+                            {isBuilding ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <RefreshCw className="w-4 h-4" />
+                            )}
+                            <span>{isBuilding ? "向量构建中..." : "纯本地构建向量库"}</span>
+                        </button>
+                        {isBuilding && buildProgress && (
+                            <span className="text-xs text-indigo-400 animate-pulse font-mono max-w-[250px] truncate text-right">
+                                {buildProgress}
+                            </span>
                         )}
-                        <span>{isBuilding ? "正在构建向量..." : "重新构建向量库"}</span>
-                    </button>
+                    </div>
                 </div>
 
                 {/* Status Bar */}
@@ -228,7 +295,7 @@ export default function VectorsAdminPage() {
 
                             <button
                                 onClick={handleSave}
-                                disabled={isSaving || !title.trim() || !content.trim()}
+                                disabled={isSaving || !title.trim() || !content.trim() || isBuilding}
                                 className="w-full py-3 bg-white/10 hover:bg-white/15 disabled:opacity-50 disabled:hover:bg-white/10 rounded-xl font-medium transition-colors"
                             >
                                 {isSaving ? "保存中..." : "保存文本"}

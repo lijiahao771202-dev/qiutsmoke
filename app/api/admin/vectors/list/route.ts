@@ -5,8 +5,11 @@ import path from "path";
 const RAW_SCRIPTS_DIR = path.join(process.cwd(), 'lib', 'data', 'raw_scripts');
 const VECTORS_FILE = path.join(process.cwd(), 'lib', 'data', 'meditation_vectors.json');
 
-export async function GET() {
+export async function GET(req: Request) {
     try {
+        const { searchParams } = new URL(req.url);
+        const full = searchParams.get('full') === 'true';
+
         const samples = [];
         if (fs.existsSync(RAW_SCRIPTS_DIR)) {
             const files = fs.readdirSync(RAW_SCRIPTS_DIR);
@@ -19,6 +22,7 @@ export async function GET() {
                         id: path.basename(file, path.extname(file)),
                         filename: file,
                         preview: content.substring(0, 100) + (content.length > 100 ? "..." : ""),
+                        content: full ? content : undefined,
                         size: stats.size,
                         updatedAt: stats.mtime.toISOString(),
                     });
