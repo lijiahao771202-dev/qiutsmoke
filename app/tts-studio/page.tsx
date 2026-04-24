@@ -10,6 +10,7 @@ import { saveAudioCache, getAudioCache, hasAudioCache, deleteAudioCache } from "
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
 import { getApiUrl } from "@/lib/config";
+import { buildCosyVoiceCardSSML } from "@/lib/cosyvoice-card-ssml";
 import {
     COSYVOICE_PROFILE,
     DEFAULT_COSYVOICE_VOICE_ID,DEFAULT_TTS_PROVIDER,isTTSProvider, normalizeTTSSettings,
@@ -1224,6 +1225,47 @@ function TTSCardItem({
         updateSynthesisProgress(card.id, { current: 0, total: 0 });
 
         try {
+            if (ttsSettings.provider === "cosyvoice35plus") {
+                updateSynthesisProgress(card.id, { current: 0, total: 1 });
+
+                try {
+                    const ssml = buildCosyVoiceCardSSML(card.content);
+                    const res = await fetchWithRetry("/api/tts", {
+                        method: "POST",
+                        body: JSON.stringify({
+                            text: ssml,
+                            provider: ttsSettings.provider,
+                            cosyvoice35PlusVoiceId: ttsSettings.cosyvoice35PlusVoiceId,
+                            cosyvoice35PlusVoiceProfileId: ttsSettings.cosyvoice35PlusVoiceProfileId,
+                            cosyvoice35PlusSpeed: ttsSettings.cosyvoice35PlusSpeed,
+                            cosyvoice35PlusInstruction: ttsSettings.cosyvoice35PlusInstruction,
+                            cosyvoice35PlusLanguageHint: ttsSettings.cosyvoice35PlusLanguageHint,
+                            enableSSML: true,
+                        }),
+                    });
+
+                    if (!res || !res.ok) {
+                        throw new Error(`SSML synth failed: ${res?.status || "no-response"}`);
+                    }
+
+                    const blob = await res.blob();
+                    await saveAudioCache(audioCacheKey, blob);
+                    setHasCachedAudio(true);
+                    setCachedAudioUrl((prev) => {
+                        if (prev?.startsWith("blob:")) {
+                            URL.revokeObjectURL(prev);
+                        }
+                        return URL.createObjectURL(blob);
+                    });
+                    updateSynthesisProgress(card.id, { current: 1, total: 1 });
+                    console.log("[Synthesize] ✅ CosyVoice 3.5 Plus SSML 合成完成并已缓存");
+                    triggerSuccess();
+                    return;
+                } catch (ssmlError) {
+                    console.warn("[Synthesize] CosyVoice 3.5 Plus SSML 快路径失败，回退逐段模式", ssmlError);
+                }
+            }
+
             // 1. 解析内容为片段
             type SynthSegment =
                 | { type: 'pause', duration: number }

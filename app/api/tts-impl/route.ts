@@ -49,6 +49,7 @@ type TTSRequest = {
   text?: string;
   voice?: string;
   rate?: string;
+  enableSSML?: unknown;
   provider?: unknown;
   cosyvoiceSpeed?: unknown;
   cosyvoiceInstruction?: unknown;
@@ -431,7 +432,11 @@ async function synthesizeQwenTTSAudio(text: string, settings: TTSSettings) {
   });
 }
 
-async function synthesizeCosyVoice35PlusTTS(text: string, settings: TTSSettings) {
+async function synthesizeCosyVoice35PlusTTS(
+  text: string,
+  settings: TTSSettings,
+  options: { enableSSML?: boolean } = {}
+) {
   const apiKey = process.env.DASHSCOPE_API_KEY || process.env.COSYVOICE_CLOUD_API_KEY;
   if (!apiKey) {
     return new Response(
@@ -444,7 +449,9 @@ async function synthesizeCosyVoice35PlusTTS(text: string, settings: TTSSettings)
   }
 
   const endpoint = getCosyVoiceCloudEndpoint();
-  const payload = buildCosyVoice35PlusPayload(text, settings);
+  const payload = buildCosyVoice35PlusPayload(text, settings, undefined, {
+    enableSSML: Boolean(options.enableSSML),
+  });
   const timeoutMs = Number(process.env.COSYVOICE_CLOUD_TIMEOUT_MS || 120000);
 
   let data: unknown;
@@ -569,7 +576,9 @@ export async function POST(req: Request) {
       return synthesizeQwenTTSAudio(text, settings);
     }
     if (provider === "cosyvoice35plus") {
-      return synthesizeCosyVoice35PlusTTS(text, settings);
+      return synthesizeCosyVoice35PlusTTS(text, settings, {
+        enableSSML: body.enableSSML === true,
+      });
     }
 
     const voice = String(body.voice || DEFAULT_VOICE).trim() || DEFAULT_VOICE;
