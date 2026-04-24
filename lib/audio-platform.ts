@@ -2,6 +2,7 @@ export type AudioPlatformDetectionInput = {
   userAgent: string;
   displayModeStandalone: boolean;
   navigatorStandalone: boolean;
+  capacitorNative?: boolean;
 };
 
 export function isIOSLikeUserAgent(userAgent: string): boolean {
@@ -13,6 +14,6 @@ export function shouldBypassWebAudioForBackgroundPlayback(
 ): boolean {
   return (
     isIOSLikeUserAgent(input.userAgent) &&
-    (input.displayModeStandalone || input.navigatorStandalone)
+    (input.displayModeStandalone || input.navigatorStandalone || input.capacitorNative === true)
   );
 }

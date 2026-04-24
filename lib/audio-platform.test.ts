@@ -26,13 +26,23 @@ test("detects iOS-like user agents including iPadOS desktop UA", () => {
   );
 });
 
-test("bypasses Web Audio only for standalone iOS/PWA playback", () => {
+test("bypasses Web Audio for standalone iOS/PWA or Capacitor iOS playback", () => {
   assert.equal(
     shouldBypassWebAudioForBackgroundPlayback({
       userAgent:
         "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
       displayModeStandalone: true,
       navigatorStandalone: false,
+    }),
+    true
+  );
+  assert.equal(
+    shouldBypassWebAudioForBackgroundPlayback({
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      displayModeStandalone: false,
+      navigatorStandalone: false,
+      capacitorNative: true,
     }),
     true
   );

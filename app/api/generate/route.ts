@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { sql } from "@vercel/postgres";
 import { normalizeAISettings } from "../../../lib/ai-models";
 import { buildDeepSeekChatCompletionBody } from "../../../lib/deepseek-chat";
+import { buildAIGenerationTargets } from "@/lib/meditation-script-duration";
 import { ensureTables, hasDb } from "@/lib/db";
 
 function buildDynamicRules(durationMinutes: number, guidanceLevel: string) {
@@ -30,9 +31,11 @@ function buildDynamicRules(durationMinutes: number, guidanceLevel: string) {
 - 引导语与静默保持 1:1 平衡`,
     heavy: `【结构要求：多引导】
 - 持续语音引导，分为多个短段落
+- 至少 ${Math.max(12, durationMinutes * 2)} 个引导段，避免过早结束
 - 每句后短停 [pause 2s] 到 [pause 4s]
 - 段落间 [pause 6s] 到 [pause 10s]
-- 用连续声音牵引注意力`,
+- 用连续声音牵引注意力
+- 如果内容还未接近目标时长，不要提前收尾，继续展开身体扫描、呼吸、觉察与感官描绘`,
   };
 
   return `## 📐 本次生成参数
@@ -50,7 +53,8 @@ ${structureTemplates[guidanceLevel] || structureTemplates.medium}
 1. 开头使用 [rate -10%] 设置舒缓语速
 2. 最终字数必须约 ${estimatedWords} 字
 3. 所有 [pause Xs] 的总和必须约 ${targetPauseSeconds} 秒
-4. 直接输出脚本，不要任何解释或前言`;
+4. 直接输出脚本，不要任何解释或前言
+5. 在达到目标时长之前，禁止提前总结、提前结束或快速收尾`;
 }
 
 function buildSystemPrompt(durationMinutes: number, guidanceLevel: string, systemPrompt?: string) {
@@ -112,7 +116,8 @@ async function resolveStoredAISettings() {
 
 function getUpstreamConfig(
   settings: ReturnType<typeof normalizeAISettings>,
-  key: string
+  key: string,
+  maxTokens: number
 ) {
   const { provider, model } = settings;
   if (provider === "nvidia") {
@@ -128,6 +133,7 @@ function getUpstreamConfig(
           model,
           messages,
           temperature: 0.5,
+          max_tokens: maxTokens,
           stream: true,
         }),
     };
@@ -146,6 +152,7 @@ function getUpstreamConfig(
           model,
           messages,
           stream: true,
+          maxTokens,
           thinkingEnabled: settings.deepseekThinkingEnabled,
           reasoningEffort: settings.deepseekReasoningEffort,
           temperature: 0.6,
@@ -202,7 +209,12 @@ export async function POST(req: Request) {
     }
 
     const finalSystemPrompt = buildSystemPrompt(duration, guidanceLevel, body?.systemPrompt);
-    const upstreamConfig = getUpstreamConfig(effectiveSettings, key);
+    const targets = buildAIGenerationTargets(duration, guidanceLevel);
+    const maxTokens = Math.min(
+      24000,
+      Math.max(4000, Math.ceil(targets.estimatedChars * 2.2))
+    );
+    const upstreamConfig = getUpstreamConfig(effectiveSettings, key, maxTokens);
     const messages = [
       { role: "system", content: finalSystemPrompt },
       { role: "user", content: prompt },
@@ -253,6 +265,8 @@ export async function POST(req: Request) {
       const decoder = new TextDecoder();
       let buffer = "";
       let streamedChars = 0;
+      let finalFinishReason: string | null = null;
+      let completionTokens: number | null = null;
 
       try {
         while (true) {
@@ -272,9 +286,17 @@ export async function POST(req: Request) {
             try {
               const json = JSON.parse(data);
               const content = json?.choices?.[0]?.delta?.content;
+              const finishReason = json?.choices?.[0]?.finish_reason;
+              const usageCompletionTokens = json?.usage?.completion_tokens;
               if (content) {
                 streamedChars += String(content).length;
                 await writer.write(encoder.encode(content));
+              }
+              if (typeof finishReason === "string" && finishReason.length > 0) {
+                finalFinishReason = finishReason;
+              }
+              if (typeof usageCompletionTokens === "number") {
+                completionTokens = usageCompletionTokens;
               }
             } catch (error) {
               console.warn("[Generate API] Failed to parse stream chunk", error);
@@ -304,8 +326,11 @@ export async function POST(req: Request) {
             effectiveSettings.provider === "deepseek" && effectiveSettings.deepseekThinkingEnabled
               ? effectiveSettings.deepseekReasoningEffort
               : null,
+          maxTokens,
           elapsedMs: Date.now() - startedAt,
           streamedChars,
+          finalFinishReason,
+          completionTokens,
         }));
       }
     })();

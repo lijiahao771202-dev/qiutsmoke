@@ -274,7 +274,7 @@ function normalizeSpeed(value: unknown, defaultValue: number) {
         : Number.NaN;
   if (!Number.isFinite(parsed)) return defaultValue;
   const clamped = Math.min(2, Math.max(0.5, parsed));
-  return Math.round(clamped * 10) / 10;
+  return Math.round(clamped * 20) / 20;
 }
 
 function normalizeInstruction(value: unknown, defaultValue: string) {

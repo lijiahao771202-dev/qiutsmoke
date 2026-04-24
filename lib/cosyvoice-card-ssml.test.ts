@@ -68,3 +68,15 @@ test("splits only pauses longer than the SSML break limit into local pause chunk
     },
   ]);
 });
+
+test("splits long prose into multiple SSML chunks before the request grows too large", () => {
+  const text = Array.from({ length: 40 }, (_, index) => `第${index + 1}句呼吸引导，慢慢放松身体。`).join("");
+  const chunks = buildCosyVoiceCardSSMLChunks(text);
+
+  assert.equal(chunks.every((chunk) => chunk.type === "ssml"), true);
+  assert.equal(chunks.length > 1, true);
+  assert.equal(
+    chunks.every((chunk) => chunk.type !== "ssml" || chunk.ssml.length <= 480),
+    true
+  );
+});

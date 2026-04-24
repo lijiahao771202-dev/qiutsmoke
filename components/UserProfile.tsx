@@ -101,6 +101,7 @@ export default function UserProfile() {
     const [aiTestResult, setAITestResult] = useState<{ ok: boolean; message: string } | null>(null);
     const [ttsProvider, setTTSProvider] = useState<TTSProvider>(DEFAULT_TTS_PROVIDER);
     const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
+    const [cosyvoiceSpeedInput, setCosyvoiceSpeedInput] = useState(String(COSYVOICE_PROFILE.speed));
     const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
     const [cosyvoiceSeed, setCosyvoiceSeed] = useState<number>(COSYVOICE_PROFILE.seed);
     const [cosyvoiceVoiceId, setCosyvoiceVoiceId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_VOICE_ID);
@@ -110,6 +111,7 @@ export default function UserProfile() {
     const [qwenTTSCloneVoiceId, setQwenTTSCloneVoiceId] = useState<CosyVoiceVoiceId>(DEFAULT_QWEN_TTS_CLONE_VOICE_ID);
     const [qwenTTSCloneVoiceCloudId, setQwenTTSCloneVoiceCloudId] = useState<string>(DEFAULT_QWEN_TTS_CLONE_VOICE_CLOUD_ID);
     const [qwenTTSSpeed, setQwenTTSSpeed] = useState<number>(DEFAULT_QWEN_TTS_SPEED);
+    const [qwenTTSSpeedInput, setQwenTTSSpeedInput] = useState(String(DEFAULT_QWEN_TTS_SPEED));
     const [qwenTTSLanguageType, setQwenTTSLanguageType] = useState<QwenTTSLanguageType>(DEFAULT_QWEN_TTS_LANGUAGE_TYPE);
     const [qwenTTSInstructions, setQwenTTSInstructions] = useState<string>(DEFAULT_QWEN_TTS_INSTRUCTIONS);
     const [cosyvoice35PlusModel, setCosyvoice35PlusModel] = useState<CosyVoice35Model>(DEFAULT_COSYVOICE_35_PLUS_MODEL);
@@ -117,17 +119,26 @@ export default function UserProfile() {
     const [cosyvoice35FlashVoiceId, setCosyvoice35FlashVoiceId] = useState<string>(DEFAULT_COSYVOICE_35_FLASH_VOICE_ID);
     const [cosyvoice35PlusVoiceProfileId, setCosyvoice35PlusVoiceProfileId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_35_PLUS_VOICE_PROFILE_ID);
     const [cosyvoice35PlusSpeed, setCosyvoice35PlusSpeed] = useState<number>(DEFAULT_COSYVOICE_35_PLUS_SPEED);
+    const [cosyvoice35PlusSpeedInput, setCosyvoice35PlusSpeedInput] = useState(String(DEFAULT_COSYVOICE_35_PLUS_SPEED));
     const [cosyvoice35PlusInstruction, setCosyvoice35PlusInstruction] = useState<string>(DEFAULT_COSYVOICE_35_PLUS_INSTRUCTION);
     const [cosyvoice35PlusLanguageHint, setCosyvoice35PlusLanguageHint] = useState<CosyVoice35PlusLanguageHint>(DEFAULT_COSYVOICE_35_PLUS_LANGUAGE_HINT);
     const [isLoadingTTSSettings, setIsLoadingTTSSettings] = useState(true);
     const [isSavingTTSSettings, setIsSavingTTSSettings] = useState(false);
     const [isTestingTTSSettings, setIsTestingTTSSettings] = useState(false);
     const [ttsTestResult, setTTSTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+    const [ttsSaveResult, setTTSSaveResult] = useState<{ ok: boolean; message: string } | null>(null);
 
     const router = useRouter();
     const dropdownRef = useRef<HTMLDivElement>(null);
     const supabase = createClient();
     const { setWallpaper, wallpaperId } = useBackground();
+
+    const normalizeSpeedInput = (value: string, fallback: number) => {
+        const parsed = Number.parseFloat(value);
+        if (!Number.isFinite(parsed)) return fallback;
+        const clamped = Math.min(2, Math.max(0.5, parsed));
+        return Math.round(clamped * 20) / 20;
+    };
 
     useEffect(() => {
         // 使用 getSession 读取本地 cookie，不发网络请求
@@ -201,6 +212,7 @@ export default function UserProfile() {
             }
             if (typeof data?.cosyvoiceSpeed === "number") {
                 setCosyvoiceSpeed(data.cosyvoiceSpeed);
+                setCosyvoiceSpeedInput(String(data.cosyvoiceSpeed));
             }
             if (typeof data?.cosyvoiceInstruction === "string") {
                 setCosyvoiceInstruction(data.cosyvoiceInstruction);
@@ -228,6 +240,7 @@ export default function UserProfile() {
             }
             if (typeof data?.qwenTTSSpeed === "number") {
                 setQwenTTSSpeed(data.qwenTTSSpeed);
+                setQwenTTSSpeedInput(String(data.qwenTTSSpeed));
             }
             if (isQwenTTSLanguageType(data?.qwenTTSLanguageType)) {
                 setQwenTTSLanguageType(data.qwenTTSLanguageType);
@@ -249,6 +262,7 @@ export default function UserProfile() {
             }
             if (typeof data?.cosyvoice35PlusSpeed === "number") {
                 setCosyvoice35PlusSpeed(data.cosyvoice35PlusSpeed);
+                setCosyvoice35PlusSpeedInput(String(data.cosyvoice35PlusSpeed));
             }
             if (typeof data?.cosyvoice35PlusInstruction === "string") {
                 setCosyvoice35PlusInstruction(data.cosyvoice35PlusInstruction);
@@ -424,10 +438,21 @@ export default function UserProfile() {
 
     const handleSaveTTSSettings = async () => {
         setIsSavingTTSSettings(true);
+        setTTSSaveResult(null);
         try {
+            const normalizedCosyvoiceSpeed = normalizeSpeedInput(cosyvoiceSpeedInput, cosyvoiceSpeed);
+            const normalizedQwenTTSSpeed = normalizeSpeedInput(qwenTTSSpeedInput, qwenTTSSpeed);
+            const normalizedCosyvoice35PlusSpeed = normalizeSpeedInput(cosyvoice35PlusSpeedInput, cosyvoice35PlusSpeed);
+            setCosyvoiceSpeed(normalizedCosyvoiceSpeed);
+            setCosyvoiceSpeedInput(String(normalizedCosyvoiceSpeed));
+            setQwenTTSSpeed(normalizedQwenTTSSpeed);
+            setQwenTTSSpeedInput(String(normalizedQwenTTSSpeed));
+            setCosyvoice35PlusSpeed(normalizedCosyvoice35PlusSpeed);
+            setCosyvoice35PlusSpeedInput(String(normalizedCosyvoice35PlusSpeed));
+
             const nextSettings = normalizeTTSSettings({
                 provider: ttsProvider,
-                cosyvoiceSpeed,
+                cosyvoiceSpeed: normalizedCosyvoiceSpeed,
                 cosyvoiceInstruction,
                 cosyvoiceSeed,
                 cosyvoiceVoiceId,
@@ -436,26 +461,37 @@ export default function UserProfile() {
                 qwenTTSVoiceMode,
                 qwenTTSCloneVoiceId,
                 qwenTTSCloneVoiceCloudId,
-                qwenTTSSpeed,
+                qwenTTSSpeed: normalizedQwenTTSSpeed,
                 qwenTTSLanguageType,
                 qwenTTSInstructions,
                 cosyvoice35PlusModel,
                 cosyvoice35PlusVoiceId,
                 cosyvoice35FlashVoiceId,
                 cosyvoice35PlusVoiceProfileId,
-                cosyvoice35PlusSpeed,
+                cosyvoice35PlusSpeed: normalizedCosyvoice35PlusSpeed,
                 cosyvoice35PlusInstruction,
                 cosyvoice35PlusLanguageHint,
             });
             const res = await fetch(getApiUrl("/api/tts-settings"), {
                 method: "POST",
+                credentials: "include",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(nextSettings),
             });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setTTSSaveResult({
+                    ok: false,
+                    message: typeof data?.error === "string" ? data.error : `保存失败（HTTP ${res.status}）`,
+                });
+                return;
+            }
+
             if (res.ok) {
-                const savedSettings = await res.json().catch(() => nextSettings) as TTSSettings;
-                setTTSProvider(savedSettings.provider);
-                setCosyvoiceSpeed(savedSettings.cosyvoiceSpeed);
+                const savedSettings = normalizeTTSSettings({ ...nextSettings, ...data });
+            setTTSProvider(savedSettings.provider);
+            setCosyvoiceSpeed(savedSettings.cosyvoiceSpeed);
+            setCosyvoiceSpeedInput(String(savedSettings.cosyvoiceSpeed));
                 setCosyvoiceInstruction(savedSettings.cosyvoiceInstruction);
                 setCosyvoiceSeed(savedSettings.cosyvoiceSeed);
                 setCosyvoiceVoiceId(savedSettings.cosyvoiceVoiceId);
@@ -464,14 +500,16 @@ export default function UserProfile() {
                 setQwenTTSVoiceMode(savedSettings.qwenTTSVoiceMode);
                 setQwenTTSCloneVoiceId(savedSettings.qwenTTSCloneVoiceId);
                 setQwenTTSCloneVoiceCloudId(savedSettings.qwenTTSCloneVoiceCloudId);
-                setQwenTTSSpeed(savedSettings.qwenTTSSpeed);
+            setQwenTTSSpeed(savedSettings.qwenTTSSpeed);
+            setQwenTTSSpeedInput(String(savedSettings.qwenTTSSpeed));
                 setQwenTTSLanguageType(savedSettings.qwenTTSLanguageType);
                 setQwenTTSInstructions(savedSettings.qwenTTSInstructions);
                 setCosyvoice35PlusModel(savedSettings.cosyvoice35PlusModel);
                 setCosyvoice35PlusVoiceId(savedSettings.cosyvoice35PlusVoiceId);
                 setCosyvoice35FlashVoiceId(savedSettings.cosyvoice35FlashVoiceId);
                 setCosyvoice35PlusVoiceProfileId(savedSettings.cosyvoice35PlusVoiceProfileId);
-                setCosyvoice35PlusSpeed(savedSettings.cosyvoice35PlusSpeed);
+            setCosyvoice35PlusSpeed(savedSettings.cosyvoice35PlusSpeed);
+            setCosyvoice35PlusSpeedInput(String(savedSettings.cosyvoice35PlusSpeed));
                 setCosyvoice35PlusInstruction(savedSettings.cosyvoice35PlusInstruction);
                 setCosyvoice35PlusLanguageHint(savedSettings.cosyvoice35PlusLanguageHint);
                 if (typeof window !== "undefined") {
@@ -480,10 +518,15 @@ export default function UserProfile() {
                         detail: savedSettings,
                     }));
                 }
-                setShowTTSSettings(false);
+                setTTSSaveResult({ ok: true, message: "已保存，新的 TTS 设置会立即用于合成。" });
+                window.setTimeout(() => setShowTTSSettings(false), 450);
             }
         } catch (error) {
             console.error("Save tts settings failed:", error);
+            setTTSSaveResult({
+                ok: false,
+                message: error instanceof Error ? error.message : "保存失败，请检查网络后重试。",
+            });
         } finally {
             setIsSavingTTSSettings(false);
         }
@@ -1141,16 +1184,16 @@ export default function UserProfile() {
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.9, opacity: 0 }}
                             onClick={(e) => e.stopPropagation()}
-                            className="w-full max-w-lg max-h-[85vh] overflow-hidden glass-panel rounded-3xl border border-white/10 shadow-2xl"
+                            className="flex h-[min(88dvh,760px)] w-full max-w-lg flex-col overflow-hidden glass-panel rounded-3xl border border-white/10 shadow-2xl sm:h-auto sm:max-h-[85vh]"
                         >
-                            <div className="px-6 py-4 border-b border-white/10">
+                            <div className="shrink-0 px-5 py-4 sm:px-6 border-b border-white/10">
                                 <h2 className="text-lg font-medium text-white/90">TTS 引擎选择</h2>
                                 <p className="text-sm text-white/45 mt-1">
                                     首页、冥想和 TTS Studio 的语音合成都走这里的全局设置。
                                 </p>
                             </div>
 
-                            <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(85vh-140px)]">
+                            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4 pb-6 sm:px-6 sm:py-6">
                                 {(["qwentts", "cosyvoice35plus", "cosyvoice", "edge"] as TTSProvider[]).map((provider) => {
                                     const active = ttsProvider === provider;
                                     return (
@@ -1160,6 +1203,7 @@ export default function UserProfile() {
                                             onClick={() => {
                                                 setTTSProvider(provider);
                                                 setTTSTestResult(null);
+                                                setTTSSaveResult(null);
                                             }}
                                             className={cn(
                                                 "w-full rounded-2xl border px-4 py-4 text-left transition-all",
@@ -1249,16 +1293,27 @@ export default function UserProfile() {
                                     <div className="space-y-2">
                                         <label className="block text-sm text-white/85">倍速</label>
                                         <input
-                                            type="number"
-                                            min={0.5}
-                                            max={2}
-                                            step={0.1}
-                                            value={cosyvoiceSpeed}
-                                            onChange={(e) => setCosyvoiceSpeed(Number.parseFloat(e.target.value) || COSYVOICE_PROFILE.speed)}
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={cosyvoiceSpeedInput}
+                                            onChange={(e) => {
+                                                const value = e.target.value.replace(/[，,]/g, ".");
+                                                if (!/^\d*(?:\.\d*)?$/.test(value)) return;
+                                                setCosyvoiceSpeedInput(value);
+                                                const parsed = Number.parseFloat(value);
+                                                if (Number.isFinite(parsed)) {
+                                                    setCosyvoiceSpeed(Math.min(2, Math.max(0.5, parsed)));
+                                                }
+                                            }}
+                                            onBlur={() => {
+                                                const normalized = normalizeSpeedInput(cosyvoiceSpeedInput, cosyvoiceSpeed);
+                                                setCosyvoiceSpeed(normalized);
+                                                setCosyvoiceSpeedInput(String(normalized));
+                                            }}
                                             disabled={ttsProvider !== "cosyvoice"}
                                             className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none disabled:opacity-50"
                                         />
-                                        <div className="text-xs text-white/40">范围 0.5 - 2.0，默认 {COSYVOICE_PROFILE.speed}</div>
+                                        <div className="text-xs text-white/40">范围 0.5 - 2.0，步进 0.05，默认 {COSYVOICE_PROFILE.speed}</div>
                                     </div>
 
                                     <div className="space-y-2">
@@ -1464,12 +1519,23 @@ export default function UserProfile() {
                                                 <div className="space-y-2">
                                                     <label className="block text-sm text-white/85">语速倾向</label>
                                                     <input
-                                                        type="number"
-                                                        min={0.5}
-                                                        max={2}
-                                                        step={0.1}
-                                                        value={qwenTTSSpeed}
-                                                        onChange={(e) => setQwenTTSSpeed(Number.parseFloat(e.target.value) || DEFAULT_QWEN_TTS_SPEED)}
+                                                        type="text"
+                                                        inputMode="decimal"
+                                                        value={qwenTTSSpeedInput}
+                                                        onChange={(e) => {
+                                                            const value = e.target.value.replace(/[，,]/g, ".");
+                                                            if (!/^\d*(?:\.\d*)?$/.test(value)) return;
+                                                            setQwenTTSSpeedInput(value);
+                                                            const parsed = Number.parseFloat(value);
+                                                            if (Number.isFinite(parsed)) {
+                                                                setQwenTTSSpeed(Math.min(2, Math.max(0.5, parsed)));
+                                                            }
+                                                        }}
+                                                        onBlur={() => {
+                                                            const normalized = normalizeSpeedInput(qwenTTSSpeedInput, qwenTTSSpeed);
+                                                            setQwenTTSSpeed(normalized);
+                                                            setQwenTTSSpeedInput(String(normalized));
+                                                        }}
                                                         className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"
                                                     />
                                                 </div>
@@ -1624,14 +1690,26 @@ export default function UserProfile() {
                                             <div className="space-y-2">
                                                 <label className="block text-sm text-white/85">硬语速</label>
                                                 <input
-                                                    type="number"
-                                                    min={0.5}
-                                                    max={2}
-                                                    step={0.1}
-                                                    value={cosyvoice35PlusSpeed}
-                                                    onChange={(e) => setCosyvoice35PlusSpeed(Number.parseFloat(e.target.value) || DEFAULT_COSYVOICE_35_PLUS_SPEED)}
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={cosyvoice35PlusSpeedInput}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value.replace(/[，,]/g, ".");
+                                                        if (!/^\d*(?:\.\d*)?$/.test(value)) return;
+                                                        setCosyvoice35PlusSpeedInput(value);
+                                                        const parsed = Number.parseFloat(value);
+                                                        if (Number.isFinite(parsed)) {
+                                                            setCosyvoice35PlusSpeed(Math.min(2, Math.max(0.5, parsed)));
+                                                        }
+                                                    }}
+                                                    onBlur={() => {
+                                                        const normalized = normalizeSpeedInput(cosyvoice35PlusSpeedInput, cosyvoice35PlusSpeed);
+                                                        setCosyvoice35PlusSpeed(normalized);
+                                                        setCosyvoice35PlusSpeedInput(String(normalized));
+                                                    }}
                                                     className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"
                                                 />
+                                                <div className="text-xs text-white/40">范围 0.5 - 2.0，步进 0.05</div>
                                             </div>
                                         </div>
 
@@ -1725,20 +1803,34 @@ export default function UserProfile() {
                                             {ttsTestResult.message}
                                         </div>
                                     )}
+
+                                    {ttsSaveResult && (
+                                        <div
+                                            className={cn(
+                                                "mt-3 rounded-xl border px-3 py-2 text-xs",
+                                                ttsSaveResult.ok
+                                                    ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                                                    : "border-rose-400/30 bg-rose-500/10 text-rose-200"
+                                            )}
+                                        >
+                                            {ttsSaveResult.message}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
-                            <div className="px-6 py-4 border-t border-white/10 flex gap-3">
+                            <div className="shrink-0 border-t border-white/10 bg-black/20 px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:py-4">
+                                <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
                                 <button
                                     onClick={() => setShowTTSSettings(false)}
-                                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 text-sm transition-colors"
+                                    className="min-h-11 flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 text-sm transition-colors"
                                 >
                                     取消
                                 </button>
                                 <button
                                     onClick={handleTestTTSSettings}
                                     disabled={isTestingTTSSettings}
-                                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                    className="min-h-11 flex-1 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                                 >
                                     {isTestingTTSSettings && <Loader2 className="w-4 h-4 animate-spin" />}
                                     <span>{isTestingTTSSettings ? "测试中..." : "测试连通性"}</span>
@@ -1746,11 +1838,12 @@ export default function UserProfile() {
                                 <button
                                     onClick={handleSaveTTSSettings}
                                     disabled={isSavingTTSSettings}
-                                    className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white text-sm font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                    className="col-span-2 min-h-12 flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white text-sm font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2 sm:col-span-1"
                                 >
                                     {isSavingTTSSettings && <Loader2 className="w-4 h-4 animate-spin" />}
                                     <span>{isSavingTTSSettings ? "保存中..." : "保存"}</span>
                                 </button>
+                                </div>
                             </div>
                         </motion.div>
                     </motion.div>

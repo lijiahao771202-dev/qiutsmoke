@@ -13,8 +13,21 @@ import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
 import { getApiUrl } from "@/lib/config";
 import { buildCosyVoiceCardSSMLChunks } from "@/lib/cosyvoice-card-ssml";
 import {
+    buildAIGenerationTargets,
+    estimateMeditationScriptDurationSeconds,
+    formatDurationMinutes,
+} from "@/lib/meditation-script-duration";
+import { estimateTTSCardPrice, type TTSPriceBadgeTone } from "@/lib/tts-pricing";
+import {
     COSYVOICE_PROFILE,
-    DEFAULT_COSYVOICE_VOICE_ID,DEFAULT_TTS_PROVIDER,isTTSProvider, normalizeTTSSettings,
+    DEFAULT_COSYVOICE_35_FLASH_VOICE_ID,
+    DEFAULT_COSYVOICE_35_PLUS_INSTRUCTION,
+    DEFAULT_COSYVOICE_35_PLUS_LANGUAGE_HINT,
+    DEFAULT_COSYVOICE_35_PLUS_MODEL,
+    DEFAULT_COSYVOICE_35_PLUS_SPEED,
+    DEFAULT_COSYVOICE_35_PLUS_VOICE_ID,
+    DEFAULT_COSYVOICE_35_PLUS_VOICE_PROFILE_ID,
+    DEFAULT_COSYVOICE_VOICE_ID,DEFAULT_TTS_PROVIDER,isCosyVoice35Model,isCosyVoice35PlusLanguageHint,isTTSProvider, normalizeTTSSettings,
     type CosyVoiceVoiceId,type TTSProvider,
     type TTSSettings,
 } from "@/lib/tts-settings";
@@ -41,8 +54,20 @@ const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
     heavy: { label: "🧘 多引导", color: "bg-purple-500/20 text-purple-300 border-purple-500/20" }
 };
 
+const PRICE_BADGE_STYLES: Record<TTSPriceBadgeTone, string> = {
+    free: "bg-sky-500/15 text-sky-200 border-sky-400/20",
+    metered: "bg-amber-500/15 text-amber-200 border-amber-400/20",
+    neutral: "bg-white/10 text-white/70 border-white/10",
+};
+
 const COSYVOICE_SSML_CHUNK_CONCURRENCY = 4;
+const AI_DURATION_OPTIONS = [3, 5, 10, 15, 20, 25, 30, 35, 40] as const;
 const cloudAudioUploadAttempts = new Set<string>();
+
+type FetchResponseError = Error & {
+    status?: number;
+    details?: string;
+};
 
 function isMeteredTTSProvider(provider: TTSProvider) {
     return provider === "cosyvoice35plus" || provider === "qwentts";
@@ -50,6 +75,66 @@ function isMeteredTTSProvider(provider: TTSProvider) {
 
 function buildAudioChunkCacheKey(audioCacheKey: string, chunkIndex: number) {
     return `${audioCacheKey}::chunk::${chunkIndex}`;
+}
+
+function extractErrorDetails(raw: string) {
+    if (!raw) return "";
+
+    try {
+        const data = JSON.parse(raw) as { details?: unknown; error?: unknown; message?: unknown };
+        if (typeof data.details === "string" && data.details.trim()) return data.details.trim();
+        if (typeof data.error === "string" && data.error.trim()) return data.error.trim();
+        if (typeof data.message === "string" && data.message.trim()) return data.message.trim();
+    } catch {
+        // ignore non-json bodies
+    }
+
+    return raw.trim();
+}
+
+function createFetchResponseError(status: number, rawDetails = "") {
+    const details = extractErrorDetails(rawDetails);
+    const suffix = details ? ` ${details}` : "";
+    const error = new Error(`Request failed: ${status}${suffix}`) as FetchResponseError;
+    error.status = status;
+    error.details = details;
+    return error;
+}
+
+function getErrorDetails(error: unknown) {
+    if (error instanceof Error) {
+        const details = (error as FetchResponseError).details;
+        return typeof details === "string" && details.trim() ? details.trim() : error.message;
+    }
+    return typeof error === "string" ? error : "未知错误";
+}
+
+function shouldSurfaceSSMLFailure(error: unknown) {
+    const details = getErrorDetails(error);
+    return /AllocationQuota\.|DASHSCOPE_API_KEY|api key|unauthorized|forbidden|quota|余额|exhausted/i.test(details);
+}
+
+function toHumanReadableSynthesisError(error: unknown) {
+    const details = getErrorDetails(error);
+
+    if (/AllocationQuota\.FreeTierOnly/i.test(details)) {
+        return "CosyVoice 3.5 Flash 免费额度已用完，不是文本太长。去 DashScope 关闭“仅使用免费额度”，或切到 Plus / 其他 TTS 后再试。";
+    }
+
+    if (/DASHSCOPE_API_KEY/i.test(details)) {
+        return "当前缺少 DashScope API Key，CosyVoice 3.5 现在无法合成。";
+    }
+
+    return details || "合成失败，请稍后再试。";
+}
+
+function getShortGenerationMessage(content: string, targetSeconds: number) {
+    const estimatedSeconds = estimateMeditationScriptDurationSeconds(content);
+    if (estimatedSeconds >= targetSeconds * 0.85) {
+        return null;
+    }
+
+    return `这次生成预计约 ${formatDurationMinutes(estimatedSeconds)} 分钟，明显低于目标 ${formatDurationMinutes(targetSeconds)} 分钟。现在已经把单次输出上限调高了，如果你再生成一次，长度会更接近目标。`;
 }
 
 async function deleteAudioChunkCaches(audioCacheKey: string, content: string) {
@@ -317,17 +402,12 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
         setAiGenerating(true);
         setText(""); // 清空现有内容
 
-        // 按 280 字/分钟计算
-        // 动态计算目标字数和停顿时间
-        const totalSeconds = aiDuration * 60;
-        let textRatio = 0.5; // medium default
-
-        if (guidanceLevel === 'light') textRatio = 0.1; // 10% text, 90% pause
-        if (guidanceLevel === 'heavy') textRatio = 0.7; // 70% text, 30% pause
-
-        const targetTextSeconds = Math.round(totalSeconds * textRatio);
-        const targetPauseSeconds = Math.round(totalSeconds * (1 - textRatio));
-        const estimatedWords = Math.round(targetTextSeconds * (260 / 60)); // 260 chars/min
+        const {
+            totalSeconds,
+            targetTextSeconds,
+            targetPauseSeconds,
+            estimatedChars,
+        } = buildAIGenerationTargets(aiDuration, guidanceLevel);
 
         // Auto-fill title if empty
         if (!title.trim()) {
@@ -379,7 +459,7 @@ ${densityRule}
 
 【约束条件】
 - 直接输出脚本内容，不要任何开场白或解释。
-- 最终字数：约 ${estimatedWords} 字。
+- 最终字数：约 ${estimatedChars} 字。
 - 总时长控制：文本约 ${targetTextSeconds} 秒，停顿总时长必须约 ${targetPauseSeconds} 秒（总计 ${totalSeconds} 秒）。
 - 严格执行：请确保 [pause Xs] 的总和接近 ${targetPauseSeconds} 秒。
 - 开头用 [rate -10%] 设置舒缓的基础语速。`;
@@ -390,6 +470,8 @@ ${densityRule}
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     prompt: `${aiPrompt}（目标时长：${aiDuration}分钟）`,
+                    duration: aiDuration,
+                    guidanceLevel,
                     systemPrompt
                 }),
             });
@@ -414,6 +496,10 @@ ${densityRule}
             // 自动设置标题
             if (!title.trim()) {
                 setTitle(aiPrompt.slice(0, 20) + (aiPrompt.length > 20 ? "..." : ""));
+            }
+            const shortGenerationMessage = getShortGenerationMessage(fullContent, totalSeconds);
+            if (shortGenerationMessage) {
+                window.alert(shortGenerationMessage);
             }
             triggerSuccess(); // AI Generation Success
         } catch (e) {
@@ -516,11 +602,11 @@ ${densityRule}
                                                 disabled={aiGenerating}
                                                 title="选择时长"
                                             >
-                                                <option value={3} className="bg-zinc-800">3分钟</option>
-                                                <option value={5} className="bg-zinc-800">5分钟</option>
-                                                <option value={10} className="bg-zinc-800">10分钟</option>
-                                                <option value={15} className="bg-zinc-800">15分钟</option>
-                                                <option value={20} className="bg-zinc-800">20分钟</option>
+                                                {AI_DURATION_OPTIONS.map((duration) => (
+                                                    <option key={duration} value={duration} className="bg-zinc-800">
+                                                        {duration}分钟
+                                                    </option>
+                                                ))}
                                             </select>
                                             <motion.button
                                                 whileHover={{ scale: 1.02 }}
@@ -876,6 +962,10 @@ function TTSCardItem({
     const [deleteCacheConfirm, setDeleteCacheConfirm] = useState(false); // iOS的确认弹窗
     const [useCachedPlayback, setUseCachedPlayback] = useState(true); // 默认使用缓存播放
     const audioCacheKey = buildAudioCacheKey(card, ttsSettings);
+    const priceEstimate = useMemo(
+        () => estimateTTSCardPrice(card, ttsSettings),
+        [card.content, ttsSettings.provider, ttsSettings.cosyvoice35PlusModel]
+    );
 
     // 播放进度状态 (用于缓存音频)
     const [playbackProgress, setPlaybackProgress] = useState({ currentTime: 0, duration: 0 });
@@ -1562,6 +1652,9 @@ function TTSCardItem({
                     triggerSuccess();
                     return;
                 } catch (ssmlError) {
+                    if (shouldSurfaceSSMLFailure(ssmlError)) {
+                        throw ssmlError;
+                    }
                     console.warn("[Synthesize] CosyVoice 3.5 SSML 快路径失败，回退逐段模式", ssmlError);
                 }
             }
@@ -1604,6 +1697,7 @@ function TTSCardItem({
             const audioBuffers: AudioBuffer[] = [];
             let textIndex = 0;
             let actualSampleRate = 24000; // TTS 默认采样率，会在第一个解码后更新
+            const segmentFailures: string[] = [];
 
             for (const seg of segments) {
                 if (seg.type === 'pause') {
@@ -1642,13 +1736,21 @@ function TTSCardItem({
                             // 🎵 应用 50ms 淡入淡出，避免拼接顿挫感
                             applyFadeIn(decoded, 30);
                             audioBuffers.push(decoded);
+                        } else {
+                            const details = res ? await res.text().catch(() => "") : "";
+                            throw createFetchResponseError(res?.status || 500, details);
                         }
                     } catch (e) {
                         console.error("[Synthesize] TTS fetch failed", e);
+                        segmentFailures.push(getErrorDetails(e));
                     }
                     textIndex++;
                     updateSynthesisProgress(card.id, { current: textIndex, total: textSegments.length });
                 }
+            }
+
+            if (segmentFailures.length > 0) {
+                throw new Error(`逐段合成失败：${segmentFailures[0]}`);
             }
 
             // 4. 处理静音并计算总长度
@@ -1703,6 +1805,7 @@ function TTSCardItem({
         } catch (err) {
             console.error("[Synthesize] Error", err);
             triggerError();
+            window.alert(toHumanReadableSynthesisError(err));
         } finally {
             // 🔓 移除全局合成状态
             synthesizingCardsSet.delete(card.id);
@@ -1894,15 +1997,28 @@ function TTSCardItem({
                 const controller = new AbortController();
                 const id = setTimeout(() => controller.abort(), timeout);
 
-                const response = await fetch(url, {
+                const response = await fetch(getApiUrl(url), {
                     ...options,
                     signal: controller.signal
                 });
 
                 clearTimeout(id);
 
-                if (response.status === 504 || response.status === 502) {
-                    throw new Error(`Gateway Timeout/Error: ${response.status}`);
+                if (response.status === 504) {
+                    const details = await response.clone().text().catch(() => "");
+                    throw createFetchResponseError(response.status, details);
+                }
+
+                if (response.status === 502) {
+                    const details = await response.clone().text().catch(() => "");
+                    const contentType = response.headers.get("content-type") || "";
+                    const looksLikeAppJson = contentType.includes("application/json") && details.includes("\"error\"");
+
+                    if (looksLikeAppJson) {
+                        return response;
+                    }
+
+                    throw createFetchResponseError(response.status, details);
                 }
 
                 if (!response.ok) {
@@ -2256,6 +2372,15 @@ function TTSCardItem({
                                         {card.voice_id}
                                     </span>
                                     <span>{card.rate || "Default"}</span>
+                                    <span
+                                        title={priceEstimate.detail}
+                                        className={cn(
+                                            "px-1.5 py-0.5 rounded border font-medium",
+                                            PRICE_BADGE_STYLES[priceEstimate.tone]
+                                        )}
+                                    >
+                                        {priceEstimate.label}
+                                    </span>
                                 </div>
                             </div>
                             <div className="flex items-center gap-1">
@@ -2658,6 +2783,13 @@ export default function TTSStudioPage() {
     const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
     const [cosyvoiceSeed, setCosyvoiceSeed] = useState<number>(COSYVOICE_PROFILE.seed);
     const [cosyvoiceVoiceId, setCosyvoiceVoiceId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_VOICE_ID);// 🚀 iOS 性能优化：延迟动画启动，等待页面完成静态渲染
+    const [cosyvoice35PlusModel, setCosyvoice35PlusModel] = useState(DEFAULT_COSYVOICE_35_PLUS_MODEL);
+    const [cosyvoice35PlusVoiceId, setCosyvoice35PlusVoiceId] = useState(DEFAULT_COSYVOICE_35_PLUS_VOICE_ID);
+    const [cosyvoice35FlashVoiceId, setCosyvoice35FlashVoiceId] = useState(DEFAULT_COSYVOICE_35_FLASH_VOICE_ID);
+    const [cosyvoice35PlusVoiceProfileId, setCosyvoice35PlusVoiceProfileId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_35_PLUS_VOICE_PROFILE_ID);
+    const [cosyvoice35PlusSpeed, setCosyvoice35PlusSpeed] = useState(DEFAULT_COSYVOICE_35_PLUS_SPEED);
+    const [cosyvoice35PlusInstruction, setCosyvoice35PlusInstruction] = useState(DEFAULT_COSYVOICE_35_PLUS_INSTRUCTION);
+    const [cosyvoice35PlusLanguageHint, setCosyvoice35PlusLanguageHint] = useState(DEFAULT_COSYVOICE_35_PLUS_LANGUAGE_HINT);
     const [isMounted, setIsMounted] = useState(false);
     useEffect(() => {
         // 使用 requestAnimationFrame 确保在下一帧启动动画
@@ -2691,7 +2823,29 @@ export default function TTSStudioPage() {
                 }
                 if (data?.cosyvoiceVoiceId === "yupinglu" || data?.cosyvoiceVoiceId === "tea") {
                     setCosyvoiceVoiceId(data.cosyvoiceVoiceId);
-                }} catch { }
+                }
+                if (isCosyVoice35Model(data?.cosyvoice35PlusModel)) {
+                    setCosyvoice35PlusModel(data.cosyvoice35PlusModel);
+                }
+                if (typeof data?.cosyvoice35PlusVoiceId === "string") {
+                    setCosyvoice35PlusVoiceId(data.cosyvoice35PlusVoiceId);
+                }
+                if (typeof data?.cosyvoice35FlashVoiceId === "string") {
+                    setCosyvoice35FlashVoiceId(data.cosyvoice35FlashVoiceId);
+                }
+                if (data?.cosyvoice35PlusVoiceProfileId === "yupinglu" || data?.cosyvoice35PlusVoiceProfileId === "tea") {
+                    setCosyvoice35PlusVoiceProfileId(data.cosyvoice35PlusVoiceProfileId);
+                }
+                if (typeof data?.cosyvoice35PlusSpeed === "number") {
+                    setCosyvoice35PlusSpeed(data.cosyvoice35PlusSpeed);
+                }
+                if (typeof data?.cosyvoice35PlusInstruction === "string") {
+                    setCosyvoice35PlusInstruction(data.cosyvoice35PlusInstruction);
+                }
+                if (isCosyVoice35PlusLanguageHint(data?.cosyvoice35PlusLanguageHint)) {
+                    setCosyvoice35PlusLanguageHint(data.cosyvoice35PlusLanguageHint);
+                }
+            } catch { }
         })();
     }, []);
 
@@ -2712,7 +2866,29 @@ export default function TTSStudioPage() {
             }
             if (detail.cosyvoiceVoiceId === "yupinglu" || detail.cosyvoiceVoiceId === "tea") {
                 setCosyvoiceVoiceId(detail.cosyvoiceVoiceId);
-            }};
+            }
+            if (isCosyVoice35Model(detail.cosyvoice35PlusModel)) {
+                setCosyvoice35PlusModel(detail.cosyvoice35PlusModel);
+            }
+            if (typeof detail.cosyvoice35PlusVoiceId === "string") {
+                setCosyvoice35PlusVoiceId(detail.cosyvoice35PlusVoiceId);
+            }
+            if (typeof detail.cosyvoice35FlashVoiceId === "string") {
+                setCosyvoice35FlashVoiceId(detail.cosyvoice35FlashVoiceId);
+            }
+            if (detail.cosyvoice35PlusVoiceProfileId === "yupinglu" || detail.cosyvoice35PlusVoiceProfileId === "tea") {
+                setCosyvoice35PlusVoiceProfileId(detail.cosyvoice35PlusVoiceProfileId);
+            }
+            if (typeof detail.cosyvoice35PlusSpeed === "number") {
+                setCosyvoice35PlusSpeed(detail.cosyvoice35PlusSpeed);
+            }
+            if (typeof detail.cosyvoice35PlusInstruction === "string") {
+                setCosyvoice35PlusInstruction(detail.cosyvoice35PlusInstruction);
+            }
+            if (isCosyVoice35PlusLanguageHint(detail.cosyvoice35PlusLanguageHint)) {
+                setCosyvoice35PlusLanguageHint(detail.cosyvoice35PlusLanguageHint);
+            }
+        };
 
         window.addEventListener("tts-provider-changed", handleTTSProviderChanged as EventListener);
         return () => {
@@ -2726,6 +2902,13 @@ export default function TTSStudioPage() {
         cosyvoiceInstruction,
         cosyvoiceSeed,
         cosyvoiceVoiceId,
+        cosyvoice35PlusModel,
+        cosyvoice35PlusVoiceId,
+        cosyvoice35FlashVoiceId,
+        cosyvoice35PlusVoiceProfileId,
+        cosyvoice35PlusSpeed,
+        cosyvoice35PlusInstruction,
+        cosyvoice35PlusLanguageHint,
     });
 
     const [editingCard, setEditingCard] = useState<TTSCard | null>(null);
@@ -2775,6 +2958,7 @@ export default function TTSStudioPage() {
             userAgent: window.navigator.userAgent,
             displayModeStandalone: window.matchMedia?.("(display-mode: standalone)")?.matches ?? false,
             navigatorStandalone: (window.navigator as any).standalone === true,
+            capacitorNative: (window as any).Capacitor?.isNativePlatform?.() === true,
         });
     };
 
@@ -3008,17 +3192,12 @@ export default function TTSStudioPage() {
         setAiGeneratingEdit(true);
         setEditContent(""); // 清空现有内容
 
-        // 按 280 字/分钟计算
-        // 动态计算目标字数和停顿时间
-        const totalSeconds = aiDurationEdit * 60;
-        let textRatio = 0.5; // medium default
-
-        if (guidanceLevelEdit === 'light') textRatio = 0.1; // 10% text, 90% pause
-        if (guidanceLevelEdit === 'heavy') textRatio = 0.7; // 70% text, 30% pause
-
-        const targetTextSeconds = Math.round(totalSeconds * textRatio);
-        const targetPauseSeconds = Math.round(totalSeconds * (1 - textRatio));
-        const estimatedWords = Math.round(targetTextSeconds * (260 / 60)); // 260 chars/min
+        const {
+            totalSeconds,
+            targetTextSeconds,
+            targetPauseSeconds,
+            estimatedChars,
+        } = buildAIGenerationTargets(aiDurationEdit, guidanceLevelEdit);
 
         // Auto-fill title if empty
         if (!editTitle.trim()) {
@@ -3070,7 +3249,7 @@ export default function TTSStudioPage() {
 
                                                                     【约束条件】
                                                                     - 直接输出脚本内容，不要任何开场白或解释。
-                                                                    - 最终字数：约 ${estimatedWords} 字。
+                                                                    - 最终字数：约 ${estimatedChars} 字。
                                                                     - 总时长控制：文本约 ${targetTextSeconds} 秒，停顿总时长必须约 ${targetPauseSeconds} 秒（总计 ${totalSeconds} 秒）。
                                                                     - 严格执行：请确保 [pause Xs] 的总和接近 ${targetPauseSeconds} 秒。
                                                                     - 开头用 [rate -10%] 设置舒缓的基础语速。`;
@@ -3081,6 +3260,8 @@ export default function TTSStudioPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     prompt: `${aiPromptEdit}（目标时长：${aiDurationEdit}分钟）`,
+                    duration: aiDurationEdit,
+                    guidanceLevel: guidanceLevelEdit,
                     systemPrompt
                 }),
             });
@@ -3100,6 +3281,10 @@ export default function TTSStudioPage() {
                 const chunk = decoder.decode(value);
                 fullContent += chunk;
                 setEditContent(fullContent);
+            }
+            const shortGenerationMessage = getShortGenerationMessage(fullContent, totalSeconds);
+            if (shortGenerationMessage) {
+                window.alert(shortGenerationMessage);
             }
         } catch (e) {
             console.error("AI 生成失败:", e);
@@ -3339,12 +3524,11 @@ export default function TTSStudioPage() {
                                                     disabled={aiGeneratingEdit}
                                                     title="选择目标时长"
                                                 >
-                                                    <option value={3} className="bg-zinc-800">3分钟</option>
-                                                    <option value={5} className="bg-zinc-800">5分钟</option>
-                                                    <option value={10} className="bg-zinc-800">10分钟</option>
-                                                    <option value={15} className="bg-zinc-800">15分钟</option>
-                                                    <option value={20} className="bg-zinc-800">20分钟</option>
-                                                    <option value={30} className="bg-zinc-800">30分钟</option>
+                                                    {AI_DURATION_OPTIONS.map((duration) => (
+                                                        <option key={duration} value={duration} className="bg-zinc-800">
+                                                            {duration}分钟
+                                                        </option>
+                                                    ))}
                                                 </select>
                                             </div>
                                             <button

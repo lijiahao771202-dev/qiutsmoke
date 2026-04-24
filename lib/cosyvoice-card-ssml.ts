@@ -1,6 +1,8 @@
 const CARD_TTS_DIRECTIVE_RE = /(\[(?:pause|rate)[^\]]+\])/g;
 const COSYVOICE_SSML_MAX_BREAK_MS = 10_000;
 const COSYVOICE_SSML_MAX_BREAK_SECONDS = COSYVOICE_SSML_MAX_BREAK_MS / 1000;
+const COSYVOICE_SSML_MAX_BODY_CHARS = 450;
+const COSYVOICE_SSML_SENTENCE_RE = /[^。！？!?；;，,\n]+[。！？!?；;，,\n]*/g;
 
 type CosyVoiceCardSSMLOptions = {
   splitLongPauses?: boolean;
@@ -91,11 +93,42 @@ export function buildCosyVoiceCardSSMLChunks(
   const parts = content.split(CARD_TTS_DIRECTIVE_RE);
   const chunks: CosyVoiceCardSSMLChunk[] = [];
   let ssmlParts: string[] = [];
+  let ssmlBodyLength = 0;
 
   const flushSSML = () => {
     if (ssmlParts.length === 0) return;
     chunks.push({ type: "ssml", ssml: `<speak>${ssmlParts.join("")}</speak>` });
     ssmlParts = [];
+    ssmlBodyLength = 0;
+  };
+
+  const appendSSMLPart = (part: string) => {
+    if (!part) return;
+    if (ssmlBodyLength > 0 && ssmlBodyLength + part.length > COSYVOICE_SSML_MAX_BODY_CHARS) {
+      flushSSML();
+    }
+    ssmlParts.push(part);
+    ssmlBodyLength += part.length;
+  };
+
+  const splitEscapedText = (text: string) => {
+    const sentences = text.match(COSYVOICE_SSML_SENTENCE_RE) || [text];
+    const pieces: string[] = [];
+
+    for (const sentence of sentences) {
+      const escapedSentence = escapeXML(sentence);
+      if (escapedSentence.length <= COSYVOICE_SSML_MAX_BODY_CHARS) {
+        pieces.push(escapedSentence);
+        continue;
+      }
+
+      const chars = Array.from(sentence);
+      for (let index = 0; index < chars.length; index += COSYVOICE_SSML_MAX_BODY_CHARS) {
+        pieces.push(escapeXML(chars.slice(index, index + COSYVOICE_SSML_MAX_BODY_CHARS).join("")));
+      }
+    }
+
+    return pieces;
   };
 
   for (const part of parts) {
@@ -108,7 +141,7 @@ export function buildCosyVoiceCardSSMLChunks(
       if (!pauseMs) continue;
 
       if (maxBreakMs > 0 && pauseMs <= maxBreakMs) {
-        ssmlParts.push(`<break time="${pauseMs}ms"/>`);
+        appendSSMLPart(`<break time="${pauseMs}ms"/>`);
         continue;
       }
 
@@ -117,7 +150,9 @@ export function buildCosyVoiceCardSSMLChunks(
       continue;
     }
 
-    ssmlParts.push(escapeXML(trimmed));
+    for (const piece of splitEscapedText(trimmed)) {
+      appendSSMLPart(piece);
+    }
   }
 
   flushSSML();
