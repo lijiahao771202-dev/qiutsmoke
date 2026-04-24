@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
-export async function GET(req: Request, { params }: { params: { path: string[] } }) {
+export async function GET(req: Request, props: { params: Promise<{ path: string[] }> }) {
     try {
-        const modelPath = params.path.join('/');
+        const { path } = await props.params;
+        const modelPath = path.join('/');
         const targetUrl = `https://hf-mirror.com/${modelPath}`;
         
         console.log("Proxying model request to:", targetUrl);

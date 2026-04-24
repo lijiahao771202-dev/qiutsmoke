@@ -12,21 +12,8 @@ import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
 import { getApiUrl } from "@/lib/config";
 import {
     COSYVOICE_PROFILE,
-    DEFAULT_COSYVOICE_VOICE_ID,
-    DEFAULT_QWEN_TTS_INSTRUCTIONS,
-    DEFAULT_QWEN_TTS_LANGUAGE_TYPE,
-    DEFAULT_QWEN_TTS_MODEL,
-    DEFAULT_QWEN_TTS_VOICE,
-    DEFAULT_TTS_PROVIDER,
-    isQwenTTSLanguageType,
-    isQwenTTSModel,
-    isQwenTTSVoice,
-    isTTSProvider,
-    type CosyVoiceVoiceId,
-    type QwenTTSLanguageType,
-    type QwenTTSModel,
-    type QwenTTSVoice,
-    type TTSProvider,
+    DEFAULT_COSYVOICE_VOICE_ID,DEFAULT_TTS_PROVIDER,isTTSProvider,
+    type CosyVoiceVoiceId,type TTSProvider,
     type TTSSettings,
 } from "@/lib/tts-settings";
 
@@ -63,16 +50,6 @@ const hashCacheSignature = (value: string) => {
 const buildAudioCacheKey = (cardId: string, settings: TTSSettings) => {
     if (settings.provider === "edge") {
         return `edge:${cardId}`;
-    }
-
-    if (settings.provider === "qwentts") {
-        const signature = hashCacheSignature(JSON.stringify({
-            model: settings.qwenTTSModel,
-            voice: settings.qwenTTSVoice,
-            languageType: settings.qwenTTSLanguageType,
-            instructions: settings.qwenTTSInstructions.trim(),
-        }));
-        return `qwentts:${signature}:${cardId}`;
     }
 
     const signature = hashCacheSignature(JSON.stringify({
@@ -1019,12 +996,7 @@ function TTSCardItem({
                         cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
                         cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
                         cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
-                        cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,
-                        qwenTTSModel: ttsSettings.qwenTTSModel,
-                        qwenTTSVoice: ttsSettings.qwenTTSVoice,
-                        qwenTTSLanguageType: ttsSettings.qwenTTSLanguageType,
-                        qwenTTSInstructions: ttsSettings.qwenTTSInstructions,
-                        voice: item.voiceId,
+                        cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,voice: item.voiceId,
                         rate: item.rate
                     }),
                 });
@@ -1306,12 +1278,7 @@ function TTSCardItem({
                                 cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
                                 cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
                                 cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
-                                cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,
-                                qwenTTSModel: ttsSettings.qwenTTSModel,
-                                qwenTTSVoice: ttsSettings.qwenTTSVoice,
-                                qwenTTSLanguageType: ttsSettings.qwenTTSLanguageType,
-                                qwenTTSInstructions: ttsSettings.qwenTTSInstructions,
-                                voice: seg.voiceId,
+                                cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,voice: seg.voiceId,
                                 rate: seg.rate
                             }),
                         });
@@ -1584,12 +1551,7 @@ function TTSCardItem({
                                 cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
                                 cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
                                 cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
-                                cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,
-                                qwenTTSModel: ttsSettings.qwenTTSModel,
-                                qwenTTSVoice: ttsSettings.qwenTTSVoice,
-                                qwenTTSLanguageType: ttsSettings.qwenTTSLanguageType,
-                                qwenTTSInstructions: ttsSettings.qwenTTSInstructions,
-                                voice: item.voiceId,
+                                cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,voice: item.voiceId,
                                 rate: item.rate
                             }),
                         });
@@ -2409,13 +2371,7 @@ export default function TTSStudioPage() {
     const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
     const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
     const [cosyvoiceSeed, setCosyvoiceSeed] = useState<number>(COSYVOICE_PROFILE.seed);
-    const [cosyvoiceVoiceId, setCosyvoiceVoiceId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_VOICE_ID);
-    const [qwenTTSModel, setQwenTTSModel] = useState<QwenTTSModel>(DEFAULT_QWEN_TTS_MODEL);
-    const [qwenTTSVoice, setQwenTTSVoice] = useState<QwenTTSVoice>(DEFAULT_QWEN_TTS_VOICE);
-    const [qwenTTSLanguageType, setQwenTTSLanguageType] = useState<QwenTTSLanguageType>(DEFAULT_QWEN_TTS_LANGUAGE_TYPE);
-    const [qwenTTSInstructions, setQwenTTSInstructions] = useState<string>(DEFAULT_QWEN_TTS_INSTRUCTIONS);
-
-    // 🚀 iOS 性能优化：延迟动画启动，等待页面完成静态渲染
+    const [cosyvoiceVoiceId, setCosyvoiceVoiceId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_VOICE_ID);// 🚀 iOS 性能优化：延迟动画启动，等待页面完成静态渲染
     const [isMounted, setIsMounted] = useState(false);
     useEffect(() => {
         // 使用 requestAnimationFrame 确保在下一帧启动动画
@@ -2449,20 +2405,7 @@ export default function TTSStudioPage() {
                 }
                 if (data?.cosyvoiceVoiceId === "yupinglu" || data?.cosyvoiceVoiceId === "tea") {
                     setCosyvoiceVoiceId(data.cosyvoiceVoiceId);
-                }
-                if (isQwenTTSModel(data?.qwenTTSModel)) {
-                    setQwenTTSModel(data.qwenTTSModel);
-                }
-                if (isQwenTTSVoice(data?.qwenTTSVoice)) {
-                    setQwenTTSVoice(data.qwenTTSVoice);
-                }
-                if (isQwenTTSLanguageType(data?.qwenTTSLanguageType)) {
-                    setQwenTTSLanguageType(data.qwenTTSLanguageType);
-                }
-                if (typeof data?.qwenTTSInstructions === "string") {
-                    setQwenTTSInstructions(data.qwenTTSInstructions);
-                }
-            } catch { }
+                }} catch { }
         })();
     }, []);
 
@@ -2483,20 +2426,7 @@ export default function TTSStudioPage() {
             }
             if (detail.cosyvoiceVoiceId === "yupinglu" || detail.cosyvoiceVoiceId === "tea") {
                 setCosyvoiceVoiceId(detail.cosyvoiceVoiceId);
-            }
-            if (isQwenTTSModel(detail.qwenTTSModel)) {
-                setQwenTTSModel(detail.qwenTTSModel);
-            }
-            if (isQwenTTSVoice(detail.qwenTTSVoice)) {
-                setQwenTTSVoice(detail.qwenTTSVoice);
-            }
-            if (isQwenTTSLanguageType(detail.qwenTTSLanguageType)) {
-                setQwenTTSLanguageType(detail.qwenTTSLanguageType);
-            }
-            if (typeof detail.qwenTTSInstructions === "string") {
-                setQwenTTSInstructions(detail.qwenTTSInstructions);
-            }
-        };
+            }};
 
         window.addEventListener("tts-provider-changed", handleTTSProviderChanged as EventListener);
         return () => {
@@ -2509,12 +2439,7 @@ export default function TTSStudioPage() {
         cosyvoiceSpeed,
         cosyvoiceInstruction,
         cosyvoiceSeed,
-        cosyvoiceVoiceId,
-        qwenTTSModel,
-        qwenTTSVoice,
-        qwenTTSLanguageType,
-        qwenTTSInstructions,
-    };
+        cosyvoiceVoiceId,};
 
     const [editingCard, setEditingCard] = useState<TTSCard | null>(null);
     // 👁️ 阅读模式：查看完整文案（只读）
