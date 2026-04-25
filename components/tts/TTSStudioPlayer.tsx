@@ -10,7 +10,7 @@
  * - 视觉：Solar Ring (日环)
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -49,6 +49,7 @@ interface TTSStudioPlayerProps {
     onToggleTrack?: (id: AmbientSoundType) => void;
     onSetTrackVolume?: (id: AmbientSoundType, volume: number) => void;
     onSetMasterVolume?: (volume: number) => void;
+    onStopAllAmbient?: () => void;
 }
 
 // ============================================================================
@@ -309,6 +310,7 @@ export default function TTSStudioPlayer({
     onToggleTrack,
     onSetTrackVolume,
     onSetMasterVolume,
+    onStopAllAmbient,
 }: TTSStudioPlayerProps) {
     const router = useRouter();
     const { triggerLight, triggerMedium } = useHaptics();
@@ -319,6 +321,13 @@ export default function TTSStudioPlayer({
     const progressBarRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [dragProgress, setDragProgress] = useState(0);
+    const controlledAmbientSounds = useMemo(() => (
+        ambientSounds?.map((sound) => ({
+            id: sound.id,
+            label: sound.name,
+            icon: <span className="text-2xl leading-none">{sound.icon}</span>,
+        })) ?? []
+    ), [ambientSounds]);
 
     // 🔒 屏幕唤醒锁管理：播放时阻止熄屏
     useEffect(() => {
@@ -615,7 +624,17 @@ export default function TTSStudioPlayer({
                                 transition={{ duration: 0.3, ease: "easeOut" }}
                                 className="absolute inset-0 z-[10000] bg-black"
                             >
-                                <SoundscapesContent onClose={() => setShowSoundscapes(false)} />
+                                <SoundscapesContent
+                                    onClose={() => setShowSoundscapes(false)}
+                                    controlledSounds={controlledAmbientSounds}
+                                    controlledActiveTrackIds={activeTracks}
+                                    controlledTrackVolumes={trackVolumes as Record<string, number> | undefined}
+                                    controlledMasterVolume={masterVolume}
+                                    controlledToggleTrack={onToggleTrack ? (trackId) => onToggleTrack(trackId as AmbientSoundType) : undefined}
+                                    controlledSetTrackVolume={onSetTrackVolume ? (trackId, volume) => onSetTrackVolume(trackId as AmbientSoundType, volume) : undefined}
+                                    controlledSetMasterVolume={onSetMasterVolume}
+                                    controlledStopAll={onStopAllAmbient}
+                                />
                             </motion.div>
                         )}
                     </AnimatePresence>

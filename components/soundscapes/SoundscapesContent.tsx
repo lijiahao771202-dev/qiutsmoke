@@ -1,76 +1,143 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Volume2, Play, Pause, RotateCcw } from "lucide-react";
 import { useGlobalWhiteNoise } from "@/contexts/WhiteNoiseContext";
-import { SOUND_DATA } from "@/lib/data/soundscapes";
+import { SOUND_DATA, type SoundCategory, type SoundPreset } from "@/lib/data/soundscapes";
 import { GlassSoundCard } from "@/components/soundscapes/GlassSoundCard";
 import { cn } from "@/lib/utils";
 
 interface SoundscapesContentProps {
     onClose?: () => void;
+    controlledSounds?: Array<Pick<SoundPreset, "id" | "label" | "description" | "icon">>;
+    controlledActiveTrackIds?: ReadonlySet<string>;
+    controlledTrackVolumes?: Record<string, number>;
+    controlledMasterVolume?: number;
+    controlledToggleTrack?: (trackId: string) => void;
+    controlledSetTrackVolume?: (trackId: string, volume: number) => void;
+    controlledSetMasterVolume?: (volume: number) => void;
+    controlledStopAll?: () => void;
 }
 
-export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
+export function SoundscapesContent({
+    onClose,
+    controlledSounds,
+    controlledActiveTrackIds,
+    controlledTrackVolumes,
+    controlledMasterVolume,
+    controlledToggleTrack,
+    controlledSetTrackVolume,
+    controlledSetMasterVolume,
+    controlledStopAll,
+}: SoundscapesContentProps) {
     const router = useRouter();
     const searchParams = useSearchParams();
     const {
-        activeTracks,
-        toggleTrack,
-        setTrackVolume,
-        masterVolume,
-        setMasterVolume,
+        activeTracks: globalActiveTracks,
+        toggleTrack: globalToggleTrack,
+        setTrackVolume: globalSetTrackVolume,
+        masterVolume: globalMasterVolume,
+        setMasterVolume: globalSetMasterVolume,
         isPlaying,
         togglePlayPause,
-        stopAll
+        stopAll: globalStopAll,
     } = useGlobalWhiteNoise();
 
-    const [activeTab, setActiveTab] = useState(SOUND_DATA[0].id);
+    const isControlled = Boolean(
+        controlledSounds &&
+        controlledActiveTrackIds &&
+        controlledTrackVolumes &&
+        typeof controlledMasterVolume === "number" &&
+        controlledToggleTrack &&
+        controlledSetTrackVolume &&
+        controlledSetMasterVolume
+    );
+
+    const soundCategories = useMemo<SoundCategory[]>(() => {
+        if (!isControlled || !controlledSounds) {
+            return SOUND_DATA;
+        }
+
+        return [{
+            id: "tts-studio-ambient",
+            title: "Ambient",
+            icon: <Volume2 className="w-5 h-5" />,
+            sounds: controlledSounds.map((sound) => ({
+                ...sound,
+                src: "",
+                category: "tts-studio-ambient",
+            })),
+        }];
+    }, [controlledSounds, isControlled]);
+
+    const [activeTab, setActiveTab] = useState(soundCategories[0]?.id ?? "nature");
+
+    useEffect(() => {
+        if (!soundCategories.find((category) => category.id === activeTab)) {
+            setActiveTab(soundCategories[0]?.id ?? "nature");
+        }
+    }, [activeTab, soundCategories]);
+
+    const activeTrackIds = isControlled
+        ? controlledActiveTrackIds!
+        : new Set(Array.from(globalActiveTracks.keys()));
+    const handleToggleTrack = isControlled ? controlledToggleTrack! : globalToggleTrack;
+    const handleSetTrackVolume = isControlled ? controlledSetTrackVolume! : globalSetTrackVolume;
+    const currentMasterVolume = isControlled ? controlledMasterVolume! : globalMasterVolume;
+    const handleSetMasterVolume = isControlled ? controlledSetMasterVolume! : globalSetMasterVolume;
+    const handleStopAll = isControlled ? (controlledStopAll ?? (() => undefined)) : globalStopAll;
+    const activeTrackCount = activeTrackIds.size;
+
+    const getTrackVolume = (trackId: string) => {
+        if (isControlled) {
+            return controlledTrackVolumes?.[trackId] ?? 0.5;
+        }
+
+        return globalActiveTracks.get(trackId)?.volume ?? 0.5;
+    };
 
     const handleBack = () => {
         if (onClose) {
             onClose();
-        } else {
-            const returnTo = searchParams.get('returnTo') || '/practice';
-            router.push(returnTo);
+            return;
         }
+
+        const returnTo = searchParams.get("returnTo") || "/practice";
+        router.push(returnTo);
     };
 
-    // 1. Modal Fade Animation (Container) - 淡入淡出
     const modalVariants = {
         hidden: { opacity: 0 },
         visible: {
             opacity: 1,
             transition: {
                 duration: 0.3,
-                ease: [0.4, 0, 0.2, 1] as const  // easeOut cubic-bezier
-            }
+                ease: [0.4, 0, 0.2, 1] as const,
+            },
         },
         exit: {
             opacity: 0,
             transition: {
                 duration: 1,
-                ease: [0.4, 0, 1, 1] as const  // easeIn cubic-bezier
-            }
-        }
+                ease: [0.4, 0, 1, 1] as const,
+            },
+        },
     };
 
-    // 2. Content Stagger Animation (Inner Wrapper)
     const contentStaggerVariants = {
         hidden: { opacity: 0 },
         visible: {
             opacity: 1,
             transition: {
-                staggerChildren: 0.2, // Increased stagger for "交错" feeling
-                delayChildren: 0.3    // Wait for slide-up to partially complete
-            }
+                staggerChildren: 0.2,
+                delayChildren: 0.3,
+            },
         },
-        exit: { opacity: 0 }
+        exit: { opacity: 0 },
     };
 
-    // 3. Item Jelly Animation (Individual Elements)
     const itemVariants = {
         hidden: { y: 40, opacity: 0, scale: 0.9 },
         visible: {
@@ -79,11 +146,11 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
             scale: 1,
             transition: {
                 type: "spring" as const,
-                stiffness: 90,  // Very soft spring (was 200)
-                damping: 14,    // Low damping for bounce
-                mass: 1.5       // Heavy mass for "slow" jelly feel
-            }
-        }
+                stiffness: 90,
+                damping: 14,
+                mass: 1.5,
+            },
+        },
     };
 
     return (
@@ -94,17 +161,15 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
             exit="exit"
             className="relative min-h-screen w-full overflow-hidden bg-[#1c1917] font-sans"
         >
-            {/* 🌅 Warm Cozy Background (Sunset/Fireplace Theme) */}
             <div className="fixed inset-0 z-0">
                 <div className="absolute inset-0 bg-gradient-to-b from-[#451a03] via-[#292524] to-[#0c0a09]" />
 
-                {/* Warm Light Orbs - Smoother Animation */}
                 <motion.div
                     animate={{
                         scale: [1, 1.2, 1],
                         opacity: [0.3, 0.5, 0.3],
                         x: [0, 20, 0],
-                        y: [0, -20, 0]
+                        y: [0, -20, 0],
                     }}
                     transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
                     className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full bg-orange-600/20 blur-[100px]"
@@ -114,67 +179,61 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
                         scale: [1, 1.1, 1],
                         opacity: [0.2, 0.4, 0.2],
                         x: [0, -30, 0],
-                        y: [0, 30, 0]
+                        y: [0, 30, 0],
                     }}
                     transition={{ duration: 15, repeat: Infinity, ease: "easeInOut", delay: 2 }}
                     className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] rounded-full bg-amber-700/10 blur-[120px]"
                 />
 
-                {/* 🌫️ Glass Overlay Texture */}
                 <div className="absolute inset-0 bg-[url('/noise.png')] opacity-[0.03] pointer-events-none mix-blend-overlay" />
             </div>
 
-            {/* Content Container - Handles Staggering */}
             <motion.div
                 variants={contentStaggerVariants}
                 className="relative z-10 w-full h-screen flex flex-col pt-[calc(env(safe-area-inset-top)+24px)]"
             >
-
-                {/* Header */}
                 <motion.div variants={itemVariants} className="flex items-center justify-between px-6 py-6 shrink-0">
                     <button
                         onClick={handleBack}
                         className="p-3 rounded-full bg-stone-800/40 backdrop-blur-md border border-white/5 text-stone-300 hover:bg-stone-700/50 hover:text-white transition-all active:scale-95 group"
-                        aria-label="返回"
-                        title="返回"
+                        aria-label="Back"
+                        title="Back"
                     >
                         <ChevronDown className="w-6 h-6 group-hover:translate-y-0.5 transition-transform" />
                     </button>
                     <h1 className="text-xl font-medium text-orange-50/90 tracking-wide font-serif">
-                        环境音效
+                        Ambient Mixer
                     </h1>
-                    <div className="w-12" /> {/* Spacer for centering */}
+                    <div className="w-12" />
                 </motion.div>
 
-                {/* Categories Tabs */}
                 <motion.div variants={itemVariants} className="px-6 pb-2 overflow-x-auto gap-4 no-scrollbar mask-gradient-x shrink-0">
                     <div className="flex gap-3 pb-2">
-                        {SOUND_DATA.map((cat) => {
-                            const isActive = activeTab === cat.id;
+                        {soundCategories.map((category) => {
+                            const isActive = activeTab === category.id;
                             return (
                                 <button
-                                    key={cat.id}
-                                    onClick={() => setActiveTab(cat.id)}
+                                    key={category.id}
+                                    onClick={() => setActiveTab(category.id)}
                                     className={cn(
                                         "flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap backdrop-blur-md border",
                                         isActive
                                             ? "bg-orange-500/20 border-orange-500/30 text-orange-100 shadow-[0_0_15px_-3px_rgba(249,115,22,0.3)]"
                                             : "bg-stone-800/30 border-white/5 text-stone-400 hover:bg-stone-800/50 hover:text-stone-200"
                                     )}
-                                    aria-label={`Switch to ${cat.title}`}
-                                    title={cat.title}
+                                    aria-label={`Switch to ${category.title}`}
+                                    title={category.title}
                                 >
                                     <span className={isActive ? "text-orange-200" : "opacity-70"}>
-                                        {cat.icon}
+                                        {category.icon}
                                     </span>
-                                    <span>{cat.title}</span>
+                                    <span>{category.title}</span>
                                 </button>
                             );
                         })}
                     </div>
                 </motion.div>
 
-                {/* Sounds Grid - Scrollable Area */}
                 <motion.div variants={itemVariants} className="flex-1 overflow-y-auto min-h-0 px-6 pb-32 mask-gradient-y">
                     <AnimatePresence mode="wait">
                         <motion.div
@@ -185,30 +244,26 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
                             transition={{ duration: 0.4, ease: "easeOut" }}
                             className="grid grid-cols-2 lg:grid-cols-4 gap-4 py-4"
                         >
-                            {SOUND_DATA.find(cat => cat.id === activeTab)?.sounds.map((sound) => {
-                                const activeTrack = activeTracks.get(sound.id);
-                                return (
-                                    <GlassSoundCard
-                                        key={sound.id}
-                                        id={sound.id}
-                                        label={sound.label}
-                                        description={sound.description}
-                                        icon={sound.icon}
-                                        isActive={!!activeTrack}
-                                        volume={activeTrack?.volume ?? 0.5}
-                                        onToggle={() => toggleTrack(sound.id)}
-                                        onVolumeChange={(val) => setTrackVolume(sound.id, val)}
-                                    />
-                                );
-                            })}
+                            {soundCategories.find((category) => category.id === activeTab)?.sounds.map((sound) => (
+                                <GlassSoundCard
+                                    key={sound.id}
+                                    id={sound.id}
+                                    label={sound.label}
+                                    description={sound.description}
+                                    icon={sound.icon}
+                                    isActive={activeTrackIds.has(sound.id)}
+                                    volume={getTrackVolume(sound.id)}
+                                    onToggle={() => handleToggleTrack(sound.id)}
+                                    onVolumeChange={(value) => handleSetTrackVolume(sound.id, value)}
+                                />
+                            ))}
                         </motion.div>
                     </AnimatePresence>
                 </motion.div>
             </motion.div>
 
-            {/* Global Controls (Floating bottom) */}
             <AnimatePresence>
-                {(activeTracks.size > 0 || isPlaying) && (
+                {(activeTrackCount > 0 || (!isControlled && isPlaying)) && (
                     <motion.div
                         initial={{ opacity: 0, y: 50 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -217,23 +272,23 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
                             delay: 0.5,
                             type: "spring",
                             stiffness: 100,
-                            damping: 20
+                            damping: 20,
                         }}
                         className="fixed bottom-8 left-6 right-6 z-20"
                     >
                         <div className="bg-stone-900/80 backdrop-blur-2xl border border-white/10 rounded-[32px] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex items-center gap-4">
-                            {/* Play/Pause */}
-                            <button
-                                onClick={togglePlayPause}
-                                className="w-12 h-12 flex items-center justify-center rounded-full bg-orange-500 text-white hover:bg-orange-600 transition-all shadow-lg shadow-orange-500/20 shrink-0 active:scale-95"
-                            >
-                                {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
-                            </button>
+                            {!isControlled && (
+                                <button
+                                    onClick={togglePlayPause}
+                                    className="w-12 h-12 flex items-center justify-center rounded-full bg-orange-500 text-white hover:bg-orange-600 transition-all shadow-lg shadow-orange-500/20 shrink-0 active:scale-95"
+                                >
+                                    {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
+                                </button>
+                            )}
 
-                            {/* Info */}
                             <div className="flex-1 min-w-0">
                                 <h3 className="text-sm font-bold text-orange-50 truncate">
-                                    {activeTracks.size} 个正在播放
+                                    {activeTrackCount} active
                                 </h3>
                                 <div className="flex items-center gap-2 mt-1">
                                     <Volume2 className="w-3.5 h-3.5 text-stone-400" />
@@ -242,20 +297,19 @@ export function SoundscapesContent({ onClose }: SoundscapesContentProps) {
                                         min="0"
                                         max="1"
                                         step="0.05"
-                                        value={masterVolume}
-                                        onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
+                                        value={currentMasterVolume}
+                                        onChange={(event) => handleSetMasterVolume(parseFloat(event.target.value))}
                                         className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-orange-500 hover:accent-orange-400"
-                                        aria-label="总音量"
-                                        title="总音量"
+                                        aria-label="Master volume"
+                                        title="Master volume"
                                     />
                                 </div>
                             </div>
 
-                            {/* Reset Button */}
                             <button
-                                onClick={stopAll}
+                                onClick={handleStopAll}
                                 className="p-2.5 rounded-full hover:bg-white/10 text-stone-400 hover:text-white transition-colors active:scale-95"
-                                title="停止全部"
+                                title="Stop all"
                             >
                                 <RotateCcw className="w-5 h-5" />
                             </button>

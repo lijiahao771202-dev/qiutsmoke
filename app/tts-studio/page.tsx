@@ -19,6 +19,19 @@ import {
 } from "@/lib/meditation-script-duration";
 import { estimateTTSCardPrice, type TTSPriceBadgeTone } from "@/lib/tts-pricing";
 import {
+    applySynthSnapshotToSettings,
+    buildSynthSnapshot,
+    buildTTSCardAudioCacheKey,
+    getSynthModelBadgeLabel,
+    getTTSSettingsModelBadgeLabel,
+    type TTSCardSynthSnapshot,
+} from "@/lib/tts-card-synth";
+import {
+    deleteTTSCardSynthSnapshot,
+    getTTSCardSynthSnapshot,
+    saveTTSCardSynthSnapshot,
+} from "@/lib/tts-card-synth-store";
+import {
     COSYVOICE_PROFILE,
     DEFAULT_COSYVOICE_35_FLASH_VOICE_ID,
     DEFAULT_COSYVOICE_35_PLUS_INSTRUCTION,
@@ -38,6 +51,7 @@ export type { TTSCard } from "@/lib/hooks/useData";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import TTSStudioPlayer from "@/components/tts/TTSStudioPlayer";
 import { useWhiteNoise, AMBIENT_SOUNDS, type AmbientSoundType } from "@/hooks/useWhiteNoise";
+import { getDefaultTTSStudioAmbientPreset } from "@/lib/tts-studio-ambient";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -235,61 +249,6 @@ function queueCloudAudioCacheUpload(audioCacheKey: string, blob: Blob) {
         if (!uploaded) cloudAudioUploadAttempts.delete(audioCacheKey);
     });
 }
-
-const hashCacheSignature = (value: string) => {
-    let hash = 5381;
-    for (let i = 0; i < value.length; i++) {
-        hash = ((hash << 5) + hash) ^ value.charCodeAt(i);
-    }
-    return (hash >>> 0).toString(36);
-};
-
-const buildAudioCacheKey = (card: Pick<TTSCard, "id" | "content" | "voice_id" | "rate">, settings: TTSSettings) => {
-    const baseSignature = {
-        provider: settings.provider,
-        contentHash: hashCacheSignature(card.content),
-        cardVoiceId: card.voice_id,
-        cardRate: card.rate || "0%",
-    };
-
-    let providerSettings: Record<string, unknown> = {};
-
-    if (settings.provider === "cosyvoice") {
-        providerSettings = {
-            speed: settings.cosyvoiceSpeed,
-            instruction: settings.cosyvoiceInstruction.trim(),
-            seed: settings.cosyvoiceSeed,
-            voiceId: settings.cosyvoiceVoiceId,
-        };
-    } else if (settings.provider === "qwentts") {
-        providerSettings = {
-            model: settings.qwenTTSModel,
-            voice: settings.qwenTTSVoice,
-            voiceMode: settings.qwenTTSVoiceMode,
-            cloneVoiceId: settings.qwenTTSCloneVoiceId,
-            cloneVoiceCloudId: settings.qwenTTSCloneVoiceCloudId.trim(),
-            speed: settings.qwenTTSSpeed,
-            languageType: settings.qwenTTSLanguageType,
-            instructions: settings.qwenTTSInstructions.trim(),
-        };
-    } else if (settings.provider === "cosyvoice35plus") {
-        providerSettings = {
-            model: settings.cosyvoice35PlusModel,
-            plusVoiceId: settings.cosyvoice35PlusVoiceId.trim(),
-            flashVoiceId: settings.cosyvoice35FlashVoiceId.trim(),
-            voiceProfileId: settings.cosyvoice35PlusVoiceProfileId,
-            speed: settings.cosyvoice35PlusSpeed,
-            instruction: settings.cosyvoice35PlusInstruction.trim(),
-            languageHint: settings.cosyvoice35PlusLanguageHint,
-        };
-    }
-
-    const signature = hashCacheSignature(JSON.stringify({
-        ...baseSignature,
-        ...providerSettings,
-    }));
-    return `${settings.provider}:${signature}:${card.id}`;
-};
 
 // -----------------------------------------------------------------------------
 // Animation Constants (Apple Spring Physics - Premium Edition)
@@ -1083,6 +1042,26 @@ function TTSCardItem({
     const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
 
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess, triggerError } = useHaptics();
+    const [synthSnapshot, setSynthSnapshot] = useState<TTSCardSynthSnapshot | null | undefined>(undefined);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        getTTSCardSynthSnapshot(card.id).then((snapshot) => {
+            if (!cancelled) {
+                setSynthSnapshot(snapshot ?? null);
+            }
+        }).catch((error) => {
+            console.warn(`[TTSCard] 读取合成快照失败: ${card.id}`, error);
+            if (!cancelled) {
+                setSynthSnapshot(null);
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [card.id]);
 
 
 
@@ -1113,10 +1092,21 @@ function TTSCardItem({
     const [showCardMenu, setShowCardMenu] = useState(false);
     const [deleteCacheConfirm, setDeleteCacheConfirm] = useState(false); // iOS的确认弹窗
     const [useCachedPlayback, setUseCachedPlayback] = useState(true); // 默认使用缓存播放
-    const audioCacheKey = buildAudioCacheKey(card, ttsSettings);
+    const effectiveCardSettings = useMemo(
+        () => applySynthSnapshotToSettings(ttsSettings, synthSnapshot),
+        [ttsSettings, synthSnapshot]
+    );
+    const audioCacheKey = useMemo(
+        () => buildTTSCardAudioCacheKey(card, ttsSettings, synthSnapshot),
+        [card, ttsSettings, synthSnapshot]
+    );
+    const synthModelBadge = useMemo(
+        () => getSynthModelBadgeLabel(synthSnapshot) || getTTSSettingsModelBadgeLabel(effectiveCardSettings),
+        [effectiveCardSettings, synthSnapshot]
+    );
     const priceEstimate = useMemo(
-        () => estimateTTSCardPrice(card, ttsSettings),
-        [card.content, ttsSettings.provider, ttsSettings.cosyvoice35PlusModel]
+        () => estimateTTSCardPrice(card, effectiveCardSettings),
+        [card, effectiveCardSettings]
     );
 
     // 播放进度状态 (用于缓存音频)
@@ -1134,14 +1124,16 @@ function TTSCardItem({
     // 检查缓存状态 - 如果没有缓存则自动后台合成
     const hasCheckedCacheRef = useRef(false);
     useEffect(() => {
+        if (synthSnapshot === undefined) return;
         hasCheckedCacheRef.current = false;
         setHasCachedAudio(false);
         setCachedAudioUrl(null);
         setAudioDuration(null);
-    }, [audioCacheKey]);
+    }, [audioCacheKey, synthSnapshot]);
 
     useEffect(() => {
         // 防止重复检测
+        if (synthSnapshot === undefined) return;
         if (hasCheckedCacheRef.current) return;
         hasCheckedCacheRef.current = true;
         let cancelled = false;
@@ -1180,7 +1172,7 @@ function TTSCardItem({
         return () => {
             cancelled = true;
         };
-    }, [audioCacheKey, card.id, ttsSettings.provider]);
+    }, [audioCacheKey, card.id, synthSnapshot]);
 
     // Refs
     const currentItemIdRef = useRef<string | null>(null);
@@ -1684,6 +1676,9 @@ function TTSCardItem({
         updateSynthesisProgress(card.id, { current: 0, total: 0 });
 
         try {
+            const nextSynthSnapshot = buildSynthSnapshot(card.id, ttsSettings);
+            const targetAudioCacheKey = buildTTSCardAudioCacheKey(card, ttsSettings, nextSynthSnapshot);
+
             if (ttsSettings.provider === "cosyvoice35plus") {
                 const ssmlChunks = buildCosyVoiceCardSSMLChunks(card.content);
                 const ssmlAudioChunks = ssmlChunks.filter((chunk) => chunk.type === "ssml");
@@ -1713,7 +1708,7 @@ function TTSCardItem({
 
                     await runLimitedConcurrency(ssmlWork, COSYVOICE_SSML_CHUNK_CONCURRENCY, async ({ chunk, index }) => {
                         const startedAt = performance.now();
-                        const chunkCacheKey = buildAudioChunkCacheKey(audioCacheKey, index);
+                        const chunkCacheKey = buildAudioChunkCacheKey(targetAudioCacheKey, index);
                         const cachedChunkBlob = await getAudioCache(chunkCacheKey);
                         if (cachedChunkBlob) {
                             try {
@@ -1791,7 +1786,7 @@ function TTSCardItem({
                     }
 
                     const mergedBlob = await mergeAudioBuffersToWavBlob(ctx, finalBuffers, numberOfChannels, actualSampleRate);
-                    await saveAudioCacheWithCloud(audioCacheKey, mergedBlob);
+                    await saveAudioCacheWithCloud(targetAudioCacheKey, mergedBlob);
                     setHasCachedAudio(true);
                     setCachedAudioUrl((prev) => {
                         if (prev?.startsWith("blob:")) {
@@ -1799,6 +1794,8 @@ function TTSCardItem({
                         }
                         return URL.createObjectURL(mergedBlob);
                     });
+                    await saveTTSCardSynthSnapshot(nextSynthSnapshot);
+                    setSynthSnapshot(nextSynthSnapshot);
                     updateSynthesisProgress(card.id, { current: ssmlAudioChunks.length, total: ssmlAudioChunks.length });
                     console.log(`[Synthesize] ✅ ${ttsSettings.cosyvoice35PlusModel} SSML 分块合成完成并已缓存`);
                     triggerSuccess();
@@ -1945,7 +1942,7 @@ function TTSCardItem({
             console.log("[Synthesize] WAV 大小:", (blob.size / 1024).toFixed(1), "KB");
 
             // 保存到 IndexedDB
-            await saveAudioCacheWithCloud(audioCacheKey, blob);
+            await saveAudioCacheWithCloud(targetAudioCacheKey, blob);
             setHasCachedAudio(true);
 
             // 创建可播放的 URL
@@ -1953,6 +1950,8 @@ function TTSCardItem({
             setCachedAudioUrl(url);
 
             console.log("[Synthesize] ✅ 合成完成并已缓存");
+            await saveTTSCardSynthSnapshot(nextSynthSnapshot);
+            setSynthSnapshot(nextSynthSnapshot);
             triggerSuccess(); // Synthesis Complete
         } catch (err) {
             console.error("[Synthesize] Error", err);
@@ -2520,9 +2519,11 @@ function TTSCardItem({
                                     )}
                                 </div>
                                 <div className="flex items-center gap-2 text-xs text-white/40">
-                                    <span className="bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
-                                        {card.voice_id}
-                                    </span>
+                                    {synthModelBadge && (
+                                        <span className="bg-cyan-500/10 px-1.5 py-0.5 rounded border border-cyan-400/20 text-cyan-200">
+                                            {synthModelBadge}
+                                        </span>
+                                    )}
                                     <span>{card.rate || "Default"}</span>
                                     <span
                                         title={priceEstimate.detail}
@@ -2897,7 +2898,7 @@ function TTSCardItem({
                                     onClick={async () => {
                                         triggerHeavy();
                                         await deleteAudioCacheEverywhere(audioCacheKey);
-                                        if (ttsSettings.provider === "cosyvoice35plus") {
+                                        if (effectiveCardSettings.provider === "cosyvoice35plus") {
                                             await deleteAudioChunkCaches(audioCacheKey, card.content);
                                         }
                                         setHasCachedAudio(false);
@@ -3218,6 +3219,12 @@ export default function TTSStudioPage() {
 
     // 播放卡片逻辑
     const handlePlayCard = async (card: TTSCard) => {
+        const ambientPreset = getDefaultTTSStudioAmbientPreset(activeTracks);
+        for (const track of ambientPreset) {
+            toggleTrack(track.id);
+            setTrackVolume(track.id, track.volume);
+        }
+
         setPlayerCard(card);
         setPlayerDuration(0);
         setPlayerCurrentTime(0);
@@ -3232,7 +3239,9 @@ export default function TTSStudioPage() {
 
         // 尝试获取缓存并播放
         try {
-            const blob = await getAudioCacheWithCloud(buildAudioCacheKey(card, ttsSettings));
+            const synthSnapshot = await getTTSCardSynthSnapshot(card.id).catch(() => null);
+            const cacheKey = buildTTSCardAudioCacheKey(card, ttsSettings, synthSnapshot);
+            const blob = await getAudioCacheWithCloud(cacheKey);
             if (blob && playerAudioRef.current) {
                 const url = URL.createObjectURL(blob);
                 playerAudioRef.current.src = url;
@@ -3321,6 +3330,7 @@ export default function TTSStudioPage() {
     const confirmDelete = async () => {
         if (!deleteConfirmId) return;
         await apiDeleteCard(deleteConfirmId);
+        await deleteTTSCardSynthSnapshot(deleteConfirmId).catch(() => undefined);
         setDeleteConfirmId(null);
     };
 
@@ -3529,7 +3539,7 @@ export default function TTSStudioPage() {
                                 >
                                     {displayCards.map((card: TTSCard, index: number) => (
                                         <TTSCardItem
-                                            key={buildAudioCacheKey(card, ttsSettings)}
+                                            key={card.id}
                                             card={card}
                                             onDelete={handleDelete}
                                             onEdit={handleEdit}
@@ -3821,6 +3831,7 @@ export default function TTSStudioPage() {
                     onToggleTrack={toggleTrack}
                     onSetTrackVolume={setTrackVolume}
                     onSetMasterVolume={setMasterVolume}
+                    onStopAllAmbient={stopAllAmbient}
                 />
             </div>
         </AuthGuard>
