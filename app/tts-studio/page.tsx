@@ -365,6 +365,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
     const [isCollapsed, setIsCollapsed] = useState(true);
 
     // AI 生成相关状态
+    const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
     const [aiPrompt, setAiPrompt] = useState("");
     const [aiGenerating, setAiGenerating] = useState(false);
     const [aiDuration, setAiDuration] = useState<number>(5);
@@ -386,6 +387,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
             setText("");
             setTitle("");
             setAiPrompt("");
+            setIsAIPanelOpen(false); // 成功后收起AI面板
             triggerSuccess();
         } catch (e) {
             console.error("Add failed", e);
@@ -514,70 +516,102 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                         className="w-full bg-transparent text-xl font-bold text-white placeholder:text-white/40 mb-2 focus:outline-none focus:text-rose-100 transition-colors"
                                     />
 
-                                    {/* AI 生成区域 */}
-                                    <div className="rounded-2xl p-4 space-y-3 mb-4 bg-white/5 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
-                                        <div className="flex items-center gap-2 text-xs text-rose-300/80 font-medium">
-                                            <Sparkles className="w-3.5 h-3.5 text-rose-400" />
-                                            <span>AI 生成助手</span>
-                                        </div>
-                                        <div className="flex gap-2 flex-wrap">
-                                            <input
-                                                value={aiPrompt}
-                                                onChange={(e) => setAiPrompt(e.target.value)}
-                                                className="flex-1 min-w-[200px] bg-white/5 backdrop-blur rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:ring-2 focus:ring-rose-500/40 outline-none border border-white/10 transition-all"
-                                                placeholder="描述您想要的内容，如：正念呼吸练习、身体扫描、助眠引导..."
-                                                disabled={aiGenerating}
-                                            />
-                                            <select
-                                                title="选择引导强度"
-                                                value={guidanceLevel}
-                                                onChange={(e) => setGuidanceLevel(e.target.value as any)}
-                                                className="bg-white/5 backdrop-blur rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-rose-500/40 outline-none border border-white/10 cursor-pointer transition-all"
-                                                disabled={aiGenerating}
-                                            >
-                                                <option value="light" className="bg-zinc-800">🍃 轻引导</option>
-                                                <option value="medium" className="bg-zinc-800">⚖️ 中引导</option>
-                                                <option value="heavy" className="bg-zinc-800">🧘 多引导</option>
-                                            </select>
-                                            <select
-                                                value={aiDuration}
-                                                onChange={(e) => setAiDuration(Number(e.target.value))}
-                                                className="bg-white/5 backdrop-blur rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-rose-500/40 outline-none border border-white/10 cursor-pointer transition-all"
-                                                disabled={aiGenerating}
-                                                title="选择时长"
-                                            >
-                                                {AI_DURATION_OPTIONS.map((duration) => (
-                                                    <option key={duration} value={duration} className="bg-zinc-800">
-                                                        {duration}分钟
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <motion.button
+                                    {/* 高级编辑器区域 (Inline Assist) */}
+                                    <div className="relative rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] overflow-hidden transition-all focus-within:border-rose-500/30 focus-within:ring-1 focus-within:ring-rose-500/30 flex flex-col">
+                                        
+                                        {/* 编辑器工具栏 */}
+                                        <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-black/10">
+                                            <div className="text-xs text-rose-200/50 font-medium">正文内容</div>
+                                            
+                                            <motion.button 
+                                                onClick={() => setIsAIPanelOpen(!isAIPanelOpen)}
                                                 whileHover={{ scale: 1.02 }}
-                                                whileTap={{ scale: 0.96 }}
-                                                onTapStart={triggerMedium}
-                                                onClick={handleAIGenerate}
-                                                disabled={!aiPrompt.trim() || aiGenerating}
-                                                className="px-5 py-2.5 bg-gradient-to-r from-rose-500 to-pink-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-rose-500/20 hover:shadow-rose-500/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
-                                            >
-                                                {aiGenerating ? (
-                                                    <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
-                                                ) : (
-                                                    <Sparkles className="w-4 h-4" />
+                                                whileTap={{ scale: 0.98 }}
+                                                className={cn(
+                                                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all shadow-sm",
+                                                    isAIPanelOpen 
+                                                        ? "bg-rose-500/20 text-rose-300 border border-rose-500/20 shadow-inner" 
+                                                        : "bg-white/5 text-rose-200/70 border border-white/5 hover:bg-white/10 hover:text-rose-200"
                                                 )}
-                                                <span>{aiGenerating ? "生成中" : "生成"}</span>
+                                            >
+                                                <Sparkles className={cn("w-3.5 h-3.5", isAIPanelOpen ? "text-rose-400" : "opacity-70")} />
+                                                {isAIPanelOpen ? "收起助手" : "AI 撰写"}
                                             </motion.button>
                                         </div>
+
+                                        {/* AI 助手面板 (内联展开) */}
+                                        <AnimatePresence initial={false}>
+                                            {isAIPanelOpen && (
+                                                <motion.div
+                                                    initial={{ height: 0, opacity: 0 }}
+                                                    animate={{ height: "auto", opacity: 1 }}
+                                                    exit={{ height: 0, opacity: 0 }}
+                                                    transition={{ ...SPRING_FLUID, opacity: { duration: 0.2 } }}
+                                                    className="overflow-hidden border-b border-white/5 bg-gradient-to-b from-rose-500/[0.03] to-transparent"
+                                                >
+                                                    <div className="p-4 space-y-3">
+                                                        <div className="flex gap-2 flex-wrap">
+                                                            <input
+                                                                value={aiPrompt}
+                                                                onChange={(e) => setAiPrompt(e.target.value)}
+                                                                className="flex-1 min-w-[200px] bg-black/20 backdrop-blur rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 transition-all"
+                                                                placeholder="描述您想要的内容，如：正念呼吸..."
+                                                                disabled={aiGenerating}
+                                                            />
+                                                            <select
+                                                                title="选择引导强度"
+                                                                value={guidanceLevel}
+                                                                onChange={(e) => setGuidanceLevel(e.target.value as any)}
+                                                                className="bg-black/20 backdrop-blur rounded-xl px-3 py-2.5 text-sm text-white/90 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 cursor-pointer transition-all"
+                                                                disabled={aiGenerating}
+                                                            >
+                                                                <option value="light" className="bg-zinc-800">🍃 轻引导</option>
+                                                                <option value="medium" className="bg-zinc-800">⚖️ 中引导</option>
+                                                                <option value="heavy" className="bg-zinc-800">🧘 多引导</option>
+                                                            </select>
+                                                            <select
+                                                                value={aiDuration}
+                                                                onChange={(e) => setAiDuration(Number(e.target.value))}
+                                                                className="bg-black/20 backdrop-blur rounded-xl px-3 py-2.5 text-sm text-white/90 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 cursor-pointer transition-all"
+                                                                disabled={aiGenerating}
+                                                                title="选择时长"
+                                                            >
+                                                                {AI_DURATION_OPTIONS.map((duration) => (
+                                                                    <option key={duration} value={duration} className="bg-zinc-800">
+                                                                        {duration}分钟
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                            <motion.button
+                                                                whileHover={{ scale: 1.02 }}
+                                                                whileTap={{ scale: 0.96 }}
+                                                                onTapStart={triggerMedium}
+                                                                onClick={handleAIGenerate}
+                                                                disabled={!aiPrompt.trim() || aiGenerating}
+                                                                className="px-5 py-2.5 bg-white/10 hover:bg-white/15 border border-white/10 text-white text-sm font-medium rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                                                            >
+                                                                {aiGenerating ? (
+                                                                    <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
+                                                                ) : (
+                                                                    <Sparkles className="w-4 h-4 text-rose-300" />
+                                                                )}
+                                                                <span className={aiGenerating ? "text-white/80" : "text-rose-100"}>{aiGenerating ? "生成中" : "生成"}</span>
+                                                            </motion.button>
+                                                        </div>
+                                                    </div>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+
+                                        {/* 文本输入区 */}
+                                        <textarea
+                                            value={text}
+                                            onChange={(e) => setText(e.target.value)}
+                                            placeholder="手动输入文本，或使用右上方的 AI 助手为您生成..."
+                                            aria-label="输入文本"
+                                            className="w-full h-36 bg-transparent text-rose-50/90 text-lg p-4 placeholder:text-rose-200/30 focus:outline-none resize-none leading-relaxed scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
+                                        />
                                     </div>
-
-
-                                    <textarea
-                                        value={text}
-                                        onChange={(e) => setText(e.target.value)}
-                                        placeholder="输入您想朗读的文本... (支持 [pause 1s] 和 [rate -10%])"
-                                        aria-label="输入文本"
-                                        className="w-full h-32 bg-transparent text-rose-50/90 text-lg placeholder:text-rose-200/30 focus:outline-none resize-none leading-relaxed scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
-                                    />
 
                                     <div className="flex items-center justify-between pt-4 border-t border-rose-200/10">
                                         <select
