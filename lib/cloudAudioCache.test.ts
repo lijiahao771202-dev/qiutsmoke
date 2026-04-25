@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { saveCloudAudioCache } from "./cloudAudioCache.ts";
+import { getCloudAudioCacheStatus, saveCloudAudioCache } from "./cloudAudioCache.ts";
 
 test("retries transient cloud audio upload failures once", async () => {
   const originalFetch = globalThis.fetch;
@@ -46,6 +46,39 @@ test("does not retry unauthorized cloud audio uploads", async () => {
     );
     assert.equal(uploaded, false);
     assert.equal(callCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("reports cloud audio upload as syncing when the server returns 202", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => {
+    return new Response(null, {
+      status: 202,
+      headers: { "x-audio-cache-status": "syncing" },
+    });
+  };
+
+  try {
+    const status = await getCloudAudioCacheStatus("cache-key-syncing");
+    assert.equal(status, "syncing");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("reports missing cloud audio when the server returns 404", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => {
+    return new Response(null, { status: 404 });
+  };
+
+  try {
+    const status = await getCloudAudioCacheStatus("cache-key-missing");
+    assert.equal(status, "missing");
   } finally {
     globalThis.fetch = originalFetch;
   }

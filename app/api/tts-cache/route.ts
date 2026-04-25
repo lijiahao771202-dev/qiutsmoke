@@ -9,8 +9,10 @@ import {
   TTS_AUDIO_CACHE_BUCKET,
   TTS_AUDIO_CACHE_MAX_BYTES,
   buildAudioCacheManifest,
+  buildAudioCacheUploadMarker,
   cacheKeyToAudioStoragePaths,
   parseAudioCacheManifest,
+  parseAudioCacheUploadMarker,
   shouldStoreAudioCacheInChunks,
   type TTSAudioCacheManifest,
 } from "@/lib/tts-audio-cache-storage";
@@ -94,6 +96,45 @@ async function downloadManifest(
 
   const manifest = parseAudioCacheManifest(await data.arrayBuffer());
   return { manifest, error: manifest ? null : new Error("Invalid audio cache manifest") };
+}
+
+async function hasFreshUploadMarker(
+  adminClient: ReturnType<typeof getAdminClient>,
+  uploadMarkerPath: string
+) {
+  const { data, error } = await adminClient.storage.from(BUCKET_NAME).download(uploadMarkerPath);
+  if (error || !data) return false;
+
+  return Boolean(parseAudioCacheUploadMarker(await data.arrayBuffer()));
+}
+
+async function writeUploadMarker(
+  adminClient: ReturnType<typeof getAdminClient>,
+  uploadMarkerPath: string,
+  cacheKey: string
+) {
+  const marker = buildAudioCacheUploadMarker(cacheKey);
+  const { error } = await adminClient.storage
+    .from(BUCKET_NAME)
+    .upload(uploadMarkerPath, Buffer.from(JSON.stringify(marker), "utf8"), {
+      contentType: "audio/wav",
+      cacheControl: "no-store",
+      upsert: true,
+    });
+
+  if (error) {
+    console.warn("[TTS Cache] Failed to write upload marker", error);
+  }
+}
+
+async function removeUploadMarker(
+  adminClient: ReturnType<typeof getAdminClient>,
+  uploadMarkerPath: string
+) {
+  const { error } = await adminClient.storage.from(BUCKET_NAME).remove([uploadMarkerPath]);
+  if (error && !isSupabaseStorageMissingError(error)) {
+    console.warn("[TTS Cache] Failed to remove upload marker", error);
+  }
 }
 
 async function removeChunkedCache(
@@ -195,7 +236,20 @@ export async function HEAD(req: Request) {
     const file = data?.find((item) => item.name === paths.fileName);
     if (!file) {
       const { manifest } = await downloadManifest(adminClient, paths.manifestPath);
-      if (!manifest) return new Response(null, { status: 404 });
+      if (!manifest) {
+        const isUploading = await hasFreshUploadMarker(adminClient, paths.uploadMarkerPath);
+        if (isUploading) {
+          return new Response(null, {
+            status: 202,
+            headers: {
+              "x-audio-cache-status": "syncing",
+              "Cache-Control": "private, no-store",
+            },
+          });
+        }
+
+        return new Response(null, { status: 404 });
+      }
 
       return new Response(null, {
         status: 200,
@@ -291,40 +345,45 @@ export async function PUT(req: Request) {
     const paths = cacheKeyToAudioStoragePaths(result.user.id, result.cacheKey);
     const { manifest: staleManifest } = await downloadManifest(adminClient, paths.manifestPath);
 
-    if (shouldStoreAudioCacheInChunks(body.byteLength)) {
-      await uploadChunkedAudioCache(
-        adminClient,
-        result.user.id,
-        result.cacheKey,
-        body,
-        contentType
-      );
-    } else {
-      const { error } = await adminClient.storage.from(BUCKET_NAME).upload(paths.fullPath, body, {
-        contentType,
-        cacheControl: "31536000",
-        upsert: true,
-      });
+    await writeUploadMarker(adminClient, paths.uploadMarkerPath, result.cacheKey);
+    try {
+      if (shouldStoreAudioCacheInChunks(body.byteLength)) {
+        await uploadChunkedAudioCache(
+          adminClient,
+          result.user.id,
+          result.cacheKey,
+          body,
+          contentType
+        );
+      } else {
+        const { error } = await adminClient.storage.from(BUCKET_NAME).upload(paths.fullPath, body, {
+          contentType,
+          cacheControl: "31536000",
+          upsert: true,
+        });
 
-      if (error) {
-        if (isSupabaseStoragePayloadTooLargeError(error)) {
-          await uploadChunkedAudioCache(
-            adminClient,
-            result.user.id,
-            result.cacheKey,
-            body,
-            contentType
-          );
-          return new Response(JSON.stringify({ success: true }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        } else {
-          throw error;
+        if (error) {
+          if (isSupabaseStoragePayloadTooLargeError(error)) {
+            await uploadChunkedAudioCache(
+              adminClient,
+              result.user.id,
+              result.cacheKey,
+              body,
+              contentType
+            );
+            return new Response(JSON.stringify({ success: true }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            });
+          } else {
+            throw error;
+          }
         }
-      }
 
-      await removeChunkedCache(adminClient, paths, staleManifest);
+        await removeChunkedCache(adminClient, paths, staleManifest);
+      }
+    } finally {
+      await removeUploadMarker(adminClient, paths.uploadMarkerPath);
     }
 
     return new Response(JSON.stringify({ success: true }), {

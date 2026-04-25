@@ -14,18 +14,29 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function hasCloudAudioCache(cacheKey: string): Promise<boolean> {
+export type CloudAudioCacheStatus = "cached" | "syncing" | "missing";
+
+export async function getCloudAudioCacheStatus(cacheKey: string): Promise<CloudAudioCacheStatus> {
   try {
     const res = await fetch(buildCloudAudioCacheUrl(cacheKey), {
       method: "HEAD",
       cache: "no-store",
       credentials: "include",
     });
-    return res.ok;
+
+    if (res.status === 202 && res.headers.get("x-audio-cache-status") === "syncing") {
+      return "syncing";
+    }
+    if (res.ok) return "cached";
+    return "missing";
   } catch (error) {
     console.warn("[CloudAudioCache] failed to check cache", error);
-    return false;
+    return "missing";
   }
+}
+
+export async function hasCloudAudioCache(cacheKey: string): Promise<boolean> {
+  return (await getCloudAudioCacheStatus(cacheKey)) === "cached";
 }
 
 export async function getCloudAudioCache(cacheKey: string): Promise<Blob | null> {
