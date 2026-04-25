@@ -603,7 +603,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                         className="w-full bg-transparent text-xl font-bold text-white placeholder:text-white/40 mb-1 focus:outline-none focus:text-rose-100 transition-colors"
                                     />
 
-                                    <div className="relative rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-3 space-y-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
+                                    <div className="relative space-y-3">
                                         
                                         {/* 自动扩展提示词区域 (Read Only) */}
                                         <div className="relative">
