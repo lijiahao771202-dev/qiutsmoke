@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { shouldBypassWebAudioForBackgroundPlayback } from "@/lib/audio-platform";
 import AuthGuard from "@/components/AuthGuard";
 import { saveAudioCache, getAudioCache, hasAudioCache, deleteAudioCache } from "@/lib/audioCache";
-import { deleteCloudAudioCache, getCloudAudioCache, getCloudAudioCacheStatus, saveCloudAudioCache } from "@/lib/cloudAudioCache";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
 import { getApiUrl } from "@/lib/config";
@@ -76,7 +75,6 @@ const PRICE_BADGE_STYLES: Record<TTSPriceBadgeTone, string> = {
 
 const COSYVOICE_SSML_CHUNK_CONCURRENCY = 4;
 const AI_DURATION_OPTIONS = [3, 5, 10, 15, 20, 25, 30, 35, 40] as const;
-const cloudAudioUploadAttempts = new Set<string>();
 
 type FetchResponseError = Error & {
     status?: number;
@@ -212,42 +210,16 @@ async function deleteAudioChunkCaches(audioCacheKey: string, content: string) {
     );
 }
 
-async function getAudioCacheWithCloud(audioCacheKey: string) {
-    const localBlob = await getAudioCache(audioCacheKey);
-    if (localBlob) {
-        queueCloudAudioCacheUpload(audioCacheKey, localBlob);
-        return localBlob;
-    }
-
-    const cloudBlob = await getCloudAudioCache(audioCacheKey);
-    if (!cloudBlob) return null;
-
-    await saveAudioCache(audioCacheKey, cloudBlob).catch((error) => {
-        console.warn("[AudioCache] 云端缓存回填 IndexedDB 失败", error);
-    });
-    return cloudBlob;
+async function getLocalAudioCache(audioCacheKey: string) {
+    return getAudioCache(audioCacheKey);
 }
 
-async function saveAudioCacheWithCloud(audioCacheKey: string, blob: Blob) {
+async function saveLocalAudioCache(audioCacheKey: string, blob: Blob) {
     await saveAudioCache(audioCacheKey, blob);
-    cloudAudioUploadAttempts.add(audioCacheKey);
-    const uploaded = await saveCloudAudioCache(audioCacheKey, blob);
-    if (!uploaded) cloudAudioUploadAttempts.delete(audioCacheKey);
 }
 
-async function deleteAudioCacheEverywhere(audioCacheKey: string) {
+async function deleteLocalAudioCache(audioCacheKey: string) {
     await deleteAudioCache(audioCacheKey);
-    cloudAudioUploadAttempts.delete(audioCacheKey);
-    await deleteCloudAudioCache(audioCacheKey);
-}
-
-function queueCloudAudioCacheUpload(audioCacheKey: string, blob: Blob) {
-    if (cloudAudioUploadAttempts.has(audioCacheKey)) return;
-    cloudAudioUploadAttempts.add(audioCacheKey);
-
-    void saveCloudAudioCache(audioCacheKey, blob).then((uploaded) => {
-        if (!uploaded) cloudAudioUploadAttempts.delete(audioCacheKey);
-    });
 }
 
 // -----------------------------------------------------------------------------
@@ -1087,10 +1059,6 @@ function TTSCardItem({
 
     // 缓存状态
     const [hasCachedAudio, setHasCachedAudio] = useState(false);
-    const [isCloudSyncing, setIsCloudSyncing] = useState(false);
-    const [isCloudAvailable, setIsCloudAvailable] = useState(false);
-    const [isCloudDownloading, setIsCloudDownloading] = useState(false);
-    const [cacheCheckNonce, setCacheCheckNonce] = useState(0);
     const [cachedAudioUrl, setCachedAudioUrl] = useState<string | null>(null);
     const [audioDuration, setAudioDuration] = useState<number | null>(null); // 音频总时长
     const [showCardMenu, setShowCardMenu] = useState(false);
@@ -1131,9 +1099,6 @@ function TTSCardItem({
         if (synthSnapshot === undefined) return;
         hasCheckedCacheRef.current = false;
         setHasCachedAudio(false);
-        setIsCloudSyncing(false);
-        setIsCloudAvailable(false);
-        setIsCloudDownloading(false);
         setCachedAudioUrl(null);
         setAudioDuration(null);
     }, [audioCacheKey, synthSnapshot]);
@@ -1150,13 +1115,9 @@ function TTSCardItem({
             if (cancelled) return;
             setHasCachedAudio(exists);
             if (exists) {
-                setIsCloudSyncing(false);
-                setIsCloudAvailable(false);
-                setIsCloudDownloading(false);
                 try {
                     const blob = await getAudioCache(audioCacheKey);
                     if (blob && !cancelled) {
-                        queueCloudAudioCacheUpload(audioCacheKey, blob);
                         const duration = await getBlobDuration(blob);
                         if (!cancelled) setAudioDuration(duration);
                     }
@@ -1164,55 +1125,6 @@ function TTSCardItem({
                     console.error("Failed to get audio duration via cache", e);
                 }
             } else {
-                const cloudStatus = await getCloudAudioCacheStatus(audioCacheKey);
-                if (cancelled) return;
-                if (cloudStatus === "syncing") {
-                    setIsCloudSyncing(true);
-                    setIsCloudAvailable(false);
-                    setIsCloudDownloading(false);
-                    retryTimer = setTimeout(() => {
-                        hasCheckedCacheRef.current = false;
-                        setCacheCheckNonce((value) => value + 1);
-                    }, 4000);
-                    return;
-                }
-
-                if (cloudStatus === "cached") {
-                    setIsCloudSyncing(false);
-                    setIsCloudAvailable(true);
-                    setIsCloudDownloading(false);
-                    retryTimer = setTimeout(() => {
-                        void (async () => {
-                            if (cancelled) return;
-                            setIsCloudDownloading(true);
-                            const cloudBlob = await getAudioCacheWithCloud(audioCacheKey);
-                            if (cancelled) return;
-                            if (cloudBlob) {
-                                const duration = await getBlobDuration(cloudBlob);
-                                if (cancelled) return;
-
-                                if (Number.isFinite(duration) && duration > 0) {
-                                    setHasCachedAudio(true);
-                                    setIsCloudAvailable(false);
-                                    setIsCloudDownloading(false);
-                                    setAudioDuration(duration);
-                                    console.log(`[TTSCard] 卡片 "${card.title || card.id}" 已从云端音频缓存回填本地。`);
-                                    return;
-                                }
-
-                                console.warn(`[TTSCard] 卡片 "${card.title || card.id}" 云端音频缓存无法解析时长，保持待合成。`);
-                            }
-
-                            setIsCloudAvailable(false);
-                            setIsCloudDownloading(false);
-                        })();
-                    }, 250);
-                    return;
-                }
-
-                setIsCloudSyncing(false);
-                setIsCloudAvailable(false);
-                setIsCloudDownloading(false);
                 // ✨ 统一等待手动点击合成，不再自动合成
                 if (synthesizingCardsSet.has(card.id)) {
                     setIsSynthesizing(true); // 显示合成状态
@@ -1226,7 +1138,7 @@ function TTSCardItem({
             cancelled = true;
             if (retryTimer) clearTimeout(retryTimer);
         };
-    }, [audioCacheKey, cacheCheckNonce, card.id, synthSnapshot]);
+    }, [audioCacheKey, card.id, synthSnapshot]);
 
     // Refs
     const currentItemIdRef = useRef<string | null>(null);
@@ -1840,11 +1752,8 @@ function TTSCardItem({
                     }
 
                     const mergedBlob = await mergeAudioBuffersToWavBlob(ctx, finalBuffers, numberOfChannels, actualSampleRate);
-                    await saveAudioCacheWithCloud(targetAudioCacheKey, mergedBlob);
+                    await saveLocalAudioCache(targetAudioCacheKey, mergedBlob);
                     setHasCachedAudio(true);
-                    setIsCloudSyncing(false);
-                    setIsCloudAvailable(false);
-                    setIsCloudDownloading(false);
                     setCachedAudioUrl((prev) => {
                         if (prev?.startsWith("blob:")) {
                             URL.revokeObjectURL(prev);
@@ -1999,11 +1908,8 @@ function TTSCardItem({
             console.log("[Synthesize] WAV 大小:", (blob.size / 1024).toFixed(1), "KB");
 
             // 保存到 IndexedDB
-            await saveAudioCacheWithCloud(targetAudioCacheKey, blob);
+            await saveLocalAudioCache(targetAudioCacheKey, blob);
             setHasCachedAudio(true);
-            setIsCloudSyncing(false);
-            setIsCloudAvailable(false);
-            setIsCloudDownloading(false);
 
             // 创建可播放的 URL
             const url = URL.createObjectURL(blob);
@@ -2294,7 +2200,7 @@ function TTSCardItem({
         setIsLoadingAudio(true);
         try {
             // 从 IndexedDB 获取缓存
-            const cachedBlob = await getAudioCacheWithCloud(audioCacheKey);
+            const cachedBlob = await getLocalAudioCache(audioCacheKey);
             if (!cachedBlob) {
                 console.warn("[Play] 缓存不存在，回退到流式播放");
                 setIsLoadingAudio(false);
@@ -2664,7 +2570,7 @@ function TTSCardItem({
                                                         onClick={async (e) => {
                                                             e.stopPropagation();
                                                             setShowCardMenu(false);
-                                                            const blob = await getAudioCacheWithCloud(audioCacheKey);
+                                                            const blob = await getLocalAudioCache(audioCacheKey);
                                                             if (blob) {
                                                                 const filename = `${card.title || '未命名'}_合成音频.wav`;
                                                                 // 尝试使用 Web Share API (iOS 支持更好)
@@ -2751,15 +2657,12 @@ function TTSCardItem({
                                 disabled={
                                     isBuffering ||
                                     isSynthesizing ||
-                                    isCloudSyncing ||
-                                    isCloudAvailable ||
-                                    isCloudDownloading ||
                                     !hasCachedAudio
                                 }
                                 whileTap={{ scale: 0.9 }}
                                 className={cn(
                                     "flex items-center justify-center w-10 h-10 rounded-full transition-all border",
-                                    isSynthesizing || isCloudSyncing || isCloudAvailable || isCloudDownloading
+                                    isSynthesizing
                                         ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-300 cursor-wait"
                                         : !hasCachedAudio
                                             ? "bg-zinc-500/20 border-zinc-400/30 text-zinc-400 cursor-not-allowed"
@@ -2771,17 +2674,9 @@ function TTSCardItem({
                                 )}
                             >
                                 <AnimatePresence mode="wait">
-                                    {isSynthesizing || isCloudSyncing || isCloudAvailable || isCloudDownloading ? (
+                                    {isSynthesizing ? (
                                         <motion.div
-                                            key={
-                                                isCloudDownloading
-                                                    ? "downloading"
-                                                    : isCloudAvailable
-                                                        ? "available"
-                                                        : isCloudSyncing
-                                                            ? "syncing"
-                                                            : "synthesizing"
-                                            }
+                                            key="synthesizing"
                                             initial={{ opacity: 0, scale: 0.5 }}
                                             animate={{ opacity: 1, scale: 1 }}
                                             exit={{ opacity: 0, scale: 0.5 }}
@@ -2864,12 +2759,6 @@ function TTSCardItem({
                                         <span className="text-emerald-300">
                                             {isPlaying ? "CACHED ▶" : "CACHED"}
                                         </span>
-                                    ) : isCloudDownloading ? (
-                                        <span className="text-sky-300">下载中</span>
-                                    ) : isCloudAvailable ? (
-                                        <span className="text-sky-300">可同步</span>
-                                    ) : isCloudSyncing ? (
-                                        <span className="text-sky-300">同步中</span>
                                     ) : isSynthesizing ? (
                                         <span className="text-emerald-300">SYNTHESIZING</span>
                                     ) : (
@@ -2978,14 +2867,11 @@ function TTSCardItem({
                                 <button
                                     onClick={async () => {
                                         triggerHeavy();
-                                        await deleteAudioCacheEverywhere(audioCacheKey);
+                                        await deleteLocalAudioCache(audioCacheKey);
                                         if (effectiveCardSettings.provider === "cosyvoice35plus") {
                                             await deleteAudioChunkCaches(audioCacheKey, card.content);
                                         }
                                         setHasCachedAudio(false);
-                                        setIsCloudSyncing(false);
-                                        setIsCloudAvailable(false);
-                                        setIsCloudDownloading(false);
                                         setCachedAudioUrl(null);
                                         setDeleteCacheConfirm(false);
                                     }}
@@ -3325,7 +3211,7 @@ export default function TTSStudioPage() {
         try {
             const synthSnapshot = await getTTSCardSynthSnapshot(card.id).catch(() => null);
             const cacheKey = buildTTSCardAudioCacheKey(card, ttsSettings, synthSnapshot);
-            const blob = await getAudioCacheWithCloud(cacheKey);
+            const blob = await getLocalAudioCache(cacheKey);
             if (blob && playerAudioRef.current) {
                 const url = URL.createObjectURL(blob);
                 playerAudioRef.current.src = url;
