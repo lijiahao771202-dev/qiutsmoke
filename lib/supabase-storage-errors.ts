@@ -58,3 +58,17 @@ export function isSupabaseStorageAlreadyExistsError(
   const normalized = normalizeErrorText(error);
   return normalized.includes("already exists") || normalized.includes("duplicate");
 }
+
+export function isSupabaseStoragePayloadTooLargeError(
+  error: SupabaseStorageErrorLike | null | undefined
+) {
+  if (!error) return false;
+  if (hasStatus(error, 413)) return true;
+
+  const normalized = normalizeErrorText(error);
+  return (
+    normalized.includes("exceeded the maximum allowed size") ||
+    normalized.includes("payload too large") ||
+    normalized.includes("file size")
+  );
+}

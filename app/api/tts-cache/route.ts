@@ -3,13 +3,27 @@ import { createClient } from "@/lib/supabase/server";
 import {
   isSupabaseStorageAlreadyExistsError,
   isSupabaseStorageMissingError,
+  isSupabaseStoragePayloadTooLargeError,
 } from "@/lib/supabase-storage-errors";
+import {
+  TTS_AUDIO_CACHE_BUCKET,
+  TTS_AUDIO_CACHE_MAX_BYTES,
+  buildAudioCacheManifest,
+  cacheKeyToAudioStoragePaths,
+  parseAudioCacheManifest,
+  shouldStoreAudioCacheInChunks,
+  type TTSAudioCacheManifest,
+} from "@/lib/tts-audio-cache-storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BUCKET_NAME = "tts-audio-cache";
-const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
+const BUCKET_NAME = TTS_AUDIO_CACHE_BUCKET;
+const MAX_AUDIO_BYTES = TTS_AUDIO_CACHE_MAX_BYTES;
+const AUDIO_BUCKET_OPTIONS = {
+  public: false,
+  allowedMimeTypes: ["audio/wav", "audio/x-wav", "audio/wave", "audio/mpeg", "audio/mp3"],
+};
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -40,22 +54,12 @@ function getCacheKey(req: Request) {
   return key || null;
 }
 
-function cacheKeyToStoragePath(userId: string, cacheKey: string) {
-  const encodedKey = Buffer.from(cacheKey, "utf8").toString("base64url");
-  return {
-    folder: userId,
-    fileName: `${encodedKey}.wav`,
-    path: `${userId}/${encodedKey}.wav`,
-  };
-}
-
 async function ensureBucket(adminClient: ReturnType<typeof getAdminClient>) {
   const { error: getError } = await adminClient.storage.getBucket(BUCKET_NAME);
   if (!getError) return;
 
   const { error: createError } = await adminClient.storage.createBucket(BUCKET_NAME, {
-    public: false,
-    allowedMimeTypes: ["audio/wav", "audio/x-wav", "audio/wave", "audio/mpeg", "audio/mp3"],
+    ...AUDIO_BUCKET_OPTIONS,
   } as any);
 
   if (
@@ -81,6 +85,96 @@ async function requireUserAndKey(req: Request) {
   return { user, cacheKey };
 }
 
+async function downloadManifest(
+  adminClient: ReturnType<typeof getAdminClient>,
+  manifestPath: string
+) {
+  const { data, error } = await adminClient.storage.from(BUCKET_NAME).download(manifestPath);
+  if (error || !data) return { manifest: null, error };
+
+  const manifest = parseAudioCacheManifest(await data.arrayBuffer());
+  return { manifest, error: manifest ? null : new Error("Invalid audio cache manifest") };
+}
+
+async function removeChunkedCache(
+  adminClient: ReturnType<typeof getAdminClient>,
+  paths: ReturnType<typeof cacheKeyToAudioStoragePaths>,
+  manifest: TTSAudioCacheManifest | null
+) {
+  if (!manifest) {
+    await adminClient.storage.from(BUCKET_NAME).remove([paths.manifestPath]);
+    return;
+  }
+
+  const chunkPaths = Array.from({ length: manifest.chunkCount }, (_, index) => paths.chunkPath(index));
+  await adminClient.storage.from(BUCKET_NAME).remove([paths.manifestPath, ...chunkPaths]);
+}
+
+async function uploadChunkedAudioCache(
+  adminClient: ReturnType<typeof getAdminClient>,
+  userId: string,
+  cacheKey: string,
+  body: Buffer,
+  contentType: string
+) {
+  const paths = cacheKeyToAudioStoragePaths(userId, cacheKey);
+  const previousManifest = await downloadManifest(adminClient, paths.manifestPath);
+  const manifest = buildAudioCacheManifest(cacheKey, contentType, body.byteLength);
+
+  for (let index = 0; index < manifest.chunkCount; index += 1) {
+    const start = index * manifest.chunkBytes;
+    const end = Math.min(start + manifest.chunkBytes, body.byteLength);
+    const { error } = await adminClient.storage.from(BUCKET_NAME).upload(
+      paths.chunkPath(index),
+      body.slice(start, end),
+      {
+        contentType,
+        cacheControl: "31536000",
+        upsert: true,
+      }
+    );
+    if (error) throw error;
+  }
+
+  const { error: manifestError } = await adminClient.storage
+    .from(BUCKET_NAME)
+    .upload(paths.manifestPath, Buffer.from(JSON.stringify(manifest), "utf8"), {
+      contentType,
+      cacheControl: "31536000",
+      upsert: true,
+    });
+  if (manifestError) throw manifestError;
+
+  await adminClient.storage.from(BUCKET_NAME).remove([paths.fullPath]);
+
+  if (previousManifest.manifest && previousManifest.manifest.chunkCount > manifest.chunkCount) {
+    const staleChunks = Array.from(
+      { length: previousManifest.manifest.chunkCount - manifest.chunkCount },
+      (_, offset) => paths.chunkPath(manifest.chunkCount + offset)
+    );
+    await adminClient.storage.from(BUCKET_NAME).remove(staleChunks);
+  }
+}
+
+async function downloadChunkedAudioCache(
+  adminClient: ReturnType<typeof getAdminClient>,
+  paths: ReturnType<typeof cacheKeyToAudioStoragePaths>
+) {
+  const { manifest, error } = await downloadManifest(adminClient, paths.manifestPath);
+  if (error || !manifest) return { blob: null, manifest, error };
+
+  const chunks: Blob[] = [];
+  for (let index = 0; index < manifest.chunkCount; index += 1) {
+    const { data, error: chunkError } = await adminClient.storage
+      .from(BUCKET_NAME)
+      .download(paths.chunkPath(index));
+    if (chunkError || !data) return { blob: null, manifest, error: chunkError };
+    chunks.push(data);
+  }
+
+  return { blob: new Blob(chunks, { type: manifest.contentType || "audio/wav" }), manifest, error: null };
+}
+
 export async function HEAD(req: Request) {
   try {
     const result = await requireUserAndKey(req);
@@ -89,17 +183,28 @@ export async function HEAD(req: Request) {
     const adminClient = getAdminClient();
     await ensureBucket(adminClient);
 
-    const { folder, fileName } = cacheKeyToStoragePath(result.user.id, result.cacheKey);
+    const paths = cacheKeyToAudioStoragePaths(result.user.id, result.cacheKey);
     const { data, error } = await adminClient.storage
       .from(BUCKET_NAME)
-      .list(folder, { limit: 1, search: fileName });
+      .list(paths.folder, { limit: 1, search: paths.fileName });
 
     if (error) {
       return new Response(null, { status: isSupabaseStorageMissingError(error) ? 404 : 500 });
     }
 
-    const file = data?.find((item) => item.name === fileName);
-    if (!file) return new Response(null, { status: 404 });
+    const file = data?.find((item) => item.name === paths.fileName);
+    if (!file) {
+      const { manifest } = await downloadManifest(adminClient, paths.manifestPath);
+      if (!manifest) return new Response(null, { status: 404 });
+
+      return new Response(null, {
+        status: 200,
+        headers: {
+          "x-audio-cache-size": String(manifest.byteLength),
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
 
     return new Response(null, {
       status: 200,
@@ -122,20 +227,38 @@ export async function GET(req: Request) {
     const adminClient = getAdminClient();
     await ensureBucket(adminClient);
 
-    const { path } = cacheKeyToStoragePath(result.user.id, result.cacheKey);
-    const { data, error } = await adminClient.storage.from(BUCKET_NAME).download(path);
+    const paths = cacheKeyToAudioStoragePaths(result.user.id, result.cacheKey);
+    const { data, error } = await adminClient.storage.from(BUCKET_NAME).download(paths.fullPath);
 
-    if (error || !data) {
+    if (!error && data) {
+      return new Response(data, {
+        status: 200,
+        headers: {
+          "Content-Type": data.type || "audio/wav",
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
+
+    if (!isSupabaseStorageMissingError(error)) {
       return new Response(JSON.stringify({ error: "Audio cache not found" }), {
-        status: isSupabaseStorageMissingError(error) ? 404 : 500,
+        status: 500,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    return new Response(data, {
+    const chunked = await downloadChunkedAudioCache(adminClient, paths);
+    if (!chunked.blob) {
+      return new Response(JSON.stringify({ error: "Audio cache not found" }), {
+        status: isSupabaseStorageMissingError(chunked.error) ? 404 : 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(chunked.blob, {
       status: 200,
       headers: {
-        "Content-Type": data.type || "audio/wav",
+        "Content-Type": chunked.blob.type || "audio/wav",
         "Cache-Control": "private, no-store",
       },
     });
@@ -153,7 +276,7 @@ export async function PUT(req: Request) {
     const result = await requireUserAndKey(req);
     if ("error" in result) return result.error;
 
-    const body = await req.arrayBuffer();
+    const body = Buffer.from(await req.arrayBuffer());
     if (body.byteLength === 0) {
       return new Response(JSON.stringify({ error: "Empty audio body" }), { status: 400 });
     }
@@ -164,15 +287,45 @@ export async function PUT(req: Request) {
     const adminClient = getAdminClient();
     await ensureBucket(adminClient);
 
-    const { path } = cacheKeyToStoragePath(result.user.id, result.cacheKey);
     const contentType = req.headers.get("content-type") || "audio/wav";
-    const { error } = await adminClient.storage.from(BUCKET_NAME).upload(path, body, {
-      contentType,
-      cacheControl: "31536000",
-      upsert: true,
-    });
+    const paths = cacheKeyToAudioStoragePaths(result.user.id, result.cacheKey);
+    const { manifest: staleManifest } = await downloadManifest(adminClient, paths.manifestPath);
 
-    if (error) throw error;
+    if (shouldStoreAudioCacheInChunks(body.byteLength)) {
+      await uploadChunkedAudioCache(
+        adminClient,
+        result.user.id,
+        result.cacheKey,
+        body,
+        contentType
+      );
+    } else {
+      const { error } = await adminClient.storage.from(BUCKET_NAME).upload(paths.fullPath, body, {
+        contentType,
+        cacheControl: "31536000",
+        upsert: true,
+      });
+
+      if (error) {
+        if (isSupabaseStoragePayloadTooLargeError(error)) {
+          await uploadChunkedAudioCache(
+            adminClient,
+            result.user.id,
+            result.cacheKey,
+            body,
+            contentType
+          );
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } else {
+          throw error;
+        }
+      }
+
+      await removeChunkedCache(adminClient, paths, staleManifest);
+    }
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
@@ -195,8 +348,11 @@ export async function DELETE(req: Request) {
     const adminClient = getAdminClient();
     await ensureBucket(adminClient);
 
-    const { path } = cacheKeyToStoragePath(result.user.id, result.cacheKey);
-    const { error } = await adminClient.storage.from(BUCKET_NAME).remove([path]);
+    const paths = cacheKeyToAudioStoragePaths(result.user.id, result.cacheKey);
+    const { manifest } = await downloadManifest(adminClient, paths.manifestPath);
+    await removeChunkedCache(adminClient, paths, manifest);
+
+    const { error } = await adminClient.storage.from(BUCKET_NAME).remove([paths.fullPath]);
 
     if (error && !isSupabaseStorageMissingError(error)) throw error;
 

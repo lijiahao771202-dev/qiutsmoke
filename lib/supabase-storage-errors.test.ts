@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   isSupabaseStorageAlreadyExistsError,
   isSupabaseStorageMissingError,
+  isSupabaseStoragePayloadTooLargeError,
 } from "./supabase-storage-errors.ts";
 
 test("recognizes bucket-not-found errors as missing storage resources", () => {
@@ -25,4 +26,17 @@ test("recognizes already-existing bucket races as benign", () => {
     true
   );
   assert.equal(isSupabaseStorageAlreadyExistsError({ message: "Bucket not found" }), false);
+});
+
+test("recognizes storage payload size limit errors", () => {
+  assert.equal(isSupabaseStoragePayloadTooLargeError({ statusCode: "413" }), true);
+  assert.equal(
+    isSupabaseStoragePayloadTooLargeError({
+      message: "The object exceeded the maximum allowed size",
+      status: 400,
+      statusCode: "413",
+    }),
+    true
+  );
+  assert.equal(isSupabaseStoragePayloadTooLargeError({ message: "Bucket not found" }), false);
 });
