@@ -3,10 +3,6 @@ import { sql } from "@vercel/postgres";
 import { normalizeAISettings } from "../../../lib/ai-models";
 import { buildDeepSeekChatCompletionBody } from "../../../lib/deepseek-chat";
 import { ensureTables, hasDb } from "@/lib/db";
-import {
-  formatMeditationReferenceBlock,
-  retrieveMeditationReferences,
-} from "@/lib/meditation-rag";
 
 async function resolveStoredAISettings() {
   const jar = await cookies();
@@ -98,9 +94,6 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const topic = String(body?.topic || "").trim();
-    const style = String(body?.style || "standard");
-    const duration = Number(body?.duration || 5);
-    const guidanceLevel = String(body?.guidanceLevel || "medium");
     
     if (!topic) {
       return new Response(JSON.stringify({ error: "缺少主题内容" }), {
@@ -136,48 +129,9 @@ export async function POST(req: Request) {
       });
     }
 
-    const references = await retrieveMeditationReferences({
-      topic,
-      durationMinutes: duration,
-      guidanceLevel,
-    });
-    const referenceBlock = formatMeditationReferenceBlock(references);
-
-    let styleInstruction = "";
-    switch (style) {
-      case "clinical":
-        styleInstruction = "【风格要求：心理治愈】\n采用认知行为疗法（CBT）或接纳承诺疗法（ACT）的专业意象。隐喻要贴近心理疏导（如“将焦虑看作水面飘过的落叶”），注重情绪的抱持与接纳，不要过度追求画面华丽，而是追求深层的心理安全感。";
-        break;
-      case "poetic":
-        styleInstruction = "【风格要求：散文诗意】\n语言必须像优美的现代诗或散文，辞藻丰富且感性。运用大量细腻、浪漫且具有张力的比喻（如“月光像融化的银水流入你的掌心”）。注重营造梦幻、唯美且极具艺术感的氛围。";
-        break;
-      case "cosmic":
-        styleInstruction = "【风格要求：宇宙观想】\n将意识尺度无限放大，融入星辰、银河、深空或宏大的自然法则。意象要磅礴、空灵且带有哲思（如“你是由星尘构成的”、“感受地球的引力像温柔的手托举着你”）。";
-        break;
-      case "standard":
-      default:
-        styleInstruction = "【风格要求：自然正念】\n注重最纯粹的自然意象（如：森林、溪流、晨光、微风）。语言清晰自然、朴实且接地气，帮助用户快速将注意力锚定在物理世界的感官上。";
-        break;
-    }
-
-    const systemPrompt = `你是一个世界级的正念冥想导师和AI提示词专家。用户会提供一个冥想主题，请将其扩展为一段高度详细、充满画面感、具有情感深度和感官细节的冥想意象设定，用于指导另一个AI撰写高质量的冥想正文。
-
-${styleInstruction}
-
-要求：
-1. 采用模块化的结构输出，必须包含以下部分：
-   - 【核心意境】（一句话概括整体氛围）
-   - 【感官锚点】（分别描写视觉、听觉、触觉的细节）
-   - 【情绪流淌】（描述从开始到结束的情绪转变过程）
-   - 【呼吸隐喻】（描述呼吸与场景的互动关系）
-2. 请仔细阅读下方的【知识库参考】，提取其中有价值的心理学隐喻、正念技巧或指导语，并将其巧妙地融入到你的【核心意境】和【情绪流淌】设计中，使得你的扩展提示词不仅好听，而且具有真实的心理疗效。
-3. 绝对不要提及任何关于“语速”、“语调”、“主播声音”、“停顿”等语音演播相关的要求。
-4. 直接输出意象设定本身，绝对不要出现“好的”、“为你提供”等任何寒暄或解释说明。
-
-${referenceBlock}`;
-
-    const userPrompt = `需要扩展的冥想主题：${topic}\n时长设定：${duration}分钟\n引导强度：${guidanceLevel === 'heavy' ? '多引导' : guidanceLevel === 'light' ? '轻引导' : '中引导'}`;
-    const maxTokens = 600;
+    const systemPrompt = "你是一个世界级的正念冥想导师和AI提示词专家。用户会提供一个冥想主题，请将其扩展为一段高度详细、充满画面感、具有情感深度和感官细节的冥想意象设定，用于指导另一个AI撰写高质量的冥想正文。\n\n要求：\n1. 详细描述场景设定（光线、温度、视觉/听觉/触觉体验），营造沉浸式的环境氛围。\n2. 设定冥想的核心情感体验和意境（如：深层放松、洗涤心灵、连接自然）。\n3. 强调呼吸与场景的互动关系（如：吸气时感受清晨的微凉，呼气时释放所有的重担）。\n4. 绝对不要提及任何关于“语速”、“语调”、“主播声音”、“停顿”等语音演播相关的要求。\n5. 直接输出意象设定本身，绝对不要出现“好的”、“为你提供”等任何寒暄或解释说明。";
+    const userPrompt = `需要扩展的冥想主题：${topic}`;
+    const maxTokens = 300;
     
     const upstreamConfig = getUpstreamConfig(effectiveSettings, key, maxTokens);
     const messages = [

@@ -158,16 +158,27 @@ export async function POST(req: Request) {
       guidanceLevel,
       styleOverride: typeof body?.systemPrompt === "string" ? body.systemPrompt : undefined,
     });
-    const references = await retrieveMeditationReferences({
-      topic,
-      durationMinutes: duration,
-      guidanceLevel,
+    const references = await retrieveMeditationReferences(
+      {
+        topic,
+        durationMinutes: duration,
+        guidanceLevel,
+      },
+      {
+        limit: 8,
+        perSampleLimit: 2,
+      }
+    );
+    const promptReferenceCount = Math.min(references.length, 6);
+    const referenceBlock = formatMeditationReferenceBlock(references, {
+      maxReferences: promptReferenceCount,
+      excerptLength: 420,
     });
-    const referenceBlock = formatMeditationReferenceBlock(references);
     console.log("[AI Request][generate][retrieval]", JSON.stringify({
       requestId,
       referenceCount: references.length,
-      topTitles: references.map((reference) => reference.title).slice(0, 3),
+      promptReferenceCount,
+      topTitles: references.map((reference) => `${reference.title}:${reference.id}`).slice(0, 5),
     }));
     const userPrompt = buildMeditationGenerationUserPrompt({
       topic,
@@ -232,7 +243,31 @@ export async function POST(req: Request) {
 
     (async () => {
       try {
-        const referencesPayload = JSON.stringify(references.map(r => ({ title: r.title, content: r.content })));
+        const referencesPayload = JSON.stringify({
+          query: {
+            topic,
+            durationMinutes: duration,
+            guidanceLevel,
+          },
+          promptReferenceCount,
+          references: references.map((reference) => ({
+            id: reference.id,
+            title: reference.title,
+            content: reference.content,
+            excerpt: reference.excerpt,
+            reason: reference.reason,
+            score: Number(reference.score.toFixed(4)),
+            stage: reference.metadata.stage,
+            chunkKind: reference.metadata.chunkKind,
+            durationMinutes: reference.metadata.durationMinutes,
+            guidanceLevel: reference.metadata.guidanceLevel,
+            sceneTags: reference.metadata.sceneTags,
+            emotionTags: reference.metadata.emotionTags,
+            techniques: reference.metadata.techniques,
+            practiceModes: reference.metadata.practiceModes,
+            silenceStyle: reference.metadata.silenceStyle,
+          })),
+        });
         await writer.write(encoder.encode(`__RAG_START__${referencesPayload}__RAG_END__`));
       } catch (e) {
         console.error("Failed to write RAG payload", e);

@@ -21,6 +21,9 @@ test("builds heavy guidance system prompt with internal phase blueprint", () => 
   assert.equal(prompt.includes("只有最后 3 个节奏块才允许进入收束"), true);
   assert.equal(prompt.includes("不能出现只包含 `[pause]` 的空段落"), true);
   assert.equal(prompt.includes("不要写“愿你充满爱与光明”"), true);
+  assert.equal(prompt.includes("开头不能直接是 `[pause]`"), true);
+  assert.equal(prompt.includes("不要只放在段落之间"), true);
+  assert.equal(prompt.includes("错误倾向：一整段连续说 4-6 句"), true);
 });
 
 test("builds user prompt from a clean topic", () => {
@@ -36,4 +39,6 @@ test("builds user prompt from a clean topic", () => {
   assert.equal(prompt.includes("一次性写完整篇成品"), true);
   assert.equal(prompt.includes("至少写出 21 个自然段 / 节奏块"), true);
   assert.equal(prompt.includes("高质量样本参考"), true);
+  assert.equal(prompt.includes("段内也要自然插入 `[pause]`"), true);
+  assert.equal(prompt.includes("不要整段讲完后只在段尾统一停顿"), true);
 });

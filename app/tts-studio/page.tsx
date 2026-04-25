@@ -69,6 +69,50 @@ type FetchResponseError = Error & {
     details?: string;
 };
 
+type RetrievalDebugReference = {
+    id: string;
+    title: string;
+    content: string;
+    excerpt: string;
+    reason: string;
+    score: number;
+    stage: string;
+    chunkKind: string;
+    durationMinutes: number;
+    guidanceLevel: string;
+    sceneTags: string[];
+    emotionTags: string[];
+    techniques: string[];
+    practiceModes: string[];
+    silenceStyle?: string;
+};
+
+type RetrievalDebugPayload = {
+    query?: {
+        topic: string;
+        durationMinutes: number;
+        guidanceLevel: string;
+    };
+    promptReferenceCount?: number;
+    references: RetrievalDebugReference[];
+};
+
+const RAG_STAGE_LABELS: Record<string, string> = {
+    arrival: "安顿进入",
+    breath: "呼吸锚定",
+    body_scan: "身体扫描",
+    emotion: "情绪容纳",
+    open_awareness: "开放觉察",
+    compassion: "慈心陪伴",
+    closing: "收束结束",
+    general: "通用片段",
+};
+
+const RAG_KIND_LABELS: Record<string, string> = {
+    stage: "阶段切片",
+    window: "滑窗切片",
+};
+
 function isMeteredTTSProvider(provider: TTSProvider) {
     return provider === "cosyvoice35plus" || provider === "qwentts";
 }
@@ -369,8 +413,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
     const [isEnhancing, setIsEnhancing] = useState(false);
     const [aiDuration, setAiDuration] = useState<number>(5);
     const [guidanceLevel, setGuidanceLevel] = useState<'light' | 'medium' | 'heavy'>('medium');
-    const [aiStyle, setAiStyle] = useState('standard');
-    const [ragReferences, setRagReferences] = useState<{title: string, content: string}[] | null>(null);
+    const [ragDebug, setRagDebug] = useState<RetrievalDebugPayload | null>(null);
     const [showRag, setShowRag] = useState(false);
 
     const handleSubmit = async () => {
@@ -413,12 +456,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
             const response = await fetch("/api/enhance-prompt", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                    topic: title,
-                    style: aiStyle,
-                    duration: aiDuration,
-                    guidanceLevel
-                }),
+                body: JSON.stringify({ topic: title }),
             });
 
             if (!response.ok) throw new Error("扩展失败");
@@ -456,40 +494,12 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
 
         setAiGenerating(true);
         setText("");
-        setRagReferences(null);
+        setRagDebug(null);
         setShowRag(false);
         const { totalSeconds } = buildAIGenerationTargets(aiDuration, guidanceLevel);
 
         try {
-            let finalPrompt = aiPrompt.trim();
-
-            // 如果没有事先生成扩展提示词，这里自动静默生成
-            if (!finalPrompt) {
-                try {
-                    const enhanceRes = await fetch("/api/enhance-prompt", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ 
-                            topic: title,
-                            style: aiStyle,
-                            duration: aiDuration,
-                            guidanceLevel
-                        }),
-                    });
-                    if (enhanceRes.ok && enhanceRes.body) {
-                        const reader = enhanceRes.body.getReader();
-                        const decoder = new TextDecoder();
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) break;
-                            finalPrompt += decoder.decode(value);
-                        }
-                        setAiPrompt(finalPrompt); // 更新UI展示
-                    }
-                } catch (e) {
-                    console.warn("自动扩展提示词失败", e);
-                }
-            }
+            const finalPrompt = aiPrompt.trim();
 
             const response = await fetch("/api/generate", {
                 method: "POST",
@@ -523,7 +533,9 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                             const ragJson = parts[0].replace('__RAG_START__', '');
                             const parsed = JSON.parse(ragJson);
                             if (Array.isArray(parsed) && parsed.length > 0) {
-                                setRagReferences(parsed);
+                                setRagDebug({ references: parsed });
+                            } else if (parsed && Array.isArray(parsed.references) && parsed.references.length > 0) {
+                                setRagDebug(parsed);
                             }
                         } catch(e) {
                             console.error("Failed to parse RAG payload", e);
@@ -662,29 +674,17 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                     </option>
                                                 ))}
                                             </select>
-                                            <select
-                                                value={aiStyle}
-                                                onChange={(e) => setAiStyle(e.target.value)}
-                                                className="bg-black/20 backdrop-blur rounded-lg px-2 py-1.5 text-xs text-white/90 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 cursor-pointer transition-all"
-                                                disabled={aiGenerating || isEnhancing}
-                                                title="选择风格"
-                                            >
-                                                <option value="standard" className="bg-zinc-800">🌿 自然正念</option>
-                                                <option value="clinical" className="bg-zinc-800">🧠 心理治愈</option>
-                                                <option value="poetic" className="bg-zinc-800">✍️ 散文诗意</option>
-                                                <option value="cosmic" className="bg-zinc-800">🌌 宇宙观想</option>
-                                            </select>
                                             <div className="flex-1" />
                                             
                                             {/* RAG Preview Toggle Button */}
-                                            {ragReferences && ragReferences.length > 0 && (
+                                            {ragDebug && ragDebug.references.length > 0 && (
                                                 <button
                                                     onClick={() => setShowRag(!showRag)}
                                                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500/20 text-indigo-200 border border-indigo-500/30 hover:bg-indigo-500/30 transition-colors"
-                                                    title="查看检索的知识库片段"
+                                                    title="查看检索调试信息"
                                                 >
                                                     <Info className="w-3.5 h-3.5" />
-                                                    {showRag ? "隐藏参考" : `已参考 ${ragReferences.length} 篇知识`}
+                                                    {showRag ? "隐藏检索" : `检索 ${ragDebug.references.length} 段 / 喂给模型 ${ragDebug.promptReferenceCount ?? ragDebug.references.length} 段`}
                                                 </button>
                                             )}
 
@@ -712,21 +712,71 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
 
                                         {/* RAG Content Dropdown */}
                                         <AnimatePresence>
-                                            {showRag && ragReferences && (
+                                            {showRag && ragDebug && (
                                                 <motion.div
                                                     initial={{ opacity: 0, height: 0 }}
                                                     animate={{ opacity: 1, height: "auto" }}
                                                     exit={{ opacity: 0, height: 0 }}
                                                     className="overflow-hidden"
                                                 >
-                                                    <div className="p-3 bg-black/30 rounded-xl border border-white/5 space-y-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
-                                                        <div className="text-xs font-medium text-indigo-300 mb-1 flex items-center gap-1">
-                                                            <Info className="w-3.5 h-3.5" /> 知识库参考片段
+                                                    <div className="p-3 bg-black/30 rounded-xl border border-white/5 space-y-3 max-h-72 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <div className="text-xs font-medium text-indigo-300 mb-1 flex items-center gap-1">
+                                                                    <Info className="w-3.5 h-3.5" /> 检索调试面板
+                                                                </div>
+                                                                <div className="text-[11px] text-white/45 leading-relaxed">
+                                                                    召回 {ragDebug.references.length} 段候选片段，其中前 {ragDebug.promptReferenceCount ?? ragDebug.references.length} 段会真正拼进生成提示词。
+                                                                </div>
+                                                            </div>
+                                                            {ragDebug.query && (
+                                                                <div className="shrink-0 text-[11px] text-white/45 text-right">
+                                                                    <div>{ragDebug.query.durationMinutes} 分钟</div>
+                                                                    <div>{ragDebug.query.guidanceLevel}</div>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                        {ragReferences.map((ref, idx) => (
-                                                            <div key={idx} className="bg-white/5 rounded p-2 text-xs text-white/70">
-                                                                <div className="font-semibold text-white/90 mb-1">{ref.title}</div>
-                                                                <div className="line-clamp-2 hover:line-clamp-none whitespace-pre-wrap">{ref.content}</div>
+                                                        {ragDebug.references.map((ref, idx) => (
+                                                            <div key={ref.id || idx} className="bg-white/5 rounded-xl p-3 text-xs text-white/70 border border-white/5 space-y-2">
+                                                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                                                    <div>
+                                                                        <div className="font-semibold text-white/90">{idx + 1}. {ref.title}</div>
+                                                                        <div className="text-[11px] text-white/45 mt-1">
+                                                                            {RAG_STAGE_LABELS[ref.stage] || ref.stage} · {RAG_KIND_LABELS[ref.chunkKind] || ref.chunkKind} · {ref.durationMinutes} 分钟 · score {typeof ref.score === "number" ? ref.score.toFixed(4) : "--"}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className={cn(
+                                                                        "px-2 py-1 rounded-full border text-[10px]",
+                                                                        idx < (ragDebug.promptReferenceCount ?? ragDebug.references.length)
+                                                                            ? "bg-emerald-500/15 text-emerald-200 border-emerald-400/20"
+                                                                            : "bg-white/5 text-white/45 border-white/10"
+                                                                    )}>
+                                                                        {idx < (ragDebug.promptReferenceCount ?? ragDebug.references.length) ? "已喂给模型" : "仅调试显示"}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="text-[11px] text-indigo-200/90 leading-relaxed">
+                                                                    命中原因：{ref.reason}
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {ref.sceneTags?.slice(0, 3).map((tag) => (
+                                                                        <span key={`${ref.id}-scene-${tag}`} className="px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-200 border border-sky-400/15 text-[10px]">
+                                                                            场景·{tag}
+                                                                        </span>
+                                                                    ))}
+                                                                    {ref.emotionTags?.slice(0, 3).map((tag) => (
+                                                                        <span key={`${ref.id}-emotion-${tag}`} className="px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-200 border border-rose-400/15 text-[10px]">
+                                                                            情绪·{tag}
+                                                                        </span>
+                                                                    ))}
+                                                                    {ref.techniques?.slice(0, 3).map((tag) => (
+                                                                        <span key={`${ref.id}-technique-${tag}`} className="px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-200 border border-violet-400/15 text-[10px]">
+                                                                            技法·{tag}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                                <div className="rounded-lg bg-black/20 border border-white/5 p-2 whitespace-pre-wrap leading-relaxed text-white/75">
+                                                                    {ref.content || ref.excerpt}
+                                                                </div>
                                                             </div>
                                                         ))}
                                                     </div>

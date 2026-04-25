@@ -66,10 +66,16 @@ export type MeditationVectorRecord = MeditationChunk & {
 export type RetrievedMeditationReference = {
   id: string;
   title: string;
+  content: string;
   excerpt: string;
   score: number;
   reason: string;
   metadata: MeditationChunk["metadata"];
+};
+
+type RetrievalOptions = {
+  limit?: number;
+  perSampleLimit?: number;
 };
 
 type MeditationQuery = {
@@ -805,13 +811,38 @@ export function loadMeditationVectors() {
   return (bundledVectors as MeditationVectorRecord[]).map(normalizeStoredVectorRecord);
 }
 
-function lexicalFallbackRetrieve(query: MeditationQueryProfile, chunks: MeditationChunk[]) {
+function selectTopReferences(
+  candidates: RetrievedMeditationReference[],
+  options: RetrievalOptions = {}
+) {
+  const limit = Math.max(1, options.limit ?? 4);
+  const perSampleLimit = Math.max(1, options.perSampleLimit ?? 1);
+  const counts = new Map<string, number>();
+  const selected: RetrievedMeditationReference[] = [];
+
+  for (const candidate of candidates.sort((left, right) => right.score - left.score)) {
+    const sampleId = candidate.id.split("#")[0];
+    const used = counts.get(sampleId) || 0;
+    if (used >= perSampleLimit) continue;
+    selected.push(candidate);
+    counts.set(sampleId, used + 1);
+    if (selected.length >= limit) break;
+  }
+
+  return selected;
+}
+
+function lexicalFallbackRetrieve(
+  query: MeditationQueryProfile,
+  chunks: MeditationChunk[],
+  options: RetrievalOptions = {}
+) {
   const tokens = query.topic
     .split(/[\s，。,、；：!！?？/]+/)
     .map((item) => item.trim())
     .filter(Boolean);
 
-  const bestBySample = new Map<string, RetrievedMeditationReference>();
+  const candidates: RetrievedMeditationReference[] = [];
 
   for (const chunk of chunks) {
     let score = scoreMetadataBonus(query, chunk);
@@ -824,23 +855,22 @@ function lexicalFallbackRetrieve(query: MeditationQueryProfile, chunks: Meditati
     const next = {
       id: chunk.id,
       title: chunk.title,
+      content: chunk.content,
       excerpt: summarizeExcerpt(chunk.content, 280),
       score,
       reason: buildReferenceReason(query, chunk),
       metadata: chunk.metadata,
     } satisfies RetrievedMeditationReference;
-    const current = bestBySample.get(chunk.sampleId);
-    if (!current || next.score > current.score) {
-      bestBySample.set(chunk.sampleId, next);
-    }
+    candidates.push(next);
   }
 
-  return Array.from(bestBySample.values())
-    .sort((left, right) => right.score - left.score)
-    .slice(0, 4);
+  return selectTopReferences(candidates, options);
 }
 
-export async function retrieveMeditationReferences(query: MeditationQuery) {
+export async function retrieveMeditationReferences(
+  query: MeditationQuery,
+  options: RetrievalOptions = {}
+) {
   const storedVectors = loadMeditationVectors();
   if (storedVectors.length === 0) {
     return [] as RetrievedMeditationReference[];
@@ -850,29 +880,25 @@ export async function retrieveMeditationReferences(query: MeditationQuery) {
 
   try {
     const [queryEmbedding] = await embedTextsWithNvidia([buildMeditationQueryText(query)]);
-    const bestBySample = new Map<string, RetrievedMeditationReference>();
+    const candidates: RetrievedMeditationReference[] = [];
 
     for (const chunk of storedVectors) {
       if (!Array.isArray(chunk.embedding) || chunk.embedding.length === 0) continue;
       const baseScore = dotProduct(queryEmbedding, chunk.embedding);
       const score = baseScore + scoreMetadataBonus(queryProfile, chunk);
-      const current = bestBySample.get(chunk.sampleId);
       const next: RetrievedMeditationReference = {
         id: chunk.id,
         title: chunk.title,
+        content: chunk.content,
         excerpt: summarizeExcerpt(chunk.content, 280),
         score,
         reason: buildReferenceReason(queryProfile, chunk),
         metadata: chunk.metadata,
       };
-      if (!current || next.score > current.score) {
-        bestBySample.set(chunk.sampleId, next);
-      }
+      candidates.push(next);
     }
 
-    const ranked = Array.from(bestBySample.values())
-      .sort((left, right) => right.score - left.score)
-      .slice(0, 4);
+    const ranked = selectTopReferences(candidates, options);
 
     if (ranked.length === 0) {
       return lexicalFallbackRetrieve(
@@ -884,7 +910,8 @@ export async function retrieveMeditationReferences(query: MeditationQuery) {
           content: vector.content,
           searchableText: vector.searchableText,
           metadata: vector.metadata,
-        }))
+        })),
+        options
       );
     }
 
@@ -900,17 +927,23 @@ export async function retrieveMeditationReferences(query: MeditationQuery) {
         content: vector.content,
         searchableText: vector.searchableText,
         metadata: vector.metadata,
-      }))
+      })),
+      options
     );
   }
 }
 
-export function formatMeditationReferenceBlock(references: RetrievedMeditationReference[]) {
+export function formatMeditationReferenceBlock(
+  references: RetrievedMeditationReference[],
+  options: { maxReferences?: number; excerptLength?: number } = {}
+) {
   if (references.length === 0) return "";
 
-  const lines = references.map(
+  const maxReferences = Math.max(1, options.maxReferences ?? references.length);
+  const excerptLength = Math.max(120, options.excerptLength ?? 280);
+  const lines = references.slice(0, maxReferences).map(
     (reference, index) =>
-      `${index + 1}. ${reference.title}\n- 可借鉴点：${reference.reason}\n- 片段：${reference.excerpt}`
+      `${index + 1}. ${reference.title}\n- 可借鉴点：${reference.reason}\n- 片段：${summarizeExcerpt(reference.content || reference.excerpt || "", excerptLength)}`
   );
 
   return `【高质量样本参考（只借鉴结构、节奏、体感颗粒度和陪伴方式，禁止照抄）】\n${lines.join("\n")}`;
