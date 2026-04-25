@@ -369,6 +369,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
     const [isEnhancing, setIsEnhancing] = useState(false);
     const [aiDuration, setAiDuration] = useState<number>(5);
     const [guidanceLevel, setGuidanceLevel] = useState<'light' | 'medium' | 'heavy'>('medium');
+    const [aiStyle, setAiStyle] = useState('standard');
     const [ragReferences, setRagReferences] = useState<{title: string, content: string}[] | null>(null);
     const [showRag, setShowRag] = useState(false);
 
@@ -412,7 +413,12 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
             const response = await fetch("/api/enhance-prompt", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ topic: title }),
+                body: JSON.stringify({ 
+                    topic: title,
+                    style: aiStyle,
+                    duration: aiDuration,
+                    guidanceLevel
+                }),
             });
 
             if (!response.ok) throw new Error("扩展失败");
@@ -463,7 +469,12 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                     const enhanceRes = await fetch("/api/enhance-prompt", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ topic: title }),
+                        body: JSON.stringify({ 
+                            topic: title,
+                            style: aiStyle,
+                            duration: aiDuration,
+                            guidanceLevel
+                        }),
                     });
                     if (enhanceRes.ok && enhanceRes.body) {
                         const reader = enhanceRes.body.getReader();
@@ -650,6 +661,18 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                         {duration}分钟
                                                     </option>
                                                 ))}
+                                            </select>
+                                            <select
+                                                value={aiStyle}
+                                                onChange={(e) => setAiStyle(e.target.value)}
+                                                className="bg-black/20 backdrop-blur rounded-lg px-2 py-1.5 text-xs text-white/90 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 cursor-pointer transition-all"
+                                                disabled={aiGenerating || isEnhancing}
+                                                title="选择风格"
+                                            >
+                                                <option value="standard" className="bg-zinc-800">🌿 自然正念</option>
+                                                <option value="clinical" className="bg-zinc-800">🧠 心理治愈</option>
+                                                <option value="poetic" className="bg-zinc-800">✍️ 散文诗意</option>
+                                                <option value="cosmic" className="bg-zinc-800">🌌 宇宙观想</option>
                                             </select>
                                             <div className="flex-1" />
                                             
