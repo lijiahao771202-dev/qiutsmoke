@@ -2,6 +2,7 @@ import { buildAIGenerationTargets } from "./meditation-script-duration.ts";
 
 type MeditationPromptInput = {
   topic: string;
+  details?: string;
   durationMinutes: number;
   guidanceLevel: string;
   styleOverride?: string;
@@ -185,14 +186,15 @@ export function buildMeditationGenerationSystemPrompt(input: Omit<MeditationProm
 }
 
 export function buildMeditationGenerationUserPrompt(input: MeditationPromptInput) {
-  const { topic, durationMinutes, guidanceLevel, styleOverride, referenceBlock } = input;
+  const { topic, details, durationMinutes, guidanceLevel, styleOverride, referenceBlock } = input;
   const cleanTopic = normalizeTopic(topic);
   const guidanceLabel = GUIDANCE_LABELS[guidanceLevel] || GUIDANCE_LABELS.medium;
   const paragraphBlocks = getRecommendedParagraphBlocks(durationMinutes, guidanceLevel);
   const closingBlocks = getClosingBlocks(durationMinutes, guidanceLevel);
   const styleBlock = styleOverride?.trim() ? `\n额外风格偏好：${styleOverride.trim()}` : "";
+  const detailsBlock = details?.trim() ? `\n\n【附加细节要求】\n${details.trim()}` : "";
   const referenceSection = referenceBlock?.trim() ? `\n\n${referenceBlock.trim()}\n- 你只能借鉴这些参考的结构、节奏、体感描写颗粒度和陪伴方式，绝对不要逐句复述或改写得很像。`
     : "";
 
-  return `请围绕下面的主题，直接写一篇适合 TTS 朗读的中文冥想引导脚本。\n\n主题：${cleanTopic}\n目标时长：${durationMinutes} 分钟\n引导强度：${guidanceLabel}\n目标用户：容易走神、需要被稳定陪伴带领进入练习的人\n写作目标：文本质量高、引导准确、节奏自然、停顿真实、时长尽量贴合目标${styleBlock}\n\n创作提醒：\n- 一次性写完整篇成品，不要只给示例片段。\n- 请明确分成多段输出，至少写出 ${paragraphBlocks} 个自然段 / 节奏块。\n- 每个自然段都必须有实际引导内容，不能只输出 \`[pause]\`。\n- 只有最后 ${closingBlocks} 个节奏块才允许进入结束。\n- 如果内容还没接近目标时长，不要提前总结或提前收束。${referenceSection}\n\n请直接开始输出脚本正文。`;
+  return `请围绕下面的主题，直接写一篇适合 TTS 朗读的中文冥想引导脚本。\n\n主题：${cleanTopic}\n目标时长：${durationMinutes} 分钟\n引导强度：${guidanceLabel}\n目标用户：容易走神、需要被稳定陪伴带领进入练习的人\n写作目标：文本质量高、引导准确、节奏自然、停顿真实、时长尽量贴合目标${styleBlock}${detailsBlock}\n\n创作提醒：\n- 一次性写完整篇成品，不要只给示例片段。\n- 请明确分成多段输出，至少写出 ${paragraphBlocks} 个自然段 / 节奏块。\n- 每个自然段都必须有实际引导内容，不能只输出 \`[pause]\`。\n- 只有最后 ${closingBlocks} 个节奏块才允许进入结束。\n- 如果内容还没接近目标时长，不要提前总结或提前收束。${referenceSection}\n\n请直接开始输出脚本正文。`;
 }

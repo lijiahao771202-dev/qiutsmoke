@@ -2,15 +2,6 @@ import { cookies } from "next/headers";
 import { sql } from "@vercel/postgres";
 import { normalizeAISettings } from "../../../lib/ai-models";
 import { buildDeepSeekChatCompletionBody } from "../../../lib/deepseek-chat";
-import { buildAIGenerationTargets } from "@/lib/meditation-script-duration";
-import {
-  buildMeditationGenerationSystemPrompt,
-  buildMeditationGenerationUserPrompt,
-} from "@/lib/meditation-generation-prompt";
-import {
-  formatMeditationReferenceBlock,
-  retrieveMeditationReferences,
-} from "@/lib/meditation-rag";
 import { ensureTables, hasDb } from "@/lib/db";
 
 async function resolveStoredAISettings() {
@@ -66,7 +57,7 @@ function getUpstreamConfig(
         JSON.stringify({
           model,
           messages,
-          temperature: 0.42,
+          temperature: 0.6,
           max_tokens: maxTokens,
           stream: true,
         }),
@@ -87,9 +78,9 @@ function getUpstreamConfig(
           messages,
           stream: true,
           maxTokens,
-          thinkingEnabled: settings.deepseekThinkingEnabled,
-          reasoningEffort: settings.deepseekReasoningEffort,
-          temperature: 0.45,
+          thinkingEnabled: false, // Force disable thinking for quick prompts
+          reasoningEffort: "low",
+          temperature: 0.6,
           frequencyPenalty: 0.1,
           presencePenalty: 0.1,
         })
@@ -102,18 +93,19 @@ export async function POST(req: Request) {
   const startedAt = Date.now();
   try {
     const body = await req.json();
-    const duration = Number(body?.duration) || 10;
-    const guidanceLevel = typeof body?.guidanceLevel === "string" ? body.guidanceLevel : "medium";
-    const topic = String(body?.topic || body?.prompt || "").trim();
-    const details = String(body?.details || "").trim();
+    const topic = String(body?.topic || "").trim();
+    
+    if (!topic) {
+      return new Response(JSON.stringify({ error: "缺少主题内容" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const storedSettings = await resolveStoredAISettings();
     const effectiveSettings = normalizeAISettings({
       provider: body?.provider ?? storedSettings.provider,
       model: body?.model ?? storedSettings.model,
-      deepseekThinkingEnabled:
-        body?.deepseekThinkingEnabled ?? storedSettings.deepseekThinkingEnabled,
-      deepseekReasoningEffort:
-        body?.deepseekReasoningEffort ?? storedSettings.deepseekReasoningEffort,
     });
 
     const key =
@@ -121,29 +113,13 @@ export async function POST(req: Request) {
         ? process.env.NVIDIA_API_KEY
         : body?.apiKey || process.env.DEEPSEEK_API_KEY;
 
-    console.log("[AI Request][generate][start]", JSON.stringify({
+    console.log("[AI Request][enhance-prompt][start]", JSON.stringify({
       requestId,
       provider: effectiveSettings.provider,
       model: effectiveSettings.model,
-      deepseekThinkingEnabled: effectiveSettings.deepseekThinkingEnabled,
-      deepseekReasoningEffort:
-        effectiveSettings.provider === "deepseek" && effectiveSettings.deepseekThinkingEnabled
-          ? effectiveSettings.deepseekReasoningEffort
-          : null,
-      duration,
-      guidanceLevel,
       topicLength: topic.length,
-      detailsLength: details.length,
-      retrievalEnabled: true,
       hasKey: Boolean(key),
     }));
-
-    if (!topic) {
-      return new Response(JSON.stringify({ error: "缺少主题内容" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
 
     if (!key) {
       const label = effectiveSettings.provider === "nvidia" ? "NVIDIA_API_KEY" : "DeepSeek API Key";
@@ -153,40 +129,13 @@ export async function POST(req: Request) {
       });
     }
 
-    const finalSystemPrompt = buildMeditationGenerationSystemPrompt({
-      durationMinutes: duration,
-      guidanceLevel,
-      styleOverride: typeof body?.systemPrompt === "string" ? body.systemPrompt : undefined,
-    });
-    const references = await retrieveMeditationReferences({
-      topic,
-      durationMinutes: duration,
-      guidanceLevel,
-    });
-    const referenceBlock = formatMeditationReferenceBlock(references);
-    console.log("[AI Request][generate][retrieval]", JSON.stringify({
-      requestId,
-      referenceCount: references.length,
-      topTitles: references.map((reference) => reference.title).slice(0, 3),
-    }));
-    const userPrompt = buildMeditationGenerationUserPrompt({
-      topic,
-      details,
-      durationMinutes: duration,
-      guidanceLevel,
-      styleOverride: typeof body?.systemPrompt === "string" ? body.systemPrompt : undefined,
-      referenceBlock,
-    });
-    const targets = buildAIGenerationTargets(duration, guidanceLevel);
-    const outputCharMultiplier =
-      guidanceLevel === "heavy" ? 3.2 : guidanceLevel === "light" ? 2.2 : 2.7;
-    const maxTokens = Math.min(
-      24000,
-      Math.max(4500, Math.ceil(targets.estimatedChars * outputCharMultiplier))
-    );
+    const systemPrompt = "你是一个专业的冥想引导词提示词专家。用户会给你一个简短的主题（标题），请你帮他扩展成一个详细的、有画面感和节奏感的补充提示词，用于指导另一个AI写正念冥想词。\n\n要求：\n1. 不要写正文，只写提示词本身（如对语气、停顿、画面细节的要求）。\n2. 保持在60个中文字符以内，精简有力。\n3. 直接输出结果，不要解释，不要出现“好的”、“为你提供”等前言后语。";
+    const userPrompt = `需要扩展的主题：${topic}`;
+    const maxTokens = 150;
+    
     const upstreamConfig = getUpstreamConfig(effectiveSettings, key, maxTokens);
     const messages = [
-      { role: "system", content: finalSystemPrompt },
+      { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ];
 
@@ -199,30 +148,15 @@ export async function POST(req: Request) {
     if (!upstream.ok || !upstream.body) {
       const status = upstream.status || 500;
       const errorText = await upstream.text().catch(() => "");
-      console.error("[AI Request][generate][upstream_error]", {
+      console.error("[AI Request][enhance-prompt][upstream_error]", {
         requestId,
-        provider: effectiveSettings.provider,
-        model: effectiveSettings.model,
-        deepseekThinkingEnabled: effectiveSettings.deepseekThinkingEnabled,
-        deepseekReasoningEffort:
-          effectiveSettings.provider === "deepseek" && effectiveSettings.deepseekThinkingEnabled
-            ? effectiveSettings.deepseekReasoningEffort
-            : null,
         status,
         elapsedMs: Date.now() - startedAt,
         errorText,
       });
       return new Response(
-        JSON.stringify({
-          error: `上游错误: HTTP ${status}`,
-          details: errorText,
-          provider: effectiveSettings.provider,
-          model: effectiveSettings.model,
-        }),
-        {
-          status,
-          headers: { "Content-Type": "application/json" },
-        }
+        JSON.stringify({ error: `上游错误: HTTP ${status}` }),
+        { status, headers: { "Content-Type": "application/json" } }
       );
     }
 
@@ -234,9 +168,6 @@ export async function POST(req: Request) {
       const reader = upstream.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let streamedChars = 0;
-      let finalFinishReason: string | null = null;
-      let completionTokens: number | null = null;
 
       try {
         while (true) {
@@ -256,28 +187,17 @@ export async function POST(req: Request) {
             try {
               const json = JSON.parse(data);
               const content = json?.choices?.[0]?.delta?.content;
-              const finishReason = json?.choices?.[0]?.finish_reason;
-              const usageCompletionTokens = json?.usage?.completion_tokens;
               if (content) {
-                streamedChars += String(content).length;
                 await writer.write(encoder.encode(content));
               }
-              if (typeof finishReason === "string" && finishReason.length > 0) {
-                finalFinishReason = finishReason;
-              }
-              if (typeof usageCompletionTokens === "number") {
-                completionTokens = usageCompletionTokens;
-              }
             } catch (error) {
-              console.warn("[Generate API] Failed to parse stream chunk", error);
+              // Ignore stream parse errors silently
             }
           }
         }
       } catch (error) {
-        console.error("[AI Request][generate][stream_error]", {
+        console.error("[AI Request][enhance-prompt][stream_error]", {
           requestId,
-          provider: effectiveSettings.provider,
-          model: effectiveSettings.model,
           elapsedMs: Date.now() - startedAt,
           error: error instanceof Error ? error.message : String(error),
         });
@@ -287,21 +207,6 @@ export async function POST(req: Request) {
         } catch {
           // Client already disconnected.
         }
-        console.log("[AI Request][generate][done]", JSON.stringify({
-          requestId,
-          provider: effectiveSettings.provider,
-          model: effectiveSettings.model,
-          deepseekThinkingEnabled: effectiveSettings.deepseekThinkingEnabled,
-          deepseekReasoningEffort:
-            effectiveSettings.provider === "deepseek" && effectiveSettings.deepseekThinkingEnabled
-              ? effectiveSettings.deepseekReasoningEffort
-              : null,
-          maxTokens,
-          elapsedMs: Date.now() - startedAt,
-          streamedChars,
-          finalFinishReason,
-          completionTokens,
-        }));
       }
     })();
 
@@ -310,7 +215,7 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (error) {
-    console.error("[AI Request][generate][request_error]", {
+    console.error("[AI Request][enhance-prompt][request_error]", {
       requestId,
       elapsedMs: Date.now() - startedAt,
       error: error instanceof Error ? error.message : String(error),

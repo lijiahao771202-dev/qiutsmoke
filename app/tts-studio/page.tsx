@@ -367,6 +367,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
     const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
     const [aiPrompt, setAiPrompt] = useState("");
     const [aiGenerating, setAiGenerating] = useState(false);
+    const [isEnhancing, setIsEnhancing] = useState(false);
     const [aiDuration, setAiDuration] = useState<number>(5);
     const [guidanceLevel, setGuidanceLevel] = useState<'light' | 'medium' | 'heavy'>('medium');
 
@@ -396,9 +397,53 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
         }
     };
 
+    // AI 扩展提示词
+    const handleEnhancePrompt = async () => {
+        if (!title.trim() || isEnhancing) {
+            if (!title.trim()) {
+                window.alert("请先在上方输入标题作为扩展主题");
+            }
+            return;
+        }
+
+        setIsEnhancing(true);
+        setAiPrompt(""); 
+        try {
+            const response = await fetch("/api/enhance-prompt", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ topic: title }),
+            });
+
+            if (!response.ok) throw new Error("扩展失败");
+
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error("无法读取响应");
+
+            const decoder = new TextDecoder();
+            let fullContent = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                fullContent += chunk;
+                setAiPrompt(fullContent);
+            }
+            triggerSuccess();
+        } catch (e) {
+            console.error("扩展失败:", e);
+            triggerHeavy();
+            window.alert("扩展失败，请重试");
+        } finally {
+            setIsEnhancing(false);
+        }
+    };
+
     // AI 生成冥想文本
     const handleAIGenerate = async () => {
-        if (!aiPrompt.trim() || aiGenerating) return;
+        if ((!title.trim() && !aiPrompt.trim()) || aiGenerating) return;
 
         setAiGenerating(true);
         setText(""); // 清空现有内容
@@ -407,7 +452,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
 
         // Auto-fill title if empty
         if (!title.trim()) {
-            setTitle(aiPrompt);
+            setTitle(aiPrompt.slice(0, 20) + (aiPrompt.length > 20 ? "..." : ""));
         }
 
         try {
@@ -415,7 +460,8 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    topic: aiPrompt,
+                    topic: title.trim() || aiPrompt.trim(),
+                    details: aiPrompt.trim(),
                     duration: aiDuration,
                     guidanceLevel,
                 }),
@@ -550,19 +596,31 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                 >
                                                     <div className="p-4 space-y-3">
                                                         <div className="flex gap-2 flex-wrap">
-                                                            <input
-                                                                value={aiPrompt}
-                                                                onChange={(e) => setAiPrompt(e.target.value)}
-                                                                className="flex-1 min-w-[200px] bg-black/20 backdrop-blur rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 transition-all"
-                                                                placeholder="描述您想要的内容，如：正念呼吸..."
-                                                                disabled={aiGenerating}
-                                                            />
+                                                            <div className="flex-1 min-w-[200px] relative flex items-center">
+                                                                <input
+                                                                    value={aiPrompt}
+                                                                    onChange={(e) => setAiPrompt(e.target.value)}
+                                                                    className="w-full bg-black/20 backdrop-blur rounded-xl pl-4 pr-24 py-2.5 text-sm text-white placeholder:text-white/30 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 transition-all"
+                                                                    placeholder="补充细节要求（选填，如：语速慢、强调呼吸）..."
+                                                                    disabled={aiGenerating || isEnhancing}
+                                                                />
+                                                                <button 
+                                                                    onClick={handleEnhancePrompt}
+                                                                    disabled={aiGenerating || isEnhancing || !title.trim()}
+                                                                    title="根据标题自动扩展提示词"
+                                                                    className="absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1 text-[11px] font-medium rounded-md bg-white/10 hover:bg-white/20 text-rose-200 transition-colors disabled:opacity-30 flex items-center gap-1"
+                                                                >
+                                                                    {isEnhancing ? (
+                                                                        <span className="animate-spin w-3 h-3 border-2 border-rose-200/30 border-t-rose-200 rounded-full" />
+                                                                    ) : "✨ 扩展"}
+                                                                </button>
+                                                            </div>
                                                             <select
                                                                 title="选择引导强度"
                                                                 value={guidanceLevel}
                                                                 onChange={(e) => setGuidanceLevel(e.target.value as any)}
                                                                 className="bg-black/20 backdrop-blur rounded-xl px-3 py-2.5 text-sm text-white/90 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 cursor-pointer transition-all"
-                                                                disabled={aiGenerating}
+                                                                disabled={aiGenerating || isEnhancing}
                                                             >
                                                                 <option value="light" className="bg-zinc-800">🍃 轻引导</option>
                                                                 <option value="medium" className="bg-zinc-800">⚖️ 中引导</option>
@@ -572,7 +630,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                                 value={aiDuration}
                                                                 onChange={(e) => setAiDuration(Number(e.target.value))}
                                                                 className="bg-black/20 backdrop-blur rounded-xl px-3 py-2.5 text-sm text-white/90 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 cursor-pointer transition-all"
-                                                                disabled={aiGenerating}
+                                                                disabled={aiGenerating || isEnhancing}
                                                                 title="选择时长"
                                                             >
                                                                 {AI_DURATION_OPTIONS.map((duration) => (
@@ -586,7 +644,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                                 whileTap={{ scale: 0.96 }}
                                                                 onTapStart={triggerMedium}
                                                                 onClick={handleAIGenerate}
-                                                                disabled={!aiPrompt.trim() || aiGenerating}
+                                                                disabled={(!title.trim() && !aiPrompt.trim()) || aiGenerating}
                                                                 className="px-5 py-2.5 bg-white/10 hover:bg-white/15 border border-white/10 text-white text-sm font-medium rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
                                                             >
                                                                 {aiGenerating ? (
