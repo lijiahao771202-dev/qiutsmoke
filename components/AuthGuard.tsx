@@ -1,30 +1,28 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
-    const { user, loading } = useAuth();
-    const router = useRouter();
-    const pathname = usePathname();
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
 
-    useEffect(() => {
-        if (!loading && !user) {
-            router.push(`/auth?next=${encodeURIComponent(pathname)}`);
-        }
-    }, [user, loading, router, pathname]);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-    if (loading) {
-        // 🚀 核心优化：loading 期间返回空片段而不是全屏遮罩
-        // 这样页面不会被 backdrop-blur 阻塞视觉
-        // SSR 时也会返回 null 防止 document 错误
-        return null;
+  useEffect(() => {
+    if (mounted && !loading && !user) {
+      router.push(`/auth?next=${encodeURIComponent(pathname)}`);
     }
+  }, [mounted, user, loading, router, pathname]);
 
-    if (!user) {
-        return null;
-    }
+  if (!mounted || loading || !user) {
+    return null;
+  }
 
-    return <>{children}</>;
+  return <>{children}</>;
 }

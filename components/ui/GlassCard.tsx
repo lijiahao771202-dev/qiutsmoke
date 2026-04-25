@@ -107,7 +107,7 @@ export function GlassCard({
             <div className="relative z-20">{children}</div>
 
             {/* Subtle Noise Texture */}
-            <div className="absolute inset-0 opacity-[0.03] pointer-events-none mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')] z-10" />
+            <div className="absolute inset-0 opacity-[0.03] pointer-events-none mix-blend-overlay bg-[url('/noise.svg')] z-10" />
         </div>
     );
 }

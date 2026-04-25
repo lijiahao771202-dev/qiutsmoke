@@ -5,6 +5,7 @@ export type SupabaseStorageErrorLike = {
   error?: string | null;
   code?: string | number | null;
   name?: string | null;
+  originalError?: Record<string, unknown> | null;
 };
 
 function normalizeErrorText(error: SupabaseStorageErrorLike | null | undefined) {
@@ -35,7 +36,13 @@ export function isSupabaseStorageMissingError(error: SupabaseStorageErrorLike | 
   if (hasStatus(error, 404)) return true;
 
   const normalized = normalizeErrorText(error);
+  const originalErrorKeys =
+    error.originalError && typeof error.originalError === "object"
+      ? Object.keys(error.originalError)
+      : [];
+
   return (
+    (error.name === "StorageUnknownError" && originalErrorKeys.length === 0) ||
     normalized.includes("not found") ||
     normalized.includes("does not exist") ||
     normalized.includes("no such")

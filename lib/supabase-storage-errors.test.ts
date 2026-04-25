@@ -12,6 +12,10 @@ test("recognizes bucket-not-found errors as missing storage resources", () => {
   assert.equal(isSupabaseStorageMissingError({ message: "Object not found" }), true);
   assert.equal(isSupabaseStorageMissingError({ status: 404 }), true);
   assert.equal(isSupabaseStorageMissingError({ statusCode: "404" }), true);
+  assert.equal(
+    isSupabaseStorageMissingError({ name: "StorageUnknownError", originalError: {} }),
+    true
+  );
   assert.equal(isSupabaseStorageMissingError({ message: "permission denied" }), false);
 });
 
