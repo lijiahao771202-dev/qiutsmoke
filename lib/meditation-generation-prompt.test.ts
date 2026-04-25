@@ -28,10 +28,12 @@ test("builds user prompt from a clean topic", () => {
     topic: "正念呼吸（目标时长：30分钟）",
     durationMinutes: 30,
     guidanceLevel: "heavy",
+    referenceBlock: "【高质量样本参考】\n1. 焦虑时回到呼吸",
   });
 
   assert.equal(prompt.includes("主题：正念呼吸"), true);
   assert.equal(prompt.includes("目标用户：容易走神"), true);
   assert.equal(prompt.includes("一次性写完整篇成品"), true);
   assert.equal(prompt.includes("至少写出 21 个自然段 / 节奏块"), true);
+  assert.equal(prompt.includes("高质量样本参考"), true);
 });

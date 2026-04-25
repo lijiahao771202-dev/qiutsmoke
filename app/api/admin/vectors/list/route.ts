@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
-import path from "path";
-
-const RAW_SCRIPTS_DIR = path.join(process.cwd(), 'lib', 'data', 'raw_scripts');
-const VECTORS_FILE = path.join(process.cwd(), 'lib', 'data', 'meditation_vectors.json');
+import {
+  parseMeditationSampleFile,
+} from "@/lib/meditation-rag";
+import { VECTOR_SAMPLES_DIR, VECTORS_FILE } from "@/lib/meditation-rag-node";
 
 export async function GET(req: Request) {
     try {
@@ -11,20 +11,24 @@ export async function GET(req: Request) {
         const full = searchParams.get('full') === 'true';
 
         const samples = [];
-        if (fs.existsSync(RAW_SCRIPTS_DIR)) {
-            const files = fs.readdirSync(RAW_SCRIPTS_DIR);
+        if (fs.existsSync(VECTOR_SAMPLES_DIR)) {
+            const files = fs.readdirSync(VECTOR_SAMPLES_DIR);
             for (const file of files) {
                 if (file.endsWith('.md') || file.endsWith('.txt')) {
-                    const filePath = path.join(RAW_SCRIPTS_DIR, file);
+                    const filePath = `${VECTOR_SAMPLES_DIR}/${file}`;
                     const stats = fs.statSync(filePath);
                     const content = fs.readFileSync(filePath, 'utf-8');
+                    const sample = parseMeditationSampleFile(file, content);
                     samples.push({
-                        id: path.basename(file, path.extname(file)),
+                        id: sample.id,
                         filename: file,
-                        preview: content.substring(0, 100) + (content.length > 100 ? "..." : ""),
+                        preview: sample.summary,
                         content: full ? content : undefined,
                         size: stats.size,
                         updatedAt: stats.mtime.toISOString(),
+                        title: sample.title,
+                        guidanceLevel: sample.guidanceLevel,
+                        durationMinutes: sample.durationMinutes,
                     });
                 }
             }

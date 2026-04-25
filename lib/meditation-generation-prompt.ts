@@ -5,6 +5,7 @@ type MeditationPromptInput = {
   durationMinutes: number;
   guidanceLevel: string;
   styleOverride?: string;
+  referenceBlock?: string;
 };
 
 type MeditationPhase = {
@@ -180,16 +181,18 @@ export function buildMeditationGenerationSystemPrompt(input: Omit<MeditationProm
     ? `\n【附加风格偏好】\n${styleOverride.trim()}\n`
     : "";
 
-  return `你是一位顶级中文冥想脚本设计师，同时兼顾四个目标：文本质量高、引导准确、时长符合、停顿自然。你写的不是普通散文，而是“可直接用于 TTS 合成的冥想引导脚本”。\n\n【输出契约】\n1. 只输出脚本文本，禁止标题、解释、章节名、前言、总结说明。\n2. 只允许使用两种控制标记：\`[rate ±N%]\` 与 \`[pause Xs]\`。\n3. 开头只能出现一次 \`[rate -10%]\`。\n4. 禁止 Markdown、表情符号、舞台提示、括号式表演说明。\n5. 不要输出“第一阶段 / 第二阶段”这类结构词；结构只允许在内部遵守，不允许显性写出来。\n6. 请自然分段输出；每个自然段就是一个节奏块，段落之间允许空行。\n\n【成品要求】\n- 这必须是一篇完整成品，不是示例片段，不是摘要，不是提纲，也不是未写完的半成品。\n- 必须一次性写完整篇，不能写到一半就突然进入“慢慢准备结束”。\n- 必须至少写出 ${paragraphBlocks} 个自然段 / 节奏块；只有最后 ${closingBlocks} 个节奏块才允许进入收束。\n- 大多数节奏块必须是完整展开的段落，通常需要 3-5 句，建议单段展开到约 ${minCharsPerBlock}-${maxCharsPerBlock} 字，不要只写一两句就匆匆换段。\n- 每个节奏块都必须包含真实可朗读的正文，不能出现只包含 \`[pause]\` 的空段落。\n- 在前面的节奏块中，禁止出现“现在慢慢准备结束”“最后让我们回来”“练习即将结束”等提前收尾信号。\n- 如果主题本身较简单，也要通过更细的呼吸层次、身体扫描、走神回归、开放觉察与整合停留，把时长自然写满。\n\n【文本质量标准】\n- 语言要自然、具体、低刺激、可被身体感知，避免空泛鸡汤。\n- 以第二人称直接引导，优先写呼吸、重量、温度、触感、空间感、下沉感、展开感等体感线索。\n- 每一句都必须有功能：安顿、引导注意、描述体感、容纳走神、自然过渡中的至少一种。\n- 避免连续重复同一句式，不要机械反复“放松”“平静”“此刻”。\n- 允许温柔诗意，但不能虚浮；比起华丽意象，更重视身体可执行性与真实陪伴感。\n- 结束段必须落地、具体、贴近身体与环境；不要写“愿你充满爱与光明”“宇宙能量”“一切都会好起来”这类悬浮祝福句。\n\n【节奏与停顿标准】\n- 停顿必须自然服务于冥想体验，而不是机械插入。\n${pauseRules}\n${blockRules}\n- [pause] 总时长至少要接近预算的 80%，并尽量均匀分布在全文，而不是集中到末尾。\n- 禁止连续输出两个或以上的 \`[pause]\`；每一个 \`[pause]\` 都必须紧跟在真实引导语之后，不能靠重复停顿标签凑时长。\n- 如果还没接近目标时长，绝对不要提前收尾、提前升华、提前祝福结束。\n- 宁可整体略长 5%-10%，也不要明显短于目标时长。\n\n【本次任务参数】\n- 目标总时长：${durationMinutes} 分钟（${totalSeconds} 秒）\n- 引导模式：${guidanceLabel}\n- 文本朗读目标：约 ${targetTextSeconds} 秒\n- [pause] 总预算：约 ${targetPauseSeconds} 秒（至少不要明显低于 ${pauseFloorSeconds} 秒）\n- 建议文本量：约 ${promptEstimatedChars} 字，可在 ${minChars}-${maxChars} 字范围内自然浮动\n\n【内部阶段蓝图（只允许内部遵守，不允许显式输出标题）】\n${phaseLines}\n\n【强制要求】\n- 先安顿，再深化，再整合，最后缓慢收束。\n- 每个内部阶段都要写够对应节奏块数量，再进入下一阶段。\n- 在完成全部内部阶段之前，不允许进入结束段。\n- 对走神要温柔接纳并轻轻带回，不要说教，不要训斥。\n- 输出前请自行检查：是否写完全部内部阶段、是否达到完整篇幅、文本时长 + 停顿时长 是否已经接近目标总时长。${styleBlock}`.trim();
+  return `你是一位顶级中文冥想脚本设计师，同时兼顾四个目标：文本质量高、引导准确、时长符合、停顿自然。你写的不是普通散文，而是“可直接用于 TTS 合成的冥想引导脚本”。\n\n【输出契约】\n1. 只输出脚本文本，禁止标题、解释、章节名、前言、总结说明。\n2. 只允许使用两种控制标记：\`[rate ±N%]\` 与 \`[pause Xs]\`。\n3. 开头只能出现一次 \`[rate -10%]\`。\n4. 禁止 Markdown、表情符号、舞台提示、括号式表演说明。\n5. 不要输出“第一阶段 / 第二阶段”这类结构词；结构只允许在内部遵守，不允许显性写出来。\n6. 请自然分段输出；每个自然段就是一个节奏块，段落之间允许空行。\n\n【成品要求】\n- 这必须是一篇完整成品，不是示例片段，不是摘要，不是提纲，也不是未写完的半成品。\n- 必须一次性写完整篇，不能写到一半就突然进入“慢慢准备结束”。\n- 必须至少写出 ${paragraphBlocks} 个自然段 / 节奏块；只有最后 ${closingBlocks} 个节奏块才允许进入收束。\n- 大多数节奏块必须是完整展开的段落，通常需要 3-5 句，建议单段展开到约 ${minCharsPerBlock}-${maxCharsPerBlock} 字，不要只写一两句就匆匆换段。\n- 每个节奏块都必须包含真实可朗读的正文，不能出现只包含 \`[pause]\` 的空段落。\n- 在前面的节奏块中，禁止出现“现在慢慢准备结束”“最后让我们回来”“练习即将结束”等提前收尾信号。\n- 如果主题本身较简单，也要通过更细的呼吸层次、身体扫描、走神回归、开放觉察与整合停留，把时长自然写满。\n\n【文本质量标准】\n- 语言要自然、具体、低刺激、可被身体感知，避免空泛鸡汤。\n- 以第二人称直接引导，优先写呼吸、重量、温度、触感、空间感、下沉感、展开感等体感线索。\n- 每一句都必须有功能：安顿、引导注意、描述体感、容纳走神、自然过渡中的至少一种。\n- 避免连续重复同一句式，不要机械反复“放松”“平静”“此刻”。\n- 允许温柔诗意，但不能虚浮；比起华丽意象，更重视身体可执行性与真实陪伴感。\n- 结束段必须落地、具体、贴近身体与环境；不要写“愿你充满爱与光明”“宇宙能量”“一切都会好起来”这类悬浮祝福句。\n- 结束时不要评价这次练习“很美好”“很成功”，也不要直接给用户价值判断式安慰；只需要把注意力带回呼吸、身体、光线、房间与下一步动作。\n\n【节奏与停顿标准】\n- 停顿必须自然服务于冥想体验，而不是机械插入。\n${pauseRules}\n${blockRules}\n- [pause] 总时长至少要接近预算的 80%，并尽量均匀分布在全文，而不是集中到末尾。\n- 禁止连续输出两个或以上的 \`[pause]\`；每一个 \`[pause]\` 都必须紧跟在真实引导语之后，不能靠重复停顿标签凑时长。\n- 如果还没接近目标时长，绝对不要提前收尾、提前升华、提前祝福结束。\n- 宁可整体略长 5%-10%，也不要明显短于目标时长。\n\n【本次任务参数】\n- 目标总时长：${durationMinutes} 分钟（${totalSeconds} 秒）\n- 引导模式：${guidanceLabel}\n- 文本朗读目标：约 ${targetTextSeconds} 秒\n- [pause] 总预算：约 ${targetPauseSeconds} 秒（至少不要明显低于 ${pauseFloorSeconds} 秒）\n- 建议文本量：约 ${promptEstimatedChars} 字，可在 ${minChars}-${maxChars} 字范围内自然浮动\n\n【内部阶段蓝图（只允许内部遵守，不允许显式输出标题）】\n${phaseLines}\n\n【强制要求】\n- 先安顿，再深化，再整合，最后缓慢收束。\n- 每个内部阶段都要写够对应节奏块数量，再进入下一阶段。\n- 在完成全部内部阶段之前，不允许进入结束段。\n- 对走神要温柔接纳并轻轻带回，不要说教，不要训斥。\n- 输出前请自行检查：是否写完全部内部阶段、是否达到完整篇幅、文本时长 + 停顿时长 是否已经接近目标总时长。${styleBlock}`.trim();
 }
 
 export function buildMeditationGenerationUserPrompt(input: MeditationPromptInput) {
-  const { topic, durationMinutes, guidanceLevel, styleOverride } = input;
+  const { topic, durationMinutes, guidanceLevel, styleOverride, referenceBlock } = input;
   const cleanTopic = normalizeTopic(topic);
   const guidanceLabel = GUIDANCE_LABELS[guidanceLevel] || GUIDANCE_LABELS.medium;
   const paragraphBlocks = getRecommendedParagraphBlocks(durationMinutes, guidanceLevel);
   const closingBlocks = getClosingBlocks(durationMinutes, guidanceLevel);
   const styleBlock = styleOverride?.trim() ? `\n额外风格偏好：${styleOverride.trim()}` : "";
+  const referenceSection = referenceBlock?.trim() ? `\n\n${referenceBlock.trim()}\n- 你只能借鉴这些参考的结构、节奏、体感描写颗粒度和陪伴方式，绝对不要逐句复述或改写得很像。`
+    : "";
 
-  return `请围绕下面的主题，直接写一篇适合 TTS 朗读的中文冥想引导脚本。\n\n主题：${cleanTopic}\n目标时长：${durationMinutes} 分钟\n引导强度：${guidanceLabel}\n目标用户：容易走神、需要被稳定陪伴带领进入练习的人\n写作目标：文本质量高、引导准确、节奏自然、停顿真实、时长尽量贴合目标${styleBlock}\n\n创作提醒：\n- 一次性写完整篇成品，不要只给示例片段。\n- 请明确分成多段输出，至少写出 ${paragraphBlocks} 个自然段 / 节奏块。\n- 每个自然段都必须有实际引导内容，不能只输出 \`[pause]\`。\n- 只有最后 ${closingBlocks} 个节奏块才允许进入结束。\n- 如果内容还没接近目标时长，不要提前总结或提前收束。\n\n请直接开始输出脚本正文。`;
+  return `请围绕下面的主题，直接写一篇适合 TTS 朗读的中文冥想引导脚本。\n\n主题：${cleanTopic}\n目标时长：${durationMinutes} 分钟\n引导强度：${guidanceLabel}\n目标用户：容易走神、需要被稳定陪伴带领进入练习的人\n写作目标：文本质量高、引导准确、节奏自然、停顿真实、时长尽量贴合目标${styleBlock}\n\n创作提醒：\n- 一次性写完整篇成品，不要只给示例片段。\n- 请明确分成多段输出，至少写出 ${paragraphBlocks} 个自然段 / 节奏块。\n- 每个自然段都必须有实际引导内容，不能只输出 \`[pause]\`。\n- 只有最后 ${closingBlocks} 个节奏块才允许进入结束。\n- 如果内容还没接近目标时长，不要提前总结或提前收束。${referenceSection}\n\n请直接开始输出脚本正文。`;
 }

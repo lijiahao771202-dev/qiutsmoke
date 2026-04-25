@@ -7,6 +7,10 @@ import {
   buildMeditationGenerationSystemPrompt,
   buildMeditationGenerationUserPrompt,
 } from "@/lib/meditation-generation-prompt";
+import {
+  formatMeditationReferenceBlock,
+  retrieveMeditationReferences,
+} from "@/lib/meditation-rag";
 import { ensureTables, hasDb } from "@/lib/db";
 
 async function resolveStoredAISettings() {
@@ -128,6 +132,7 @@ export async function POST(req: Request) {
       duration,
       guidanceLevel,
       topicLength: topic.length,
+      retrievalEnabled: true,
       hasKey: Boolean(key),
     }));
 
@@ -151,11 +156,23 @@ export async function POST(req: Request) {
       guidanceLevel,
       styleOverride: typeof body?.systemPrompt === "string" ? body.systemPrompt : undefined,
     });
+    const references = await retrieveMeditationReferences({
+      topic,
+      durationMinutes: duration,
+      guidanceLevel,
+    });
+    const referenceBlock = formatMeditationReferenceBlock(references);
+    console.log("[AI Request][generate][retrieval]", JSON.stringify({
+      requestId,
+      referenceCount: references.length,
+      topTitles: references.map((reference) => reference.title).slice(0, 3),
+    }));
     const userPrompt = buildMeditationGenerationUserPrompt({
       topic,
       durationMinutes: duration,
       guidanceLevel,
       styleOverride: typeof body?.systemPrompt === "string" ? body.systemPrompt : undefined,
+      referenceBlock,
     });
     const targets = buildAIGenerationTargets(duration, guidanceLevel);
     const outputCharMultiplier =

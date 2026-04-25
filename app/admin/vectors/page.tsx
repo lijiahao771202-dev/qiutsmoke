@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft, Database, Plus, RefreshCw, FileText, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -94,79 +94,19 @@ export default function VectorsAdminPage() {
     const handleBuild = async () => {
         setIsBuilding(true);
         setMessage(null);
-        setBuildProgress("准备拉取完整样本数据...");
-        setBuildProgressPercent(0);
+        setBuildProgress("正在读取高质量样本并请求 NVIDIA BGE-M3 生成向量...");
+        setBuildProgressPercent(20);
 
         try {
-            // 1. 获取包含全文的完整列表
-            const listRes = await fetch("/api/admin/vectors/list?full=true");
-            const listData = await listRes.json();
-            if (!listData.ok || listData.samples.length === 0) {
-                throw new Error("没有可用的样本数据");
-            }
-            const fullSamples: Sample[] = listData.samples;
-
-            setBuildProgress("初始化本地 AI 引擎 (首次会自动下载模型权重，请耐心等待 1-2 分钟)...");
-
-            // 动态原生导入绕过 Webpack/Turbopack 编译报错，直接由浏览器从国内/国际 CDN 加载 ESM
-            const transformers = await new Function('return import("https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2")')();
-            const { pipeline, env } = transformers;
-            
-            // 确保使用 CDN 获取模型（国内可用）
-            env.allowLocalModels = false;
-            env.useBrowserCache = true;
-            // 强制使用我们的本地代理 API 请求 hf-mirror，从而彻底绕过浏览器的 CORS 跨域限制
-            env.remoteHost = window.location.origin + '/api/models';
-
-            // 加载轻量级中文向量模型
-            const extractor = await pipeline('feature-extraction', 'Xenova/bge-small-zh-v1.5', {
-                progress_callback: (info: any) => {
-                    if (info.status === 'downloading') {
-                        setBuildProgress(`正在下载模型: ${info.file} (${Math.round(info.progress || 0)}%)`);
-                        setBuildProgressPercent(info.progress || 0);
-                    } else if (info.status === 'ready') {
-                        setBuildProgress("模型加载完成，准备生成向量...");
-                        setBuildProgressPercent(100);
-                    } else if (info.status === 'init') {
-                        setBuildProgressPercent(0);
-                    }
-                }
-            });
-
-            const vectorDB = [];
-            
-            for (let i = 0; i < fullSamples.length; i++) {
-                const sample = fullSamples[i];
-                if (!sample.content) continue;
-                
-                setBuildProgress(`正在处理 (${i + 1}/${fullSamples.length}): ${sample.id}`);
-                setBuildProgressPercent((i / fullSamples.length) * 100);
-                
-                // 获取 Embedding
-                const output = await extractor(sample.content, { pooling: 'cls', normalize: true });
-                const embedding = Array.from(output.data);
-                
-                vectorDB.push({
-                    id: sample.id,
-                    tags: [sample.id],
-                    content: sample.content,
-                    embedding: embedding
-                });
-            }
-
-            setBuildProgressPercent(100);
-            setBuildProgress("向量生成完成，正在上传保存...");
-
-            // 将生成的向量保存到服务器
             const saveRes = await fetch("/api/admin/vectors/build", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ vectors: vectorDB })
             });
             const saveData = await saveRes.json();
 
             if (saveData.ok) {
-                setMessage({ type: 'success', text: `构建成功！纯本地处理了 ${saveData.count} 条样本。` });
+                setBuildProgress("向量库构建完成，正在刷新状态...");
+                setBuildProgressPercent(100);
+                setMessage({ type: 'success', text: `构建成功！已用 ${saveData.model} 生成 ${saveData.count} 个检索片段。` });
                 fetchData();
             } else {
                 throw new Error(saveData.error || '保存向量库失败');
@@ -197,8 +137,8 @@ export default function VectorsAdminPage() {
                                 <Database className="w-6 h-6 text-indigo-400" />
                             </div>
                             <div>
-                                <h1 className="text-2xl font-medium tracking-tight">纯本地向量库管理</h1>
-                                <p className="text-sm text-white/50 mt-1">完全不依赖外部 API 的本地终端侧 RAG 向量引擎</p>
+                                <h1 className="text-2xl font-medium tracking-tight">冥想检索样本库</h1>
+                                <p className="text-sm text-white/50 mt-1">使用高质量原创样本 + NVIDIA BGE-M3 构建声波工坊生成检索库</p>
                             </div>
                         </div>
                     </div>
@@ -214,7 +154,7 @@ export default function VectorsAdminPage() {
                             ) : (
                                 <RefreshCw className="w-4 h-4" />
                             )}
-                            <span>{isBuilding ? "向量构建中..." : "纯本地构建向量库"}</span>
+                            <span>{isBuilding ? "向量构建中..." : "重建检索向量库"}</span>
                         </button>
                         {isBuilding && buildProgress && (
                             <div className="flex flex-col items-end gap-1.5 w-full max-w-[280px]">

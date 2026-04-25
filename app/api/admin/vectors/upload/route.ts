@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { VECTOR_SAMPLES_DIR } from "@/lib/meditation-rag-node";
 
 export async function POST(req: Request) {
     try {
@@ -19,12 +20,11 @@ export async function POST(req: Request) {
         const filename = `${Date.now()}_${safeTitle}.md`;
 
         // 确保目录存在
-        const dir = path.join(process.cwd(), "lib", "data", "raw_scripts");
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
+        if (!fs.existsSync(VECTOR_SAMPLES_DIR)) {
+            fs.mkdirSync(VECTOR_SAMPLES_DIR, { recursive: true });
         }
 
-        const filePath = path.join(dir, filename);
+        const filePath = path.join(VECTOR_SAMPLES_DIR, filename);
         fs.writeFileSync(filePath, content, "utf-8");
 
         return NextResponse.json({ ok: true, filename });
