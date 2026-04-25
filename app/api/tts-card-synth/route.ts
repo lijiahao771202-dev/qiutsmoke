@@ -1,5 +1,9 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import {
+  isSupabaseStorageAlreadyExistsError,
+  isSupabaseStorageMissingError,
+} from "@/lib/supabase-storage-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,11 +49,6 @@ function cardIdToStoragePath(userId: string, cardId: string) {
   };
 }
 
-function isNotFoundError(error: { message?: string; statusCode?: string | number } | null) {
-  if (!error) return false;
-  return error.statusCode === 404 || String(error.message || "").toLowerCase().includes("not found");
-}
-
 async function ensureBucket(adminClient: ReturnType<typeof getAdminClient>) {
   const { error: getError } = await adminClient.storage.getBucket(BUCKET_NAME);
   if (!getError) return;
@@ -60,7 +59,11 @@ async function ensureBucket(adminClient: ReturnType<typeof getAdminClient>) {
     allowedMimeTypes: ["application/json"],
   } as any);
 
-  if (createError && !isNotFoundError(createError)) {
+  if (
+    createError &&
+    !isSupabaseStorageMissingError(createError) &&
+    !isSupabaseStorageAlreadyExistsError(createError)
+  ) {
     throw createError;
   }
 }
@@ -85,12 +88,14 @@ export async function GET(req: Request) {
     if ("error" in result) return result.error;
 
     const adminClient = getAdminClient();
+    await ensureBucket(adminClient);
+
     const { path } = cardIdToStoragePath(result.user.id, result.cardId);
     const { data, error } = await adminClient.storage.from(BUCKET_NAME).download(path);
 
     if (error || !data) {
       return new Response(JSON.stringify({ error: "Snapshot not found" }), {
-        status: isNotFoundError(error) ? 404 : 500,
+        status: isSupabaseStorageMissingError(error) ? 404 : 500,
         headers: { "Content-Type": "application/json" },
       });
     }
@@ -158,7 +163,7 @@ export async function DELETE(req: Request) {
     const { path } = cardIdToStoragePath(result.user.id, result.cardId);
     const { error } = await adminClient.storage.from(BUCKET_NAME).remove([path]);
 
-    if (error && !isNotFoundError(error)) throw error;
+    if (error && !isSupabaseStorageMissingError(error)) throw error;
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,

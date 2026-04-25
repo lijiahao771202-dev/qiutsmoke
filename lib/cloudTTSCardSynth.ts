@@ -1,8 +1,12 @@
-import { getApiUrl } from "@/lib/config";
-import type { TTSCardSynthSnapshot } from "./tts-card-synth";
+import { getApiUrl } from "./config.ts";
+import type { TTSCardSynthSnapshot } from "./tts-card-synth.ts";
 
 function buildCloudTTSCardSynthUrl(cardId: string) {
   return `${getApiUrl("/api/tts-card-synth")}?cardId=${encodeURIComponent(cardId)}`;
+}
+
+function isSnapshotNotFoundPayload(status: number, bodyText: string) {
+  return status === 500 && bodyText.toLowerCase().includes("snapshot not found");
 }
 
 export async function getCloudTTSCardSynthSnapshot(cardId: string): Promise<TTSCardSynthSnapshot | null> {
@@ -15,7 +19,11 @@ export async function getCloudTTSCardSynthSnapshot(cardId: string): Promise<TTSC
 
     if (res.status === 401 || res.status === 404) return null;
     if (!res.ok) {
-      console.warn("[CloudTTSCardSynth] 下载云端快照失败", res.status, await res.text().catch(() => ""));
+      const bodyText = await res.text().catch(() => "");
+      if (isSnapshotNotFoundPayload(res.status, bodyText)) {
+        return null;
+      }
+      console.warn("[CloudTTSCardSynth] 下载云端快照失败", res.status, bodyText);
       return null;
     }
 
