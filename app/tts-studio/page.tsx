@@ -356,6 +356,8 @@ const ITEM_VARIANTS = {
 
 function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Promise<any> }) {
     const [title, setTitle] = useState("");
+    const [text, setText] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
     const { triggerLight, triggerMedium, triggerSuccess, triggerHeavy } = useHaptics();
 
     // 折叠状态 - 默认折叠
@@ -367,6 +369,33 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
     const [isEnhancing, setIsEnhancing] = useState(false);
     const [aiDuration, setAiDuration] = useState<number>(5);
     const [guidanceLevel, setGuidanceLevel] = useState<'light' | 'medium' | 'heavy'>('medium');
+    const [ragReferences, setRagReferences] = useState<{title: string, content: string}[] | null>(null);
+    const [showRag, setShowRag] = useState(false);
+
+    const handleSubmit = async () => {
+        if (!text.trim()) return;
+        setIsLoading(true);
+        try {
+            await onAddCard({
+                title: title.trim() || undefined,
+                content: text,
+                voice_id: VOICES[0].id,
+                rate: "10%",
+                guidance_level: guidanceLevel
+            } as any);
+
+            setText("");
+            setTitle("");
+            setAiPrompt("");
+            setIsCollapsed(true);
+            triggerSuccess();
+        } catch (e) {
+            console.error("Add failed", e);
+            triggerHeavy();
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     // AI 扩展提示词
     const handleEnhancePrompt = async () => {
@@ -412,7 +441,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
         }
     };
 
-    // AI 生成冥想文本并自动创建卡片
+    // AI 生成冥想文本
     const handleAIGenerate = async () => {
         if (!title.trim() || aiGenerating) {
             if (!title.trim()) window.alert("请先输入标题");
@@ -420,6 +449,9 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
         }
 
         setAiGenerating(true);
+        setText("");
+        setRagReferences(null);
+        setShowRag(false);
         const { totalSeconds } = buildAIGenerationTargets(aiDuration, guidanceLevel);
 
         try {
@@ -465,31 +497,43 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
             if (!reader) throw new Error("无法读取响应");
 
             const decoder = new TextDecoder();
-            let fullContent = "";
+            let rawBuffer = "";
+            let hasParsedRag = false;
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                fullContent += decoder.decode(value);
+                rawBuffer += decoder.decode(value, { stream: true });
+                
+                if (!hasParsedRag) {
+                    if (rawBuffer.includes('__RAG_END__')) {
+                        const parts = rawBuffer.split('__RAG_END__');
+                        try {
+                            const ragJson = parts[0].replace('__RAG_START__', '');
+                            const parsed = JSON.parse(ragJson);
+                            if (Array.isArray(parsed) && parsed.length > 0) {
+                                setRagReferences(parsed);
+                            }
+                        } catch(e) {
+                            console.error("Failed to parse RAG payload", e);
+                        }
+                        hasParsedRag = true;
+                        setText(parts[1]);
+                    } else if (!rawBuffer.startsWith('__RAG_START__')) {
+                        hasParsedRag = true;
+                        setText(rawBuffer);
+                    }
+                } else {
+                    const parts = rawBuffer.split('__RAG_END__');
+                    setText(parts.length > 1 ? parts[1] : parts[0]);
+                }
             }
 
-            // 直接添加卡片
-            await onAddCard({
-                title: title.trim(),
-                content: fullContent,
-                voice_id: VOICES[0].id,
-                rate: "10%",
-                guidance_level: guidanceLevel
-            } as any);
-
-            const shortGenerationMessage = getShortGenerationMessage(fullContent, totalSeconds);
+            const shortGenerationMessage = getShortGenerationMessage(text || rawBuffer.split('__RAG_END__').pop() || "", totalSeconds);
             if (shortGenerationMessage) {
                 window.alert(shortGenerationMessage);
             }
             
-            setTitle("");
-            setAiPrompt("");
-            setIsCollapsed(true);
             triggerSuccess(); 
         } catch (e) {
             console.error("AI 生成失败:", e);
@@ -504,7 +548,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
         // 移除 layout 动画，避免展开/折叠时的弹跳效果
         <div className="relative w-full max-w-2xl mx-auto mb-8 z-20">
             <GlassCard className="p-1 rounded-[2rem] bg-gradient-to-br from-rose-500/[0.05] via-white/[0.05] to-rose-500/[0.02] border-rose-200/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
-                <div className="relative z-10 p-6">
+                <div className="relative z-10 p-4">
                     {/* 可折叠的标题区域 */}
                     <motion.div
                         className="flex items-center justify-between cursor-pointer select-none"
@@ -551,15 +595,15 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                 transition={{ ...SPRING_GENTLE, opacity: { duration: 0.2 } }}
                                 className="overflow-hidden"
                             >
-                                <div className="space-y-4 pt-4">
+                                <div className="space-y-3 pt-3">
                                     <input
                                         value={title}
                                         onChange={(e) => setTitle(e.target.value)}
                                         placeholder="给卡片起个标题..."
-                                        className="w-full bg-transparent text-xl font-bold text-white placeholder:text-white/40 mb-2 focus:outline-none focus:text-rose-100 transition-colors"
+                                        className="w-full bg-transparent text-xl font-bold text-white placeholder:text-white/40 mb-1 focus:outline-none focus:text-rose-100 transition-colors"
                                     />
 
-                                    <div className="relative rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-4 space-y-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
+                                    <div className="relative rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-3 space-y-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
                                         
                                         {/* 自动扩展提示词区域 (Read Only) */}
                                         <div className="relative">
@@ -567,7 +611,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                 value={aiPrompt}
                                                 readOnly
                                                 placeholder="AI 将自动为您扩展详细的提示词要求..."
-                                                className="w-full h-36 bg-black/20 rounded-xl px-4 py-3 pr-24 text-sm text-white/80 placeholder:text-white/30 resize-none outline-none border border-white/5 scrollbar-thin scrollbar-thumb-white/10"
+                                                className="w-full h-20 bg-black/20 rounded-xl px-4 py-3 pr-24 text-sm text-white/80 placeholder:text-white/30 resize-none outline-none border border-white/5 scrollbar-thin scrollbar-thumb-white/10"
                                             />
                                             <button 
                                                 onClick={handleEnhancePrompt}
@@ -582,12 +626,12 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                         </div>
 
                                         {/* 生成操作区 */}
-                                        <div className="flex gap-3 flex-wrap items-center">
+                                        <div className="flex gap-2 flex-wrap items-center">
                                             <select
                                                 title="选择引导强度"
                                                 value={guidanceLevel}
                                                 onChange={(e) => setGuidanceLevel(e.target.value as any)}
-                                                className="bg-black/20 backdrop-blur rounded-xl px-3 py-2 text-sm text-white/90 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 cursor-pointer transition-all"
+                                                className="bg-black/20 backdrop-blur rounded-lg px-2 py-1.5 text-xs text-white/90 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 cursor-pointer transition-all"
                                                 disabled={aiGenerating || isEnhancing}
                                             >
                                                 <option value="light" className="bg-zinc-800">🍃 轻引导</option>
@@ -597,7 +641,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                             <select
                                                 value={aiDuration}
                                                 onChange={(e) => setAiDuration(Number(e.target.value))}
-                                                className="bg-black/20 backdrop-blur rounded-xl px-3 py-2 text-sm text-white/90 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 cursor-pointer transition-all"
+                                                className="bg-black/20 backdrop-blur rounded-lg px-2 py-1.5 text-xs text-white/90 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 cursor-pointer transition-all"
                                                 disabled={aiGenerating || isEnhancing}
                                                 title="选择时长"
                                             >
@@ -608,6 +652,19 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                 ))}
                                             </select>
                                             <div className="flex-1" />
+                                            
+                                            {/* RAG Preview Toggle Button */}
+                                            {ragReferences && ragReferences.length > 0 && (
+                                                <button
+                                                    onClick={() => setShowRag(!showRag)}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500/20 text-indigo-200 border border-indigo-500/30 hover:bg-indigo-500/30 transition-colors"
+                                                    title="查看检索的知识库片段"
+                                                >
+                                                    <Info className="w-3.5 h-3.5" />
+                                                    {showRag ? "隐藏参考" : `已参考 ${ragReferences.length} 篇知识`}
+                                                </button>
+                                            )}
+
                                             <motion.button
                                                 whileHover={{ scale: 1.02 }}
                                                 whileTap={{ scale: 0.96 }}
@@ -615,18 +672,77 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                 onClick={handleAIGenerate}
                                                 disabled={!title.trim() || aiGenerating}
                                                 className={cn(
-                                                    "flex items-center gap-2 px-6 py-2.5 rounded-xl font-medium text-sm transition-all shadow-lg",
+                                                    "flex items-center gap-1.5 px-4 py-1.5 rounded-lg font-medium text-xs transition-all shadow-lg",
                                                     !title.trim() || aiGenerating
+                                                        ? "bg-white/5 text-white/20 cursor-not-allowed border border-white/5"
+                                                        : "bg-white/10 hover:bg-white/20 text-white border border-white/10"
+                                                )}
+                                            >
+                                                {aiGenerating ? (
+                                                    <span className="animate-spin w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full" />
+                                                ) : (
+                                                    <Sparkles className="w-3.5 h-3.5 text-rose-300" />
+                                                )}
+                                                <span className={aiGenerating ? "text-white/80" : "text-rose-100"}>{aiGenerating ? "创作中..." : "✨ AI 创作正文"}</span>
+                                            </motion.button>
+                                        </div>
+
+                                        {/* RAG Content Dropdown */}
+                                        <AnimatePresence>
+                                            {showRag && ragReferences && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, height: 0 }}
+                                                    animate={{ opacity: 1, height: "auto" }}
+                                                    exit={{ opacity: 0, height: 0 }}
+                                                    className="overflow-hidden"
+                                                >
+                                                    <div className="p-3 bg-black/30 rounded-xl border border-white/5 space-y-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+                                                        <div className="text-xs font-medium text-indigo-300 mb-1 flex items-center gap-1">
+                                                            <Info className="w-3.5 h-3.5" /> 知识库参考片段
+                                                        </div>
+                                                        {ragReferences.map((ref, idx) => (
+                                                            <div key={idx} className="bg-white/5 rounded p-2 text-xs text-white/70">
+                                                                <div className="font-semibold text-white/90 mb-1">{ref.title}</div>
+                                                                <div className="line-clamp-2 hover:line-clamp-none whitespace-pre-wrap">{ref.content}</div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+
+                                        {/* 文本输入/展示区 */}
+                                        <div className="pt-1">
+                                            <div className="text-xs text-rose-200/50 font-medium mb-1 pl-1">正文内容 (AI 创作后可在此检查与修改)</div>
+                                            <textarea
+                                                value={text}
+                                                onChange={(e) => setText(e.target.value)}
+                                                placeholder="正文内容将在这里生成..."
+                                                aria-label="正文内容"
+                                                className="w-full h-32 bg-black/20 text-rose-50/90 text-sm p-3 rounded-xl placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-rose-500/40 border border-white/5 resize-none leading-relaxed scrollbar-thin scrollbar-thumb-white/10"
+                                            />
+                                        </div>
+
+                                        {/* 创建卡片按钮 */}
+                                        <div className="flex items-center justify-end pt-1">
+                                            <motion.button
+                                                whileHover={{ scale: 1.02 }}
+                                                whileTap={{ scale: 0.96 }}
+                                                onClick={handleSubmit}
+                                                onTapStart={triggerLight}
+                                                disabled={!text.trim() || isLoading || aiGenerating}
+                                                className={cn(
+                                                    "flex items-center gap-2 px-5 py-2 rounded-xl font-medium text-sm transition-all shadow-lg",
+                                                    !text.trim() || aiGenerating
                                                         ? "bg-white/5 text-white/20 cursor-not-allowed border border-white/5"
                                                         : "bg-gradient-to-r from-rose-400/90 to-pink-500/90 hover:from-rose-400 hover:to-pink-400 text-white shadow-rose-500/20 backdrop-blur-md border border-white/10"
                                                 )}
                                             >
-                                                {aiGenerating ? (
-                                                    <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
+                                                {isLoading ? (
+                                                    <span className="animate-spin w-4 h-4 border-2 border-white/20 border-t-white rounded-full" />
                                                 ) : (
-                                                    <Sparkles className="w-4 h-4 text-white/90" />
+                                                    <>保存并创建卡片 <Plus className="w-4 h-4" /></>
                                                 )}
-                                                <span className={aiGenerating ? "text-white/80" : "text-white"}>{aiGenerating ? "AI 创作中..." : "一键生成卡片"}</span>
                                             </motion.button>
                                         </div>
                                     </div>

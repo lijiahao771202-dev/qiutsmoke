@@ -231,6 +231,13 @@ export async function POST(req: Request) {
     const encoder = new TextEncoder();
 
     (async () => {
+      try {
+        const referencesPayload = JSON.stringify(references.map(r => ({ title: r.title, content: r.content })));
+        await writer.write(encoder.encode(`__RAG_START__${referencesPayload}__RAG_END__`));
+      } catch (e) {
+        console.error("Failed to write RAG payload", e);
+      }
+
       const reader = upstream.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
