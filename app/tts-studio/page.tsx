@@ -357,7 +357,6 @@ const ITEM_VARIANTS = {
 function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Promise<any> }) {
     const [text, setText] = useState("");
     const [title, setTitle] = useState("");
-    const [voiceId, setVoiceId] = useState(VOICES[0].id);
     const [isLoading, setIsLoading] = useState(false);
     const { triggerLight, triggerMedium, triggerSuccess, triggerHeavy } = useHaptics();
 
@@ -379,7 +378,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
             await onAddCard({
                 title: title.trim() || undefined,
                 content: text,
-                voice_id: voiceId,
+                voice_id: VOICES[0].id,
                 rate: "10%",
                 guidance_level: guidanceLevel
             } as any);
@@ -613,18 +612,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                         />
                                     </div>
 
-                                    <div className="flex items-center justify-between pt-4 border-t border-rose-200/10">
-                                        <select
-                                            value={voiceId}
-                                            onChange={(e) => setVoiceId(e.target.value)}
-                                            title="选择语音"
-                                            className="bg-black/30 text-rose-100 text-sm py-2 px-4 rounded-xl border border-rose-200/10 hover:bg-black/50 transition-colors focus:outline-none focus:ring-1 focus:ring-rose-500/50 appearance-none cursor-pointer"
-                                        >
-                                            {VOICES.map(v => (
-                                                <option key={v.id} value={v.id} className="bg-zinc-900">{v.name}</option>
-                                            ))}
-                                        </select>
-
+                                    <div className="flex items-center justify-end pt-4 border-t border-rose-200/10">
                                         <motion.button
                                             whileHover={{ scale: 1.02 }}
                                             whileTap={{ scale: 0.96 }}
