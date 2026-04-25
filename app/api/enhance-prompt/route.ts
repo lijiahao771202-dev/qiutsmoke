@@ -129,9 +129,9 @@ export async function POST(req: Request) {
       });
     }
 
-    const systemPrompt = "你是一个专业的冥想引导词提示词专家。用户会给你一个简短的主题（标题），请你帮他扩展成一个详细的、有画面感和节奏感的补充提示词，用于指导另一个AI写正念冥想词。\n\n要求：\n1. 不要写正文，只写提示词本身（如对语气、停顿、画面细节的要求）。\n2. 保持在60个中文字符以内，精简有力。\n3. 直接输出结果，不要解释，不要出现“好的”、“为你提供”等前言后语。";
-    const userPrompt = `需要扩展的主题：${topic}`;
-    const maxTokens = 150;
+    const systemPrompt = "你是一个世界级的正念冥想导师和AI提示词专家。用户会提供一个冥想主题，请将其扩展为一段高度详细、充满画面感、具有情感深度和感官细节的生成要求，用于指导另一个AI撰写高质量的冥想引导词。\n\n要求：\n1. 详细描述场景设定（光线、温度、视觉/听觉/触觉体验）。\n2. 明确规定主播的语气语调（如：极致温柔、缓慢空灵、具有包裹感）。\n3. 设定结构和节奏（起伏、停顿、呼吸的指引）。\n4. 直接输出要求本身，绝对不要出现“好的”、“为你提供”等任何寒暄或解释说明。";
+    const userPrompt = `需要扩展的冥想主题：${topic}`;
+    const maxTokens = 300;
     
     const upstreamConfig = getUpstreamConfig(effectiveSettings, key, maxTokens);
     const messages = [

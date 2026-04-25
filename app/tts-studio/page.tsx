@@ -567,7 +567,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                 value={aiPrompt}
                                                 readOnly
                                                 placeholder="AI 将自动为您扩展详细的提示词要求..."
-                                                className="w-full h-24 bg-black/20 rounded-xl px-4 py-3 pr-24 text-sm text-white/80 placeholder:text-white/30 resize-none outline-none border border-white/5 scrollbar-thin scrollbar-thumb-white/10"
+                                                className="w-full h-36 bg-black/20 rounded-xl px-4 py-3 pr-24 text-sm text-white/80 placeholder:text-white/30 resize-none outline-none border border-white/5 scrollbar-thin scrollbar-thumb-white/10"
                                             />
                                             <button 
                                                 onClick={handleEnhancePrompt}

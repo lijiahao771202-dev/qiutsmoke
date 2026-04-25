@@ -32,7 +32,15 @@ export async function buildMeditationVectors(samples = readMeditationSamples()) 
 
   for (let index = 0; index < chunks.length; index += batchSize) {
     const batch = chunks.slice(index, index + batchSize);
-    const embeddings = await embedTextsWithNvidia(batch.map((chunk) => chunk.searchableText));
+    let embeddings: number[][] = [];
+    try {
+      embeddings = await embedTextsWithNvidia(batch.map((chunk) => chunk.searchableText));
+    } catch (error) {
+      console.warn(
+        "[Meditation RAG] NVIDIA embeddings unavailable, writing lexical-only vectors for this batch",
+        error
+      );
+    }
     batch.forEach((chunk, batchIndex) => {
       vectors.push({
         ...chunk,
