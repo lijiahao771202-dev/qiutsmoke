@@ -10,7 +10,7 @@ export type AIGenerationTargets = {
   estimatedChars: number;
 };
 
-const PROMPT_CHARS_PER_MINUTE = 260;
+const PROMPT_CHARS_PER_MINUTE = 220;
 const ESTIMATED_TTS_CHARS_PER_MINUTE = 210;
 
 export function getGuidanceTextRatio(guidanceLevel: string) {

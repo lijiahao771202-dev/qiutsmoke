@@ -13,7 +13,7 @@ test("builds duration targets for heavy guidance", () => {
   assert.equal(targets.totalSeconds, 1800);
   assert.equal(targets.targetTextSeconds, 1260);
   assert.equal(targets.targetPauseSeconds, 540);
-  assert.equal(targets.estimatedChars, 5460);
+  assert.equal(targets.estimatedChars, 4620);
 });
 
 test("estimates duration from text, pauses, and rate directives", () => {

@@ -3,81 +3,11 @@ import { sql } from "@vercel/postgres";
 import { normalizeAISettings } from "../../../lib/ai-models";
 import { buildDeepSeekChatCompletionBody } from "../../../lib/deepseek-chat";
 import { buildAIGenerationTargets } from "@/lib/meditation-script-duration";
+import {
+  buildMeditationGenerationSystemPrompt,
+  buildMeditationGenerationUserPrompt,
+} from "@/lib/meditation-generation-prompt";
 import { ensureTables, hasDb } from "@/lib/db";
-
-function buildDynamicRules(durationMinutes: number, guidanceLevel: string) {
-  const charsPerMinute = 260;
-  const guidanceRatios: Record<string, number> = {
-    light: 0.1,
-    medium: 0.5,
-    heavy: 0.7,
-  };
-
-  const textRatio = guidanceRatios[guidanceLevel] ?? guidanceRatios.medium;
-  const totalSeconds = durationMinutes * 60;
-  const targetTextSeconds = Math.round(totalSeconds * textRatio);
-  const targetPauseSeconds = Math.round(totalSeconds * (1 - textRatio));
-  const estimatedWords = Math.round(targetTextSeconds * (charsPerMinute / 60));
-
-  const structureTemplates: Record<string, string> = {
-    light: `【结构要求：轻引导】
-- 仅保留简短开场 + 防走神提醒 + 结束
-- 大量使用 [pause 60s], [pause 120s] 等超长停顿
-- 让静默占据主导，像一个安静的陪伴者`,
-    medium: `【结构要求：中引导】
-- 分为 ${Math.max(3, Math.floor(durationMinutes / 3))} 个引导段落
-- 段落间使用 [pause 15s] 到 [pause 30s]
-- 句子间可用 [pause 3s] 到 [pause 5s]
-- 引导语与静默保持 1:1 平衡`,
-    heavy: `【结构要求：多引导】
-- 持续语音引导，分为多个短段落
-- 至少 ${Math.max(12, durationMinutes * 2)} 个引导段，避免过早结束
-- 每句后短停 [pause 2s] 到 [pause 4s]
-- 段落间 [pause 6s] 到 [pause 10s]
-- 用连续声音牵引注意力
-- 如果内容还未接近目标时长，不要提前收尾，继续展开身体扫描、呼吸、觉察与感官描绘`,
-  };
-
-  return `## 📐 本次生成参数
-- ⏱️ 目标总时长：${durationMinutes} 分钟（${totalSeconds} 秒）
-- 🎙️ 引导模式：${guidanceLevel === "light" ? "轻引导" : guidanceLevel === "heavy" ? "多引导" : "中引导"}
-
-【时长分配】
-- 📝 文本朗读时长：约 ${targetTextSeconds} 秒
-- ⏸️ [pause] 总时长：约 ${targetPauseSeconds} 秒
-- 🔢 目标字数：约 ${estimatedWords} 字
-
-${structureTemplates[guidanceLevel] || structureTemplates.medium}
-
-【强制约束 - 必须遵守】
-1. 开头使用 [rate -10%] 设置舒缓语速
-2. 最终字数必须约 ${estimatedWords} 字
-3. 所有 [pause Xs] 的总和必须约 ${targetPauseSeconds} 秒
-4. 直接输出脚本，不要任何解释或前言
-5. 在达到目标时长之前，禁止提前总结、提前结束或快速收尾`;
-}
-
-function buildSystemPrompt(durationMinutes: number, guidanceLevel: string, systemPrompt?: string) {
-  const immutableRules = `## 🔒 不可变输出规则（必须严格遵守）
-1. 只输出纯脚本文本，禁止标题、前言、结尾解释、章节编号
-2. 停顿使用 [pause Xs] 格式（X 为整数秒，如 [pause 5s]）
-3. 语速调整使用 [rate ±N%] 格式（如 [rate -10%]）
-4. 🚫 禁止输出任何舞台指示，如："（轻柔地）"、"（缓慢地说）"
-5. 🚫 禁止使用 Markdown 格式（不要 **加粗** 或 *斜体*）
-6. 🚫 禁止使用表情符号或特殊符号
-7. 直接以冥想引导词开始，不要任何开场白`;
-
-  const userGuidance = systemPrompt?.trim()
-    ? `## 🎨 风格偏好（可适当参考，但不得违反上述规则）
-${systemPrompt.trim()}`
-    : "";
-
-  return `${immutableRules}
-
-${buildDynamicRules(durationMinutes, guidanceLevel)}
-
-${userGuidance}`.trim();
-}
 
 async function resolveStoredAISettings() {
   const jar = await cookies();
@@ -132,7 +62,7 @@ function getUpstreamConfig(
         JSON.stringify({
           model,
           messages,
-          temperature: 0.5,
+          temperature: 0.42,
           max_tokens: maxTokens,
           stream: true,
         }),
@@ -155,9 +85,9 @@ function getUpstreamConfig(
           maxTokens,
           thinkingEnabled: settings.deepseekThinkingEnabled,
           reasoningEffort: settings.deepseekReasoningEffort,
-          temperature: 0.6,
-          frequencyPenalty: 0.2,
-          presencePenalty: 0.2,
+          temperature: 0.45,
+          frequencyPenalty: 0.1,
+          presencePenalty: 0.1,
         })
       ),
   };
@@ -170,7 +100,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const duration = Number(body?.duration) || 10;
     const guidanceLevel = typeof body?.guidanceLevel === "string" ? body.guidanceLevel : "medium";
-    const prompt = String(body?.prompt || "");
+    const topic = String(body?.topic || body?.prompt || "").trim();
     const storedSettings = await resolveStoredAISettings();
     const effectiveSettings = normalizeAISettings({
       provider: body?.provider ?? storedSettings.provider,
@@ -197,8 +127,16 @@ export async function POST(req: Request) {
           : null,
       duration,
       guidanceLevel,
+      topicLength: topic.length,
       hasKey: Boolean(key),
     }));
+
+    if (!topic) {
+      return new Response(JSON.stringify({ error: "缺少主题内容" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     if (!key) {
       const label = effectiveSettings.provider === "nvidia" ? "NVIDIA_API_KEY" : "DeepSeek API Key";
@@ -208,16 +146,28 @@ export async function POST(req: Request) {
       });
     }
 
-    const finalSystemPrompt = buildSystemPrompt(duration, guidanceLevel, body?.systemPrompt);
+    const finalSystemPrompt = buildMeditationGenerationSystemPrompt({
+      durationMinutes: duration,
+      guidanceLevel,
+      styleOverride: typeof body?.systemPrompt === "string" ? body.systemPrompt : undefined,
+    });
+    const userPrompt = buildMeditationGenerationUserPrompt({
+      topic,
+      durationMinutes: duration,
+      guidanceLevel,
+      styleOverride: typeof body?.systemPrompt === "string" ? body.systemPrompt : undefined,
+    });
     const targets = buildAIGenerationTargets(duration, guidanceLevel);
+    const outputCharMultiplier =
+      guidanceLevel === "heavy" ? 3.2 : guidanceLevel === "light" ? 2.2 : 2.7;
     const maxTokens = Math.min(
       24000,
-      Math.max(4000, Math.ceil(targets.estimatedChars * 2.2))
+      Math.max(4500, Math.ceil(targets.estimatedChars * outputCharMultiplier))
     );
     const upstreamConfig = getUpstreamConfig(effectiveSettings, key, maxTokens);
     const messages = [
       { role: "system", content: finalSystemPrompt },
-      { role: "user", content: prompt },
+      { role: "user", content: userPrompt },
     ];
 
     const upstream = await fetch(upstreamConfig.url, {

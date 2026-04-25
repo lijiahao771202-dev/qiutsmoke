@@ -402,77 +402,21 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
         setAiGenerating(true);
         setText(""); // 清空现有内容
 
-        const {
-            totalSeconds,
-            targetTextSeconds,
-            targetPauseSeconds,
-            estimatedChars,
-        } = buildAIGenerationTargets(aiDuration, guidanceLevel);
+        const { totalSeconds } = buildAIGenerationTargets(aiDuration, guidanceLevel);
 
         // Auto-fill title if empty
         if (!title.trim()) {
             setTitle(aiPrompt);
         }
 
-        // 简化的统一 prompt
-        // 根据引导强度调整 Prompt
-        let densityRule = "";
-        switch (guidanceLevel) {
-            case 'light':
-                densityRule = `
-【核心策略：轻引导 (Silence Dominant)】
-- **超级留白**：必须使用极长的停顿（如 [pause 120s], [pause 300s]）。让静默占据 90% 以上的时间。
-- **仅保留防走神**：除了简短的开场和结束，中间只偶尔插入一句“如果你走神了，轻轻回来”。
-- **目标**：像一个挂钟一样安静，只在整点轻轻提醒。`;
-                break;
-            case 'heavy':
-                densityRule = `
-【核心策略：多引导 (Heavy Guidance)】
-- **全程陪伴**：留白比例约为 **0.5:1**（说话多于停顿）。
-- **体验**：提供持续、详细的步骤指引和感官描绘，用连续的声音牵引用户的注意力，防止新手走神。`;
-                break;
-            case 'medium':
-            default:
-                densityRule = `
-【核心策略：中引导 (Standard Guidance)】
-- **标准平衡**：留白与文本时间比例约为 **1:1**。
-- **体验**：在引导语和静默体验之间保持完美的平衡。`;
-                break;
-        }
-
-        const systemPrompt = `你是一位专业的冥想引导师与资深“节奏导演”。你的任务是创作高质量、具有人性化关怀和强烈画面感的、适合 TTS 朗读的中文冥想引导脚本。
-
-${densityRule}
-
-【核心规则 1：节奏导演】
-你必须自主控制脚本的节奏，营造真实的停顿感。
-- **强制停顿**：
-  - 在每个引导性指令后必须停顿（如：「深呼吸... [pause 4s] 慢慢呼出... [pause 5s]」）。
-  - 在意境转换处必须停顿（如：「现在离开那片森林 [pause 6s] 来到溪水边...」）。
-- **长停顿**：按照选定的留白策略，在关键体验时刻使用长停顿。
-- **自由控制**：完全根据内容需要自主决定停顿位置。
-
-【核心规则 2：疗愈文字与关怀】
-- **语气**：温柔、包容、接纳。
-- **画面感**：使用感官词汇（温暖、流淌、蔚蓝、沉静）。
-- **正念引导**：脚本中必须包含对“走神”的温柔接纳引导。
-
-【约束条件】
-- 直接输出脚本内容，不要任何开场白或解释。
-- 最终字数：约 ${estimatedChars} 字。
-- 总时长控制：文本约 ${targetTextSeconds} 秒，停顿总时长必须约 ${targetPauseSeconds} 秒（总计 ${totalSeconds} 秒）。
-- 严格执行：请确保 [pause Xs] 的总和接近 ${targetPauseSeconds} 秒。
-- 开头用 [rate -10%] 设置舒缓的基础语速。`;
-
         try {
             const response = await fetch("/api/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    prompt: `${aiPrompt}（目标时长：${aiDuration}分钟）`,
+                    topic: aiPrompt,
                     duration: aiDuration,
                     guidanceLevel,
-                    systemPrompt
                 }),
             });
 
@@ -3192,77 +3136,21 @@ export default function TTSStudioPage() {
         setAiGeneratingEdit(true);
         setEditContent(""); // 清空现有内容
 
-        const {
-            totalSeconds,
-            targetTextSeconds,
-            targetPauseSeconds,
-            estimatedChars,
-        } = buildAIGenerationTargets(aiDurationEdit, guidanceLevelEdit);
+        const { totalSeconds } = buildAIGenerationTargets(aiDurationEdit, guidanceLevelEdit);
 
         // Auto-fill title if empty
         if (!editTitle.trim()) {
             setEditTitle(aiPromptEdit);
         }
 
-        // 简化的统一 prompt
-        // 根据引导强度调整 Prompt
-        let densityRule = "";
-        switch (guidanceLevelEdit) {
-            case 'light':
-                densityRule = `
-                                                                    【核心策略：轻引导 (Silence Dominant)】
-                                                                    - **超级留白**：必须使用极长的停顿（如 [pause 120s], [pause 300s]）。让静默占据 90% 以上的时间。
-                                                                    - **仅保留防走神**：除了简短的开场和结束，中间只偶尔插入一句“如果你走神了，轻轻回来”。
-                                                                    - **目标**：像一个挂钟一样安静，只在整点轻轻提醒。`;
-                break;
-            case 'heavy':
-                densityRule = `
-                                                                    【核心策略：多引导 (Heavy Guidance)】
-                                                                    - **全程陪伴**：留白比例约为 **0.5:1**（说话多于停顿）。
-                                                                    - **体验**：提供持续、详细的步骤指引和感官描绘，用连续的声音牵引用户的注意力，防止新手走神。`;
-                break;
-            case 'medium':
-            default:
-                densityRule = `
-                                                                    【核心策略：中引导 (Standard Guidance)】
-                                                                    - **标准平衡**：留白与文本时间比例约为 **1:1**。
-                                                                    - **体验**：在引导语和静默体验之间保持完美的平衡。`;
-                break;
-        }
-
-        const systemPrompt = `你是一位专业的冥想引导师与资深“节奏导演”。你的任务是创作高质量、具有人性化关怀和强烈画面感的、适合 TTS 朗读的中文冥想引导脚本。
-
-                                                                    ${densityRule}
-
-                                                                    【核心规则 1：节奏导演】
-                                                                    你必须自主控制脚本的节奏，营造真实的停顿感。
-                                                                    - **强制停顿**：
-                                                                    - 在每个引导性指令后必须停顿（如：「深呼吸... [pause 4s] 慢慢呼出... [pause 5s]」）。
-                                                                    - 在意境转换处必须停顿（如：「现在离开那片森林 [pause 6s] 来到溪水边...」）。
-                                                                    - **长停顿**：按照选定的留白策略，在关键体验时刻使用长停顿。
-                                                                    - **自由控制**：完全根据内容需要自主决定停顿位置。
-
-                                                                    【核心规则 2：疗愈文字与关怀】
-                                                                    - **语气**：温柔、包容、接纳。
-                                                                    - **画面感**：使用感官词汇（温暖、流淌、蔚蓝、沉静）。
-                                                                    - **正念引导**：脚本中必须包含对“走神”的温柔接纳引导。
-
-                                                                    【约束条件】
-                                                                    - 直接输出脚本内容，不要任何开场白或解释。
-                                                                    - 最终字数：约 ${estimatedChars} 字。
-                                                                    - 总时长控制：文本约 ${targetTextSeconds} 秒，停顿总时长必须约 ${targetPauseSeconds} 秒（总计 ${totalSeconds} 秒）。
-                                                                    - 严格执行：请确保 [pause Xs] 的总和接近 ${targetPauseSeconds} 秒。
-                                                                    - 开头用 [rate -10%] 设置舒缓的基础语速。`;
-
         try {
             const response = await fetch("/api/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    prompt: `${aiPromptEdit}（目标时长：${aiDurationEdit}分钟）`,
+                    topic: aiPromptEdit,
                     duration: aiDurationEdit,
                     guidanceLevel: guidanceLevelEdit,
-                    systemPrompt
                 }),
             });
 
