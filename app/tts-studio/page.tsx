@@ -1145,6 +1145,7 @@ function TTSCardItem({
                 try {
                     const blob = await getAudioCache(audioCacheKey);
                     if (blob && !cancelled) {
+                        queueCloudAudioCacheUpload(audioCacheKey, blob);
                         const duration = await getBlobDuration(blob);
                         if (!cancelled) setAudioDuration(duration);
                     }
