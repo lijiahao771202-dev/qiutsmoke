@@ -8,6 +8,15 @@ export type SupabaseStorageErrorLike = {
   originalError?: Record<string, unknown> | null;
 };
 
+function getOriginalErrorStatus(error: SupabaseStorageErrorLike | null | undefined) {
+  const originalError = error?.originalError;
+  if (!originalError || typeof originalError !== "object") return null;
+
+  const status = (originalError as { status?: unknown }).status;
+  const numericStatus = Number(status);
+  return Number.isFinite(numericStatus) ? numericStatus : null;
+}
+
 function normalizeErrorText(error: SupabaseStorageErrorLike | null | undefined) {
   return [
     error?.message,
@@ -40,8 +49,10 @@ export function isSupabaseStorageMissingError(error: SupabaseStorageErrorLike | 
     error.originalError && typeof error.originalError === "object"
       ? Object.keys(error.originalError)
       : [];
+  const originalErrorStatus = getOriginalErrorStatus(error);
 
   return (
+    (error.name === "StorageUnknownError" && originalErrorStatus === 400) ||
     (error.name === "StorageUnknownError" && originalErrorKeys.length === 0) ||
     normalized.includes("not found") ||
     normalized.includes("does not exist") ||

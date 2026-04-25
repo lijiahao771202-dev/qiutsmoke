@@ -282,7 +282,8 @@ export async function GET(req: Request) {
     await ensureBucket(adminClient);
 
     const paths = cacheKeyToAudioStoragePaths(result.user.id, result.cacheKey);
-    const { data, error } = await adminClient.storage.from(BUCKET_NAME).download(paths.fullPath);
+    const fullDownload = await adminClient.storage.from(BUCKET_NAME).download(paths.fullPath);
+    const { data, error } = fullDownload;
 
     if (!error && data) {
       return new Response(data, {
@@ -294,27 +295,36 @@ export async function GET(req: Request) {
       });
     }
 
-    if (!isSupabaseStorageMissingError(error)) {
-      return new Response(JSON.stringify({ error: "Audio cache not found" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
     const chunked = await downloadChunkedAudioCache(adminClient, paths);
-    if (!chunked.blob) {
+    if (chunked.blob) {
+      return new Response(chunked.blob, {
+        status: 200,
+        headers: {
+          "Content-Type": chunked.blob.type || "audio/wav",
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
+
+    const fullMissing = isSupabaseStorageMissingError(error);
+    const chunkMissing = isSupabaseStorageMissingError(chunked.error);
+    if (fullMissing && (chunkMissing || !chunked.manifest)) {
       return new Response(JSON.stringify({ error: "Audio cache not found" }), {
-        status: isSupabaseStorageMissingError(chunked.error) ? 404 : 500,
+        status: 404,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    return new Response(chunked.blob, {
-      status: 200,
-      headers: {
-        "Content-Type": chunked.blob.type || "audio/wav",
-        "Cache-Control": "private, no-store",
-      },
+    console.error("[TTS Cache GET] download fallback failed", {
+      cacheKey: result.cacheKey,
+      fullError: error,
+      chunkError: chunked.error,
+      chunkManifest: chunked.manifest,
+    });
+
+    return new Response(JSON.stringify({ error: "Failed to download audio cache" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("[TTS Cache GET]", error);

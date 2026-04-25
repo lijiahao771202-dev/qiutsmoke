@@ -40,3 +40,13 @@ test("recognizes storage payload size limit errors", () => {
   );
   assert.equal(isSupabaseStoragePayloadTooLargeError({ message: "Bucket not found" }), false);
 });
+
+test("recognizes storage download 400 unknown errors as missing objects", () => {
+  assert.equal(
+    isSupabaseStorageMissingError({
+      name: "StorageUnknownError",
+      originalError: { status: 400, statusText: "Bad Request" },
+    }),
+    true
+  );
+});
