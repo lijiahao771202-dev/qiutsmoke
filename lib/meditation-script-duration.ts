@@ -10,13 +10,13 @@ export type AIGenerationTargets = {
   estimatedChars: number;
 };
 
-const PROMPT_CHARS_PER_MINUTE = 220;
-const ESTIMATED_TTS_CHARS_PER_MINUTE = 210;
+const PROMPT_CHARS_PER_MINUTE = 150;
+const ESTIMATED_TTS_CHARS_PER_MINUTE = 150;
 
 export function getGuidanceTextRatio(guidanceLevel: string) {
-  if (guidanceLevel === "light") return 0.1;
-  if (guidanceLevel === "heavy") return 0.7;
-  return 0.5;
+  if (guidanceLevel === "light") return 0.5;
+  if (guidanceLevel === "heavy") return 0.68;
+  return 0.58;
 }
 
 export function buildAIGenerationTargets(

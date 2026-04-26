@@ -57,6 +57,7 @@ import { getDefaultTTSStudioAmbientPreset } from "@/lib/tts-studio-ambient";
 // -----------------------------------------------------------------------------
 import { VOICES } from "@/lib/constants";
 import { RAIN_CARDS } from "./rainCards";
+import { DESIRE_GAME_CARDS } from "./desireGameCards";
 import { RAIN_ADVANCED_CARDS } from "./rainAdvancedCards";
 import { EMOTION_ANXIETY_CARDS } from "./emotionAnxietyCards";
 import { EMOTION_BODY_SCAN_CARDS } from "./bodyScanCards";
@@ -186,11 +187,11 @@ function toHumanReadableSynthesisError(error: unknown) {
 
 function getShortGenerationMessage(content: string, targetSeconds: number) {
     const estimatedSeconds = estimateMeditationScriptDurationSeconds(content);
-    if (estimatedSeconds >= targetSeconds * 0.85) {
+    if (estimatedSeconds >= targetSeconds * 0.95) {
         return null;
     }
 
-    return `这次生成预计约 ${formatDurationMinutes(estimatedSeconds)} 分钟，明显低于目标 ${formatDurationMinutes(targetSeconds)} 分钟。现在已经把单次输出上限调高了，如果你再生成一次，长度会更接近目标。`;
+    return `这次生成预计约 ${formatDurationMinutes(estimatedSeconds)} 分钟，仍低于目标 ${formatDurationMinutes(targetSeconds)} 分钟。系统已经会优先尝试自动纠偏；如果你仍觉得偏短，可以再生成一次。`;
 }
 
 async function deleteAudioChunkCaches(audioCacheKey: string, content: string) {
@@ -2894,7 +2895,7 @@ function TTSCardItem({
 export default function TTSStudioPage() {
     // 使用 SWR 缓存数据
     const { cards: ttsCards, addCard: apiAddCard, deleteCard: apiDeleteCard, isLoading: isLoadingCards } = useTTSCards();
-    const [activeCategory, setActiveCategory] = useState<'all' | 'rain' | 'rain-advanced' | 'emotion-anxiety' | 'emotion-body-scan'>('all');
+    const [activeCategory, setActiveCategory] = useState<'all' | 'desire-game' | 'rain' | 'rain-advanced' | 'emotion-anxiety' | 'emotion-body-scan'>('all');
     const [activeSubCategory, setActiveSubCategory] = useState<string>('all');
 
     const handleCategoryChange = (category: typeof activeCategory) => {
@@ -3253,7 +3254,8 @@ export default function TTSStudioPage() {
 
     const displayCards = useMemo(() => {
         let list = ttsCards;
-        if (activeCategory === 'rain') list = RAIN_CARDS;
+        if (activeCategory === 'desire-game') list = DESIRE_GAME_CARDS;
+        else if (activeCategory === 'rain') list = RAIN_CARDS;
         else if (activeCategory === 'rain-advanced') list = RAIN_ADVANCED_CARDS;
         else if (activeCategory === 'emotion-anxiety') list = EMOTION_ANXIETY_CARDS;
         else if (activeCategory === 'emotion-body-scan') list = EMOTION_BODY_SCAN_CARDS;
@@ -3428,6 +3430,12 @@ export default function TTSStudioPage() {
                             className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex-shrink-0 whitespace-nowrap", activeCategory === 'all' ? "bg-white text-black shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10")}
                         >
                             全部语料
+                        </button>
+                        <button 
+                            onClick={() => handleCategoryChange('desire-game')} 
+                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap", activeCategory === 'desire-game' ? "bg-amber-500 text-white shadow-lg shadow-amber-500/20" : "bg-amber-500/10 text-amber-300/80 hover:bg-amber-500/20")}
+                        >
+                            <span>🪞</span> 欲望的博弈
                         </button>
                         <button 
                             onClick={() => handleCategoryChange('rain')} 
