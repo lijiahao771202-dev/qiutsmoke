@@ -10,12 +10,13 @@
  */
 
 const DB_NAME = 'rain-local-data';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 // 所有需要本地缓存的数据表
 const STORES = [
     'tts_cards',
     'tts_card_synth_meta',
+    'tts_card_synth_versions',
     'meditation_topics',
     'meditation_sessions',
     'user_danger_times',

@@ -6,7 +6,8 @@ import { Plus, Play, Trash2, Clock, Volume2, Sparkles, ChevronRight, ChevronDown
 import { cn } from "@/lib/utils";
 import { shouldBypassWebAudioForBackgroundPlayback } from "@/lib/audio-platform";
 import AuthGuard from "@/components/AuthGuard";
-import { saveAudioCache, getAudioCache, hasAudioCache, deleteAudioCache } from "@/lib/audioCache";
+import { saveAudioCache, getAudioCache, deleteAudioCache } from "@/lib/audioCache";
+import { getCloudTTSAudioCache, saveCloudTTSAudioCache } from "@/lib/cloudTTSAudioCache";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
 import { getApiUrl } from "@/lib/config";
@@ -27,9 +28,18 @@ import {
 } from "@/lib/tts-card-synth";
 import {
     deleteTTSCardSynthSnapshot,
-    getTTSCardSynthSnapshot,
     saveTTSCardSynthSnapshot,
 } from "@/lib/tts-card-synth-store";
+import {
+    deleteLocalTTSCardSynthVersion,
+    deleteLocalTTSCardSynthVersionsForCard,
+    formatLocalSynthVersionTime,
+    getLocalLegacyTTSCardSynthSnapshot,
+    listLocalTTSCardSynthVersions,
+    resolveLocalTTSCardVersion,
+    saveLocalTTSCardSynthVersion,
+    type TTSCardLocalSynthVersion,
+} from "@/lib/tts-card-synth-local";
 import {
     COSYVOICE_PROFILE,
     DEFAULT_COSYVOICE_35_FLASH_VOICE_ID,
@@ -212,7 +222,18 @@ async function deleteAudioChunkCaches(audioCacheKey: string, content: string) {
 }
 
 async function getLocalAudioCache(audioCacheKey: string) {
-    return getAudioCache(audioCacheKey);
+    const localBlob = await getAudioCache(audioCacheKey);
+    if (localBlob) {
+        return localBlob;
+    }
+
+    const cloudBlob = await getCloudTTSAudioCache(audioCacheKey);
+    if (cloudBlob) {
+        await saveAudioCache(audioCacheKey, cloudBlob);
+        return cloudBlob;
+    }
+
+    return null;
 }
 
 async function saveLocalAudioCache(audioCacheKey: string, blob: Blob) {
@@ -999,7 +1020,7 @@ function TTSCardItem({
     card: TTSCard;
     onDelete: (id: string) => void;
     onEdit: (card: TTSCard) => void;
-    onView: (card: TTSCard) => void;
+    onView: (card: TTSCard, preferredCacheKey?: string) => void;
     ttsSettings: TTSSettings;
     index?: number
 }) {
@@ -1015,21 +1036,29 @@ function TTSCardItem({
     const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
 
     const { triggerLight, triggerMedium, triggerHeavy, triggerSuccess, triggerError } = useHaptics();
-    const [synthSnapshot, setSynthSnapshot] = useState<TTSCardSynthSnapshot | null | undefined>(undefined);
+    const [localSynthVersions, setLocalSynthVersions] = useState<TTSCardLocalSynthVersion[] | undefined>(undefined);
+    const [legacySynthSnapshot, setLegacySynthSnapshot] = useState<TTSCardSynthSnapshot | null | undefined>(undefined);
+    const [selectedVersionCacheKey, setSelectedVersionCacheKey] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
 
-        getTTSCardSynthSnapshot(card.id).then((snapshot) => {
-            if (!cancelled) {
-                setSynthSnapshot(snapshot ?? null);
-            }
-        }).catch((error) => {
-            console.warn(`[TTSCard] 读取合成快照失败: ${card.id}`, error);
-            if (!cancelled) {
-                setSynthSnapshot(null);
-            }
-        });
+        Promise.all([
+            listLocalTTSCardSynthVersions(card.id),
+            getLocalLegacyTTSCardSynthSnapshot(card.id),
+        ])
+            .then(([versions, snapshot]) => {
+                if (cancelled) return;
+                setLocalSynthVersions(versions);
+                setLegacySynthSnapshot(snapshot ?? null);
+            })
+            .catch((error) => {
+                console.warn(`[TTSCard] 读取本地合成版本失败: ${card.id}`, error);
+                if (!cancelled) {
+                    setLocalSynthVersions([]);
+                    setLegacySynthSnapshot(null);
+                }
+            });
 
         return () => {
             cancelled = true;
@@ -1063,24 +1092,91 @@ function TTSCardItem({
     const [cachedAudioUrl, setCachedAudioUrl] = useState<string | null>(null);
     const [audioDuration, setAudioDuration] = useState<number | null>(null); // 音频总时长
     const [showCardMenu, setShowCardMenu] = useState(false);
+    const [showVersionPicker, setShowVersionPicker] = useState(false);
     const [deleteCacheConfirm, setDeleteCacheConfirm] = useState(false); // iOS的确认弹窗
     const [useCachedPlayback, setUseCachedPlayback] = useState(true); // 默认使用缓存播放
+    const versionResolution = useMemo(
+        () => resolveLocalTTSCardVersion({
+            card,
+            settings: ttsSettings,
+            localVersions: localSynthVersions ?? [],
+            selectedVersionCacheKey,
+            legacySnapshot: legacySynthSnapshot ?? null,
+        }),
+        [card, legacySynthSnapshot, localSynthVersions, selectedVersionCacheKey, ttsSettings]
+    );
+    const synthSnapshot = versionResolution.snapshot;
     const effectiveCardSettings = useMemo(
         () => applySynthSnapshotToSettings(ttsSettings, synthSnapshot),
         [ttsSettings, synthSnapshot]
     );
-    const audioCacheKey = useMemo(
-        () => buildTTSCardAudioCacheKey(card, ttsSettings, synthSnapshot),
-        [card, ttsSettings, synthSnapshot]
-    );
+    const audioCacheKey = versionResolution.cacheKey;
     const synthModelBadge = useMemo(
         () => getSynthModelBadgeLabel(synthSnapshot) || getTTSSettingsModelBadgeLabel(effectiveCardSettings),
         [effectiveCardSettings, synthSnapshot]
+    );
+    const currentSettingsModelBadge = useMemo(
+        () => getTTSSettingsModelBadgeLabel(ttsSettings),
+        [ttsSettings]
     );
     const priceEstimate = useMemo(
         () => estimateTTSCardPrice(card, effectiveCardSettings),
         [card, effectiveCardSettings]
     );
+    const compatibleLocalVersions = versionResolution.compatibleVersions;
+    const isVersionStateReady = localSynthVersions !== undefined && legacySynthSnapshot !== undefined;
+    const currentSettingsCacheKey = versionResolution.desiredCacheKey;
+    const hasCurrentSettingsVersion =
+        versionResolution.source === "matched" ||
+        versionResolution.source === "legacy" ||
+        compatibleLocalVersions.some((version) => version.cacheKey === currentSettingsCacheKey);
+    const latestVersionByLabel = useMemo(() => {
+        const map = new Map<string, TTSCardLocalSynthVersion>();
+        for (const version of compatibleLocalVersions) {
+            if (!map.has(version.modelLabel)) {
+                map.set(version.modelLabel, version);
+            }
+        }
+        return map;
+    }, [compatibleLocalVersions]);
+    const versionPickerOptions = useMemo(() => {
+        const baseOptions = [
+            { key: "edgetts", label: "edgetts" },
+            { key: "3.0local", label: "3.0local" },
+            { key: "cy3.5-flash", label: "cy3.5-flash" },
+            { key: "3.5plus", label: "3.5plus" },
+            { key: "qwen-flash", label: "qwen-flash" },
+            { key: "qwen-instruct", label: "qwen-instruct" },
+            { key: "qwen-vc", label: "qwen-vc" },
+        ];
+
+        return baseOptions.map((option) => {
+            const version = latestVersionByLabel.get(option.label) ?? null;
+            const isCurrentSettings = option.label === currentSettingsModelBadge;
+            const isSelected = version
+                ? selectedVersionCacheKey === version.cacheKey
+                : isCurrentSettings && selectedVersionCacheKey === null;
+
+            return {
+                ...option,
+                version,
+                isCurrentSettings,
+                isSelected,
+                synthesized: Boolean(version) || (isCurrentSettings && hasCurrentSettingsVersion),
+            };
+        }).sort((left, right) => {
+            const leftRank = left.isCurrentSettings ? 0 : left.synthesized ? 1 : 2;
+            const rightRank = right.isCurrentSettings ? 0 : right.synthesized ? 1 : 2;
+            if (leftRank !== rightRank) return leftRank - rightRank;
+            return left.key.localeCompare(right.key);
+        });
+    }, [currentSettingsModelBadge, hasCurrentSettingsVersion, latestVersionByLabel, selectedVersionCacheKey]);
+
+    useEffect(() => {
+        if (selectedVersionCacheKey && !compatibleLocalVersions.some((version) => version.cacheKey === selectedVersionCacheKey)) {
+            setSelectedVersionCacheKey(null);
+        }
+    }, [compatibleLocalVersions, selectedVersionCacheKey]);
 
     // 播放进度状态 (用于缓存音频)
     const [playbackProgress, setPlaybackProgress] = useState({ currentTime: 0, duration: 0 });
@@ -1097,31 +1193,29 @@ function TTSCardItem({
     // 检查缓存状态 - 如果没有缓存则自动后台合成
     const hasCheckedCacheRef = useRef(false);
     useEffect(() => {
-        if (synthSnapshot === undefined) return;
+        if (!isVersionStateReady) return;
         hasCheckedCacheRef.current = false;
         setHasCachedAudio(false);
         setCachedAudioUrl(null);
         setAudioDuration(null);
-    }, [audioCacheKey, synthSnapshot]);
+    }, [audioCacheKey, isVersionStateReady]);
 
     useEffect(() => {
         // 防止重复检测
-        if (synthSnapshot === undefined) return;
+        if (!isVersionStateReady) return;
         if (hasCheckedCacheRef.current) return;
         hasCheckedCacheRef.current = true;
         let cancelled = false;
         let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-        hasAudioCache(audioCacheKey).then(async (exists) => {
+        getLocalAudioCache(audioCacheKey).then(async (blob) => {
             if (cancelled) return;
+            const exists = Boolean(blob);
             setHasCachedAudio(exists);
-            if (exists) {
+            if (blob) {
                 try {
-                    const blob = await getAudioCache(audioCacheKey);
-                    if (blob && !cancelled) {
-                        const duration = await getBlobDuration(blob);
-                        if (!cancelled) setAudioDuration(duration);
-                    }
+                    const duration = await getBlobDuration(blob);
+                    if (!cancelled) setAudioDuration(duration);
                 } catch (e) {
                     console.error("Failed to get audio duration via cache", e);
                 }
@@ -1133,18 +1227,24 @@ function TTSCardItem({
                     console.log(`[TTSCard] 卡片 "${card.title || card.id}" 无缓存，等待手动合成。`);
                 }
             }
+        }).catch((error) => {
+            console.warn(`[TTSCard] 读取音频缓存失败: ${audioCacheKey}`, error);
+            if (!cancelled) {
+                setHasCachedAudio(false);
+            }
         });
 
         return () => {
             cancelled = true;
             if (retryTimer) clearTimeout(retryTimer);
         };
-    }, [audioCacheKey, card.id, synthSnapshot]);
+    }, [audioCacheKey, card.id, isVersionStateReady]);
 
     // Refs
     const currentItemIdRef = useRef<string | null>(null);
     const isProcessingRef = useRef<boolean>(false); // 🔥 防止 useEffect 并发执行
     const audioContextRef = useRef<AudioContext | null>(null);
+    const versionPickerRef = useRef<HTMLDivElement | null>(null);
     const activeSourceNodeRef = useRef<AudioBufferSourceNode | null>(null); // 🔥 当前活跃的源节点
     const mainGainNodeRef = useRef<GainNode | null>(null); // 🔥 全局增益节点
 
@@ -1203,6 +1303,21 @@ function TTSCardItem({
             }
         };
     }, []);
+
+    useEffect(() => {
+        if (!showVersionPicker) return;
+
+        const handlePointerDown = (event: MouseEvent) => {
+            if (!versionPickerRef.current?.contains(event.target as Node)) {
+                setShowVersionPicker(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handlePointerDown);
+        return () => {
+            document.removeEventListener("mousedown", handlePointerDown);
+        };
+    }, [showVersionPicker]);
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -1754,6 +1869,7 @@ function TTSCardItem({
 
                     const mergedBlob = await mergeAudioBuffersToWavBlob(ctx, finalBuffers, numberOfChannels, actualSampleRate);
                     await saveLocalAudioCache(targetAudioCacheKey, mergedBlob);
+                    void saveCloudTTSAudioCache(targetAudioCacheKey, mergedBlob);
                     setHasCachedAudio(true);
                     setCachedAudioUrl((prev) => {
                         if (prev?.startsWith("blob:")) {
@@ -1762,7 +1878,13 @@ function TTSCardItem({
                         return URL.createObjectURL(mergedBlob);
                     });
                     await saveTTSCardSynthSnapshot(nextSynthSnapshot);
-                    setSynthSnapshot(nextSynthSnapshot);
+                    const nextLocalVersion = await saveLocalTTSCardSynthVersion(card.id, targetAudioCacheKey, nextSynthSnapshot);
+                    setLocalSynthVersions((prev) => {
+                        const current = prev ?? [];
+                        return [nextLocalVersion, ...current.filter((version) => version.cacheKey !== nextLocalVersion.cacheKey)];
+                    });
+                    setLegacySynthSnapshot(nextSynthSnapshot);
+                    setSelectedVersionCacheKey(targetAudioCacheKey);
                     updateSynthesisProgress(card.id, { current: ssmlAudioChunks.length, total: ssmlAudioChunks.length });
                     console.log(`[Synthesize] ✅ ${ttsSettings.cosyvoice35PlusModel} SSML 分块合成完成并已缓存`);
                     triggerSuccess();
@@ -1910,6 +2032,7 @@ function TTSCardItem({
 
             // 保存到 IndexedDB
             await saveLocalAudioCache(targetAudioCacheKey, blob);
+            void saveCloudTTSAudioCache(targetAudioCacheKey, blob);
             setHasCachedAudio(true);
 
             // 创建可播放的 URL
@@ -1918,7 +2041,13 @@ function TTSCardItem({
 
             console.log("[Synthesize] ✅ 合成完成并已缓存");
             await saveTTSCardSynthSnapshot(nextSynthSnapshot);
-            setSynthSnapshot(nextSynthSnapshot);
+            const nextLocalVersion = await saveLocalTTSCardSynthVersion(card.id, targetAudioCacheKey, nextSynthSnapshot);
+            setLocalSynthVersions((prev) => {
+                const current = prev ?? [];
+                return [nextLocalVersion, ...current.filter((version) => version.cacheKey !== nextLocalVersion.cacheKey)];
+            });
+            setLegacySynthSnapshot(nextSynthSnapshot);
+            setSelectedVersionCacheKey(targetAudioCacheKey);
             triggerSuccess(); // Synthesis Complete
         } catch (err) {
             console.error("[Synthesize] Error", err);
@@ -2486,12 +2615,93 @@ function TTSCardItem({
                                     )}
                                 </div>
                                 <div className="flex items-center gap-2 text-xs text-white/40">
-                                    {synthModelBadge && (
-                                        <span className="bg-cyan-500/10 px-1.5 py-0.5 rounded border border-cyan-400/20 text-cyan-200">
-                                            {synthModelBadge}
-                                        </span>
-                                    )}
-                                    <span>{card.rate || "Default"}</span>
+                                    <div className="relative" ref={versionPickerRef}>
+                                        {synthModelBadge && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    triggerLight();
+                                                    setShowCardMenu(false);
+                                                    setShowVersionPicker((prev) => !prev);
+                                                }}
+                                                className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 text-cyan-200 hover:bg-cyan-500/14 transition-colors"
+                                            >
+                                                {synthModelBadge}
+                                                <ChevronDown className={cn("w-3 h-3 transition-transform", showVersionPicker && "rotate-180")} />
+                                            </button>
+                                        )}
+                                        <AnimatePresence>
+                                            {showVersionPicker && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    exit={{ opacity: 0, y: 6, scale: 0.98 }}
+                                                    transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                                                    className="absolute left-0 top-full mt-2 z-50 w-44 overflow-hidden rounded-[16px] border border-white/10 bg-[rgba(14,18,24,0.82)] shadow-[0_14px_36px_rgba(0,0,0,0.28)] backdrop-blur-2xl"
+                                                >
+                                                    <div className="max-h-44 overflow-y-auto p-1">
+                                                        {versionPickerOptions.map((option) => {
+                                                            const isDisabled = !option.synthesized && !option.isCurrentSettings;
+                                                            return (
+                                                                <button
+                                                                    key={option.key}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (isDisabled) return;
+                                                                        triggerLight();
+                                                                        if (option.version) {
+                                                                            setSelectedVersionCacheKey(option.version.cacheKey);
+                                                                        } else {
+                                                                            setSelectedVersionCacheKey(null);
+                                                                        }
+                                                                        setShowVersionPicker(false);
+                                                                    }}
+                                                                    disabled={isDisabled}
+                                                                    className={cn(
+                                                                        "w-full flex items-center justify-between gap-2 rounded-[12px] px-2.5 py-2 text-left transition-colors",
+                                                                        option.isSelected
+                                                                            ? "bg-cyan-500/16 text-white"
+                                                                            : "text-white/88 hover:bg-white/6",
+                                                                        isDisabled && "text-white/28 hover:bg-transparent cursor-default"
+                                                                    )}
+                                                                >
+                                                                    <div className="min-w-0 flex items-center gap-2">
+                                                                        <span
+                                                                            className={cn(
+                                                                                "h-1.5 w-1.5 rounded-full shrink-0",
+                                                                                option.synthesized
+                                                                                    ? "bg-emerald-300"
+                                                                                    : "bg-white/18"
+                                                                            )}
+                                                                        />
+                                                                        <div className="min-w-0">
+                                                                            <div className="truncate text-[13px] leading-none">{option.label}</div>
+                                                                            {(option.isCurrentSettings || option.version) && (
+                                                                                <div className="mt-0.5 text-[10px] text-white/34">
+                                                                                    {option.isCurrentSettings
+                                                                                        ? "当前设置"
+                                                                                        : formatLocalSynthVersionTime(option.version!.synthesizedAt)}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2 shrink-0">
+                                                                        <span className={cn(
+                                                                            "text-[10px]",
+                                                                            option.synthesized ? "text-white/54" : "text-white/26"
+                                                                        )}>
+                                                                            {option.synthesized ? "已合成" : "未合成"}
+                                                                        </span>
+                                                                        {option.isSelected && <Check className="w-3.5 h-3.5 text-cyan-200" />}
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
                                     <span
                                         title={priceEstimate.detail}
                                         className={cn(
@@ -2504,19 +2714,16 @@ function TTSCardItem({
                                 </div>
                             </div>
                             <div className="flex items-center gap-1">
-                                {/* 已合成标记 */}
-                                {hasCachedAudio && (
-                                    <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs">
-                                        <Music className="w-3 h-3" />
-                                        <span>已合成</span>
-                                    </div>
-                                )}
-
                                 {/* 菜单按钮 */}
                                 <div className="relative">
                                     <motion.button
                                         whileTap={{ scale: 0.9 }}
-                                        onClick={(e) => { e.stopPropagation(); triggerMedium(); setShowCardMenu(!showCardMenu); }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            triggerMedium();
+                                            setShowVersionPicker(false);
+                                            setShowCardMenu(!showCardMenu);
+                                        }}
                                         className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors"
                                     >
                                         <Edit2 className="w-4 h-4" />
@@ -2529,7 +2736,7 @@ function TTSCardItem({
                                                 initial={{ opacity: 0, scale: 0.95, y: -4 }}
                                                 animate={{ opacity: 1, scale: 1, y: 0 }}
                                                 exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                                                className="absolute right-0 top-full mt-1 w-40 py-1 rounded-xl bg-zinc-900/95 border border-white/10 shadow-xl z-50"
+                                                className="absolute right-0 top-full mt-1 w-44 py-1 rounded-xl bg-zinc-900/95 border border-white/10 shadow-xl z-50"
                                             >
                                                 {/* 合成音频 */}
                                                 <button
@@ -2611,7 +2818,7 @@ function TTSCardItem({
                                                         e.stopPropagation();
                                                         setShowCardMenu(false);
                                                         triggerMedium();
-                                                        onView(card);
+                                                        onView(card, audioCacheKey);
                                                     }}
                                                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-purple-400 hover:bg-purple-500/20 transition-colors"
                                                 >
@@ -2654,7 +2861,7 @@ function TTSCardItem({
                         {/* Control Bar */}
                         <div className="flex items-center gap-4 mt-auto pt-4 border-t border-white/5">
                             <motion.button
-                                onClick={(e) => { e.stopPropagation(); triggerMedium(); onView(card); }}
+                                onClick={(e) => { e.stopPropagation(); triggerMedium(); onView(card, audioCacheKey); }}
                                 disabled={
                                     isBuffering ||
                                     isSynthesizing ||
@@ -2871,6 +3078,11 @@ function TTSCardItem({
                                         await deleteLocalAudioCache(audioCacheKey);
                                         if (effectiveCardSettings.provider === "cosyvoice35plus") {
                                             await deleteAudioChunkCaches(audioCacheKey, card.content);
+                                        }
+                                        await deleteLocalTTSCardSynthVersion(audioCacheKey, card.id).catch(() => undefined);
+                                        setLocalSynthVersions((prev) => (prev ?? []).filter((version) => version.cacheKey !== audioCacheKey));
+                                        if (selectedVersionCacheKey === audioCacheKey) {
+                                            setSelectedVersionCacheKey(null);
                                         }
                                         setHasCachedAudio(false);
                                         setCachedAudioUrl(null);
@@ -3189,7 +3401,7 @@ export default function TTSStudioPage() {
     }, [isPlayerOpen, playerCard, playerIsPlaying]);
 
     // 播放卡片逻辑
-    const handlePlayCard = async (card: TTSCard) => {
+    const handlePlayCard = async (card: TTSCard, preferredCacheKey?: string) => {
         const ambientPreset = getDefaultTTSStudioAmbientPreset(activeTracks);
         for (const track of ambientPreset) {
             toggleTrack(track.id);
@@ -3210,8 +3422,21 @@ export default function TTSStudioPage() {
 
         // 尝试获取缓存并播放
         try {
-            const synthSnapshot = await getTTSCardSynthSnapshot(card.id).catch(() => null);
-            const cacheKey = buildTTSCardAudioCacheKey(card, ttsSettings, synthSnapshot);
+            const [localVersions, legacySnapshot] = await Promise.all([
+                listLocalTTSCardSynthVersions(card.id).catch(() => []),
+                getLocalLegacyTTSCardSynthSnapshot(card.id).catch(() => null),
+            ]);
+            const resolvedVersion = resolveLocalTTSCardVersion({
+                card,
+                settings: ttsSettings,
+                localVersions,
+                selectedVersionCacheKey: preferredCacheKey ?? null,
+                legacySnapshot,
+            });
+            const cacheKey =
+                preferredCacheKey && resolvedVersion.compatibleVersions.some((version) => version.cacheKey === preferredCacheKey)
+                    ? preferredCacheKey
+                    : resolvedVersion.cacheKey;
             const blob = await getLocalAudioCache(cacheKey);
             if (blob && playerAudioRef.current) {
                 const url = URL.createObjectURL(blob);
@@ -3302,6 +3527,7 @@ export default function TTSStudioPage() {
     const confirmDelete = async () => {
         if (!deleteConfirmId) return;
         await apiDeleteCard(deleteConfirmId);
+        await deleteLocalTTSCardSynthVersionsForCard(deleteConfirmId).catch(() => undefined);
         await deleteTTSCardSynthSnapshot(deleteConfirmId).catch(() => undefined);
         setDeleteConfirmId(null);
     };
@@ -3521,7 +3747,7 @@ export default function TTSStudioPage() {
                                             card={card}
                                             onDelete={handleDelete}
                                             onEdit={handleEdit}
-                                            onView={(c) => handlePlayCard(c)}
+                                            onView={(c, preferredCacheKey) => handlePlayCard(c, preferredCacheKey)}
                                             ttsSettings={ttsSettings}
                                             index={index}
                                         />
