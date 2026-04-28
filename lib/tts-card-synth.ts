@@ -290,10 +290,8 @@ export function applySynthSnapshotToSettings(
       qwenTTSCloneVoiceCloudId:
         snapshot.qwenTTSCloneVoiceCloudId || activeSettings.qwenTTSCloneVoiceCloudId,
       qwenTTSSpeed: snapshot.qwenTTSSpeed ?? activeSettings.qwenTTSSpeed,
-      qwenTTSLanguageType:
-        snapshot.qwenTTSLanguageType || activeSettings.qwenTTSLanguageType,
-      qwenTTSInstructions:
-        snapshot.qwenTTSInstructions || activeSettings.qwenTTSInstructions,
+      qwenTTSLanguageType: snapshot.qwenTTSLanguageType || activeSettings.qwenTTSLanguageType,
+      qwenTTSInstructions: snapshot.qwenTTSInstructions || activeSettings.qwenTTSInstructions,
     };
   }
 

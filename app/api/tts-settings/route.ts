@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+﻿import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { sql } from "@vercel/postgres";
 import { ensureTables, hasDb } from "@/lib/db";
@@ -268,8 +268,10 @@ export async function POST(req: Request) {
     return res;
   } catch (error) {
     console.error("POST tts-settings error:", error);
-    return NextResponse.json({ error: "保存失败" }, { status: 500 });
+    return NextResponse.json({ error: "淇濆瓨澶辫触" }, { status: 500 });
   }
 }
 
 export const runtime = "edge";
+
+

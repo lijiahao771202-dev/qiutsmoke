@@ -1,4 +1,4 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -14,7 +14,7 @@ import { normalizeTTSSettings } from "./tts-settings.ts";
 test("freezes card cache key to the saved synth snapshot instead of active settings", () => {
   const card = {
     id: "card-1",
-    content: "慢慢呼吸，放松肩膀。",
+    content: "鎱㈡參鍛煎惛锛屾斁鏉捐偐鑶€銆?",
     voice_id: "zh-CN-XiaoxiaoNeural",
     rate: "0%",
   };
@@ -27,7 +27,7 @@ test("freezes card cache key to the saved synth snapshot instead of active setti
       cosyvoice35PlusVoiceProfileId: "tea",
       cosyvoice35FlashVoiceId: "flash-tea",
       cosyvoice35PlusSpeed: 1.1,
-      cosyvoice35PlusInstruction: "请保持平稳自然。",
+      cosyvoice35PlusInstruction: "璇蜂繚鎸佸钩绋宠嚜鐒躲€?",
       cosyvoice35PlusLanguageHint: "zh",
     })
   );
@@ -42,7 +42,7 @@ test("freezes card cache key to the saved synth snapshot instead of active setti
     normalizeTTSSettings({
       provider: "cosyvoice",
       cosyvoiceVoiceId: "yupinglu",
-      cosyvoiceInstruction: "请轻柔一点。",
+      cosyvoiceInstruction: "璇疯交鏌斾竴鐐广€?",
       cosyvoiceSpeed: 0.8,
       cosyvoiceSeed: 7,
     }),
@@ -55,7 +55,7 @@ test("freezes card cache key to the saved synth snapshot instead of active setti
 test("uses active settings in cache key before the card has any synth snapshot", () => {
   const card = {
     id: "card-2",
-    content: "把注意力带回身体。",
+    content: "鎶婃敞鎰忓姏甯﹀洖韬綋銆?",
     voice_id: "zh-CN-XiaoxiaoNeural",
     rate: "0%",
   };

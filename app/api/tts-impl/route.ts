@@ -1,4 +1,4 @@
-// IMPORTANT: This route must run in Node.js runtime.
+﻿// IMPORTANT: This route must run in Node.js runtime.
 export const runtime = "nodejs";
 
 import { cookies } from "next/headers";
@@ -323,8 +323,17 @@ async function synthesizeEdgeTTS(text: string, voice: string, rate: string) {
   );
 }
 
-async function synthesizeCosyVoiceTTS(text: string, settings: TTSSettings) {
-  const baseUrl = process.env.COSYVOICE_BASE_URL || "http://127.0.0.1:50000";
+async function synthesizeLocalCosyVoiceTTS(
+  text: string,
+  settings: TTSSettings,
+  options: {
+    provider: "cosyvoice";
+    baseUrl: string;
+    voiceId: string;
+    hint: string;
+  }
+) {
+  const { baseUrl, hint, provider, voiceId } = options;
   const timeoutMs = Number(process.env.COSYVOICE_TIMEOUT_MS || DEFAULT_COSYVOICE_TIMEOUT_MS);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -338,7 +347,7 @@ async function synthesizeCosyVoiceTTS(text: string, settings: TTSSettings) {
         speed: settings.cosyvoiceSpeed,
         instruct_text: settings.cosyvoiceInstruction,
         seed: settings.cosyvoiceSeed,
-        voice_id: settings.cosyvoiceVoiceId,
+        voice_id: voiceId,
       }),
       signal: controller.signal,
     });
@@ -349,8 +358,8 @@ async function synthesizeCosyVoiceTTS(text: string, settings: TTSSettings) {
         JSON.stringify({
           error: "CosyVoice service unavailable",
           details: details.slice(0, 500) || `HTTP ${response.status}`,
-          provider: "cosyvoice",
-          hint: COSYVOICE_UNAVAILABLE_HINT,
+          provider,
+          hint,
         }),
         {
           status: 503,
@@ -367,18 +376,18 @@ async function synthesizeCosyVoiceTTS(text: string, settings: TTSSettings) {
         "Cache-Control": "no-cache",
         "X-TTS-Impl": "cosyvoice-local",
         "X-CosyVoice-Upstream": baseUrl,
-        "X-CosyVoice-Voice": settings.cosyvoiceVoiceId,
+        "X-CosyVoice-Voice": voiceId,
       },
     });
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({
-        error: "CosyVoice service unavailable",
-        details,
-        provider: "cosyvoice",
-        hint: COSYVOICE_UNAVAILABLE_HINT,
-      }),
+        JSON.stringify({
+          error: "CosyVoice service unavailable",
+          details,
+          provider,
+          hint,
+        }),
       {
         status: 503,
         headers: { "Content-Type": "application/json" },
@@ -389,10 +398,19 @@ async function synthesizeCosyVoiceTTS(text: string, settings: TTSSettings) {
   }
 }
 
+async function synthesizeCosyVoiceTTS(text: string, settings: TTSSettings) {
+  return synthesizeLocalCosyVoiceTTS(text, settings, {
+    provider: "cosyvoice",
+    baseUrl: process.env.COSYVOICE_BASE_URL || "http://127.0.0.1:50000",
+    voiceId: settings.cosyvoiceVoiceId,
+    hint: COSYVOICE_UNAVAILABLE_HINT,
+  });
+}
+
 async function synthesizeQwenTTSAudio(text: string, settings: TTSSettings) {
   const apiKey = process.env.DASHSCOPE_API_KEY || process.env.QWEN_TTS_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: "缺少 DASHSCOPE_API_KEY", provider: "qwentts" }), {
+    return new Response(JSON.stringify({ error: "缂哄皯 DASHSCOPE_API_KEY", provider: "qwentts" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
@@ -451,7 +469,7 @@ async function synthesizeCosyVoice35PlusTTS(
   const apiKey = process.env.DASHSCOPE_API_KEY || process.env.COSYVOICE_CLOUD_API_KEY;
   if (!apiKey) {
     return new Response(
-      JSON.stringify({ error: "缺少 DASHSCOPE_API_KEY", provider: "cosyvoice35plus" }),
+      JSON.stringify({ error: "缂哄皯 DASHSCOPE_API_KEY", provider: "cosyvoice35plus" }),
       {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -646,3 +664,4 @@ export async function OPTIONS() {
     },
   });
 }
+
