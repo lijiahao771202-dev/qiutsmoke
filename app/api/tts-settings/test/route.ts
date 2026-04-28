@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import {
   normalizeTTSSettings,
   type TTSSettings,
@@ -77,10 +77,10 @@ async function testLocalCosyVoice() {
 async function testQwenTTS(settings: TTSSettings) {
   const apiKey = process.env.DASHSCOPE_API_KEY || process.env.QWEN_TTS_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ ok: false, provider: "qwentts", error: "缂哄皯 DASHSCOPE_API_KEY" }, { status: 400 });
+    return NextResponse.json({ ok: false, provider: "qwentts", error: "缺少 DASHSCOPE_API_KEY" }, { status: 400 });
   }
 
-  const payload = buildQwenTTSPayload("杩欐槸涓€鏉¤繛閫氭€ф祴璇曘€?", settings);
+  const payload = buildQwenTTSPayload("这是一条连通性测试。", settings);
   const endpoint = getQwenTTSGenerationEndpoint();
   const timeoutMs = Number(process.env.QWEN_TTS_TIMEOUT_MS || 120000);
   const data = shouldUseQwenTTSCurl()
@@ -121,12 +121,12 @@ async function testCosyVoice35Plus(settings: TTSSettings) {
   const apiKey = process.env.DASHSCOPE_API_KEY || process.env.COSYVOICE_CLOUD_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { ok: false, provider: "cosyvoice35plus", error: "缂哄皯 DASHSCOPE_API_KEY" },
+      { ok: false, provider: "cosyvoice35plus", error: "缺少 DASHSCOPE_API_KEY" },
       { status: 400 }
     );
   }
 
-  const payload = buildCosyVoice35PlusPayload("杩欐槸涓€鏉¤繛閫氭€ф祴璇曘€?", settings);
+  const payload = buildCosyVoice35PlusPayload("这是一条连通性测试。", settings);
   const endpoint = getCosyVoiceCloudEndpoint();
   const timeoutMs = Number(process.env.COSYVOICE_CLOUD_TIMEOUT_MS || 120000);
   const data = shouldUseCosyVoiceCloudCurl()
@@ -169,7 +169,7 @@ async function handle(settings: TTSSettings) {
     return NextResponse.json({
       ok: true,
       provider: "edge",
-      message: "EdgeTTS 鏃犻渶鍗曠嫭杩為€氭€ф祴璇曘€?",
+      message: "EdgeTTS 无需单独连通性测试。",
     });
   }
   if (settings.provider === "qwentts") {

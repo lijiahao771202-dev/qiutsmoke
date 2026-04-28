@@ -1,4 +1,4 @@
-﻿import { sql } from "@vercel/postgres";
+import { sql } from "@vercel/postgres";
 
 export function hasDb() {
   return Boolean(
@@ -91,5 +91,3 @@ export async function ensureTables() {
   )`;
 
 }
-
-

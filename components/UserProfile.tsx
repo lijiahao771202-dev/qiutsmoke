@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -86,7 +86,7 @@ export default function UserProfile() {
     const [isDeleting, setIsDeleting] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
 
-    // 鐢ㄦ埛璧勬枡鐘舵€?
+    // 用户资料状态
     const [nickname, setNickname] = useState("");
     const [avatarId, setAvatarId] = useState("cat");
     const [isSaving, setIsSaving] = useState(false);
@@ -141,12 +141,12 @@ export default function UserProfile() {
     };
 
     useEffect(() => {
-        // 浣跨敤 getSession 璇诲彇鏈湴 cookie锛屼笉鍙戠綉缁滆姹?
+        // 使用 getSession 读取本地 cookie，不发网络请求
         const getInitialSession = async () => {
             const { data: { session } } = await supabase.auth.getSession();
             setUser(session?.user ?? null);
 
-            // 浠?user_metadata 鍔犺浇澶村儚鍜屾樀绉?
+            // 从 user_metadata 加载头像和昵称
             if (session?.user) {
                 setNickname(session.user.user_metadata?.nickname || "");
                 setAvatarId(session.user.user_metadata?.avatar_id || "cat");
@@ -156,7 +156,7 @@ export default function UserProfile() {
         void loadAISettings();
         void loadTTSSettings();
 
-        // 鐩戝惉璁よ瘉鐘舵€佸彉鍖?
+        // 监听认证状态变化
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setUser(session?.user ?? null);
             if (session?.user) {
@@ -315,10 +315,10 @@ export default function UserProfile() {
                 body: JSON.stringify({ nickname, avatarId }),
             });
             if (res.ok) {
-                // 鍒锋柊鐢ㄦ埛鏁版嵁
+                // 刷新用户数据
                 const { data: { session } } = await supabase.auth.getSession();
                 if (session?.user) {
-                    // 鎵嬪姩鍒锋柊 user_metadata
+                    // 手动刷新 user_metadata
                     await supabase.auth.refreshSession();
                 }
                 setShowProfileEditor(false);
@@ -338,7 +338,7 @@ export default function UserProfile() {
             });
             if (res.ok) {
                 setShowDeleteConfirm(false);
-                // 鍒锋柊椤甸潰浠ユ洿鏂版暟鎹?
+                // 刷新页面以更新数据
                 router.refresh();
                 window.location.reload();
             }
@@ -401,14 +401,12 @@ export default function UserProfile() {
 
             setAITestResult({
                 ok: true,
-                message: data?.preview
-                    ? `Test succeeded: ${String(data.preview).slice(0, 120)}`
-                    : "Test succeeded. The endpoint is available.",
+                message: data?.preview ? `测试成功：${String(data.preview).slice(0, 120)}` : "测试成功，接口可用。",
             });
         } catch (error: any) {
             setAITestResult({
                 ok: false,
-                message: error?.message || "娴嬭瘯澶辫触",
+                message: error?.message || "测试失败",
             });
         } finally {
             setIsTestingAISettings(false);
@@ -484,7 +482,7 @@ export default function UserProfile() {
             if (!res.ok) {
                 setTTSSaveResult({
                     ok: false,
-                    message: typeof data?.error === "string" ? data.error : `Save failed (HTTP ${res.status})`,
+                    message: typeof data?.error === "string" ? data.error : `保存失败（HTTP ${res.status}）`,
                 });
                 return;
             }
@@ -520,14 +518,14 @@ export default function UserProfile() {
                         detail: savedSettings,
                     }));
                 }
-                setTTSSaveResult({ ok: true, message: "Saved. The new TTS settings will be used for synthesis immediately." });
+                setTTSSaveResult({ ok: true, message: "已保存，新的 TTS 设置会立即用于合成。" });
                 window.setTimeout(() => setShowTTSSettings(false), 450);
             }
         } catch (error) {
             console.error("Save tts settings failed:", error);
             setTTSSaveResult({
                 ok: false,
-                message: error instanceof Error ? error.message : "Save failed. Check the network and try again.",
+                message: error instanceof Error ? error.message : "保存失败，请检查网络后重试。",
             });
         } finally {
             setIsSavingTTSSettings(false);
@@ -564,7 +562,7 @@ export default function UserProfile() {
         if (nextSettings.provider === "edge") {
             setTTSTestResult({
                 ok: true,
-                message: "EdgeTTS is selected. No cloud or local connectivity test is needed.",
+                message: "当前选择的是 EdgeTTS，无需云端或本地连通性测试。",
             });
             setIsTestingTTSSettings(false);
             return;
@@ -580,7 +578,7 @@ export default function UserProfile() {
             const data = await res.json().catch(() => ({}));
 
             if (!res.ok || !data?.ok) {
-                const modelHint = typeof data?.model === "string" ? `妯″瀷 ${data.model} | ` : "";
+                const modelHint = typeof data?.model === "string" ? `模型 ${data.model} | ` : "";
                 setTTSTestResult({
                     ok: false,
                     message: `${modelHint}${data?.error || `HTTP ${res.status}`}`,
@@ -589,21 +587,21 @@ export default function UserProfile() {
             }
 
             const summary = [
-                data?.provider ? `${TTS_PROVIDER_LABELS[data.provider as TTSProvider]} connectivity succeeded` : "TTS connectivity succeeded",
-                data?.model ? `妯″瀷 ${data.model}` : "",
-                data?.voice ? `闊宠壊 ${data.voice}` : "",
-                data?.mode ? `妯″紡 ${data.mode}` : "",
-                data?.sample_rate ? `閲囨牱鐜?${data.sample_rate}Hz` : "",
+                data?.provider ? `${TTS_PROVIDER_LABELS[data.provider as TTSProvider]} 连通成功` : "TTS 连通成功",
+                data?.model ? `模型 ${data.model}` : "",
+                data?.voice ? `音色 ${data.voice}` : "",
+                data?.mode ? `模式 ${data.mode}` : "",
+                data?.sample_rate ? `采样率 ${data.sample_rate}Hz` : "",
             ].filter(Boolean).join(" | ");
 
             setTTSTestResult({
                 ok: true,
-                message: summary || "TTS connectivity succeeded",
+                message: summary || "TTS 连通成功",
             });
         } catch (error: any) {
             setTTSTestResult({
                 ok: false,
-                message: error?.message || "TTS connectivity failed",
+                message: error?.message || "TTS 连通失败",
             });
         } finally {
             setIsTestingTTSSettings(false);
@@ -620,7 +618,7 @@ export default function UserProfile() {
     if (!user) return null;
 
     const currentAvatar = getAvatarById(avatarId);
-    const displayName = nickname || user.email?.split("@")[0] || "鐢ㄦ埛";
+    const displayName = nickname || user.email?.split("@")[0] || "用户";
     const visibleFamilies = getAIModelFamilies(aiProvider);
     const visibleModels = AI_MODEL_OPTIONS.filter((option) => option.provider === aiProvider && option.family === aiFamily);
     const selectedModelMeta = AI_MODEL_OPTIONS.find((option) => option.id === aiModel);
@@ -641,7 +639,7 @@ export default function UserProfile() {
                     }}
                     className="flex items-center gap-2 p-1.5 pr-3 rounded-full glass-panel border border-white/10 bg-white/5 hover:bg-white/10 transition-colors shadow-lg"
                 >
-                    {/* 浣跨敤閫夋嫨鐨勫ご鍍?*/}
+                    {/* 使用选择的头像 */}
                     <div className={cn(
                         "w-8 h-8 rounded-full bg-gradient-to-br flex items-center justify-center text-lg shadow-inner",
                         currentAvatar.bgGradient
@@ -689,7 +687,7 @@ export default function UserProfile() {
                                     <div className="p-1.5 rounded-lg bg-violet-500/10 group-hover:bg-violet-500/20 transition-colors">
                                         <User className="w-4 h-4" />
                                     </div>
-                                    <span className="font-light">缂栬緫璧勬枡</span>
+                                    <span className="font-light">编辑资料</span>
                                 </button>
 
                                 {/* Wallpaper Picker */}
@@ -703,7 +701,7 @@ export default function UserProfile() {
                                     <div className="p-1.5 rounded-lg bg-cyan-500/10 group-hover:bg-cyan-500/20 transition-colors">
                                         <ImageIcon className="w-4 h-4" />
                                     </div>
-                                    <span className="font-light">鏇存崲澹佺焊</span>
+                                    <span className="font-light">更换壁纸</span>
                                 </button>
 
                                 {/* Reminder Settings */}
@@ -717,7 +715,7 @@ export default function UserProfile() {
                                     <div className="p-1.5 rounded-lg bg-amber-500/10 group-hover:bg-amber-500/20 transition-colors">
                                         <Bell className="w-4 h-4" />
                                     </div>
-                                    <span className="font-light">鎻愰啋璁剧疆</span>
+                                    <span className="font-light">提醒设置</span>
                                 </button>
 
                                 <button
@@ -731,9 +729,9 @@ export default function UserProfile() {
                                         <Bot className="w-4 h-4" />
                                     </div>
                                     <div className="min-w-0">
-                                        <div className="font-light">AI 妯″瀷</div>
+                                        <div className="font-light">AI 模型</div>
                                         <div className="text-xs text-white/35 truncate">
-                                            {isLoadingAISettings ? "鍔犺浇涓?.." : `${selectedFamilyMeta?.label || AI_PROVIDER_LABELS[aiProvider]} 路 ${selectedModelMeta?.label || aiModel}`}
+                                            {isLoadingAISettings ? "加载中..." : `${selectedFamilyMeta?.label || AI_PROVIDER_LABELS[aiProvider]} · ${selectedModelMeta?.label || aiModel}`}
                                         </div>
                                     </div>
                                 </button>
@@ -749,9 +747,9 @@ export default function UserProfile() {
                                         <Volume2 className="w-4 h-4" />
                                     </div>
                                     <div className="min-w-0">
-                                        <div className="font-light">TTS 寮曟搸</div>
+                                        <div className="font-light">TTS 引擎</div>
                                         <div className="text-xs text-white/35 truncate">
-                                            {isLoadingTTSSettings ? "鍔犺浇涓?.." : TTS_PROVIDER_LABELS[ttsProvider]}
+                                            {isLoadingTTSSettings ? "加载中..." : TTS_PROVIDER_LABELS[ttsProvider]}
                                         </div>
                                     </div>
                                 </button>
@@ -767,7 +765,7 @@ export default function UserProfile() {
                                     <div className="p-1.5 rounded-lg bg-indigo-500/10 group-hover:bg-indigo-500/20 transition-colors">
                                         <Database className="w-4 h-4" />
                                     </div>
-                                    <span className="font-light">Vector DB Admin</span>
+                                    <span className="font-light">向量库管理</span>
                                 </button>
 
                                 {/* Delete Meditation Data */}
@@ -781,7 +779,7 @@ export default function UserProfile() {
                                     <div className="p-1.5 rounded-lg bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors">
                                         <Trash2 className="w-4 h-4" />
                                     </div>
-                                    <span className="font-light">娓呴櫎鍐ユ兂鏁版嵁</span>
+                                    <span className="font-light">清除冥想数据</span>
                                 </button>
 
                                 {/* Manual Sync */}
@@ -800,7 +798,7 @@ export default function UserProfile() {
                                     <div className="p-1.5 rounded-lg bg-emerald-500/10 group-hover:bg-emerald-500/20 transition-colors">
                                         <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
                                     </div>
-                                    <span className="font-light">{isSyncing ? "鍚屾涓?.." : "鍚屾鏁版嵁"}</span>
+                                    <span className="font-light">{isSyncing ? "同步中..." : "同步数据"}</span>
                                 </button>
 
                                 {/* Sign Out */}
@@ -811,7 +809,7 @@ export default function UserProfile() {
                                     <div className="p-1.5 rounded-lg bg-rose-500/10 group-hover:bg-rose-500/20 transition-colors">
                                         <LogOut className="w-4 h-4" />
                                     </div>
-                                    <span className="font-light">Sign Out</span>
+                                    <span className="font-light">退出登录</span>
                                 </button>
                             </div>
                         </motion.div>
@@ -838,7 +836,7 @@ export default function UserProfile() {
                         >
                             {/* Header */}
                             <div className="px-6 py-4 border-b border-white/10">
-                                <h2 className="text-lg font-medium text-white/90">缂栬緫璧勬枡</h2>
+                                <h2 className="text-lg font-medium text-white/90">编辑资料</h2>
                             </div>
 
                             {/* Content */}
@@ -856,13 +854,13 @@ export default function UserProfile() {
 
                                 {/* Nickname Input */}
                                 <div>
-                                    <label className="block text-sm text-white/60 mb-2">鏄电О</label>
+                                    <label className="block text-sm text-white/60 mb-2">昵称</label>
                                     <div className="relative">
                                         <input
                                             type="text"
                                             value={nickname}
                                             onChange={(e) => setNickname(e.target.value)}
-                                            placeholder="杈撳叆浣犵殑鏄电О..."
+                                            placeholder="输入你的昵称..."
                                             maxLength={20}
                                             className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
                                         />
@@ -872,7 +870,7 @@ export default function UserProfile() {
 
                                 {/* Avatar Selection */}
                                 <div>
-                                    <label className="block text-sm text-white/60 mb-3">閫夋嫨澶村儚</label>
+                                    <label className="block text-sm text-white/60 mb-3">选择头像</label>
                                     <div className="grid grid-cols-6 gap-2">
                                         {AVATAR_PRESETS.map((avatar) => (
                                             <motion.button
@@ -907,14 +905,14 @@ export default function UserProfile() {
                                     onClick={() => setShowProfileEditor(false)}
                                     className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 text-sm transition-colors"
                                 >
-                                    鍙栨秷
+                                    取消
                                 </button>
                                 <button
                                     onClick={handleSaveProfile}
                                     disabled={isSaving}
                                     className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white text-sm font-medium transition-all disabled:opacity-50"
                                 >
-                                    {isSaving ? "淇濆瓨涓?.." : "淇濆瓨"}
+                                    {isSaving ? "保存中..." : "保存"}
                                 </button>
                             </div>
                         </motion.div>
@@ -954,15 +952,15 @@ export default function UserProfile() {
                             className="w-full max-w-xl max-h-[85vh] overflow-hidden glass-panel rounded-3xl border border-white/10 shadow-2xl"
                         >
                             <div className="px-6 py-4 border-b border-white/10">
-                                <h2 className="text-lg font-medium text-white/90">AI 妯″瀷閫夋嫨</h2>
+                                <h2 className="text-lg font-medium text-white/90">AI 模型选择</h2>
                                 <p className="text-sm text-white/45 mt-1">
-                                    杩欓噷鐨勯€夋嫨浼氱洿鎺ヤ綔鐢ㄥ埌鍐ユ兂鐢熸垚鍜?TTS Studio 鐨?`/api/generate`銆?
+                                    这里的选择会直接作用到冥想生成和 TTS Studio 的 `/api/generate`。
                                 </p>
                             </div>
 
                             <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(85vh-140px)]">
                                 <div>
-                                    <label className="block text-sm text-white/60 mb-3">Provider</label>
+                                    <label className="block text-sm text-white/60 mb-3">服务提供方</label>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {(["deepseek", "nvidia"] as AIProvider[]).map((provider) => {
                                             const active = aiProvider === provider;
@@ -988,7 +986,7 @@ export default function UserProfile() {
                                                         <div>
                                                             <div className="text-white/90 text-sm">{AI_PROVIDER_LABELS[provider]}</div>
                                                             <div className="text-xs text-white/45 mt-1">
-                                                                {provider === "deepseek" ? "淇濇寔褰撳墠榛樿閾捐矾" : "璧?NVIDIA OpenAI 鍏煎鎺ュ彛"}
+                                                                {provider === "deepseek" ? "保持当前默认链路" : "走 NVIDIA OpenAI 兼容接口"}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -999,7 +997,7 @@ export default function UserProfile() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm text-white/60 mb-3">妯″瀷绯诲垪</label>
+                                    <label className="block text-sm text-white/60 mb-3">模型系列</label>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {visibleFamilies.map((family) => {
                                             const active = aiFamily === family.id;
@@ -1022,7 +1020,7 @@ export default function UserProfile() {
                                                     <div className="text-sm text-white/90">{family.label}</div>
                                                     <div className="text-xs text-white/45 mt-1">{family.description}</div>
                                                     <div className="text-[11px] text-white/35 mt-2">
-                                                        {familyCount > 0 ? `${familyCount} models available` : "No models available right now"}
+                                                        {familyCount > 0 ? `${familyCount} 个可选模型` : "当前暂无可选模型"}
                                                     </div>
                                                 </button>
                                             );
@@ -1031,10 +1029,10 @@ export default function UserProfile() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm text-white/60 mb-3">鍏蜂綋妯″瀷</label>
+                                    <label className="block text-sm text-white/60 mb-3">具体模型</label>
                                     {visibleModels.length === 0 && (
                                         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/60">
-                                            {selectedFamilyMeta?.emptyMessage || "There are no available models in this family right now."}
+                                            {selectedFamilyMeta?.emptyMessage || "当前这个系列下没有可用模型。"}
                                         </div>
                                     )}
                                     <div className="space-y-3">
@@ -1074,15 +1072,15 @@ export default function UserProfile() {
                                 {aiProvider === "deepseek" && (
                                     <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 space-y-4">
                                         <div>
-                                            <div className="text-sm text-white/90">Deep reasoning</div>
+                                            <div className="text-sm text-white/90">深度思考</div>
                                             <div className="text-xs text-white/45 mt-1">
-                                                V4 Flash / Pro 鍙墜鍔ㄥ紑鍏筹紝`deepseek-reasoner` 浼氬己鍒跺紑鍚€?
+                                                V4 Flash / Pro 可手动开关，`deepseek-reasoner` 会强制开启。
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/10 px-3 py-3">
                                             <div>
-                                                <div className="text-sm text-white/85">Enable deep reasoning</div>
-                                                <div className="text-[11px] text-white/40 mt-1">When disabled, the normal chat parameters are used.</div>
+                                                <div className="text-sm text-white/85">开启深度思考</div>
+                                                <div className="text-[11px] text-white/40 mt-1">关闭时按普通聊天参数生成。</div>
                                             </div>
                                             <button
                                                 type="button"
@@ -1102,7 +1100,7 @@ export default function UserProfile() {
                                         </div>
 
                                         <div>
-                                            <label className="block text-sm text-white/85 mb-2">鎺ㄧ悊寮哄害</label>
+                                            <label className="block text-sm text-white/85 mb-2">推理强度</label>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                 {DEEPSEEK_REASONING_EFFORT_OPTIONS.map((option) => {
                                                     const active = deepseekReasoningEffort === option.id;
@@ -1148,7 +1146,7 @@ export default function UserProfile() {
                                     onClick={() => setShowAISettings(false)}
                                     className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 text-sm transition-colors"
                                 >
-                                    鍙栨秷
+                                    取消
                                 </button>
                                 <button
                                     onClick={handleTestAISettings}
@@ -1156,7 +1154,7 @@ export default function UserProfile() {
                                     className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                                 >
                                     {isTestingAISettings && <Loader2 className="w-4 h-4 animate-spin" />}
-                                    <span>{isTestingAISettings ? "Testing..." : "Test connectivity"}</span>
+                                    <span>{isTestingAISettings ? "测试中..." : "测试连通性"}</span>
                                 </button>
                                 <button
                                     onClick={handleSaveAISettings}
@@ -1164,7 +1162,7 @@ export default function UserProfile() {
                                     className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 hover:from-fuchsia-400 hover:to-cyan-400 text-white text-sm font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                                 >
                                     {isSavingAISettings && <Loader2 className="w-4 h-4 animate-spin" />}
-                                    <span>{isSavingAISettings ? "淇濆瓨涓?.." : "淇濆瓨"}</span>
+                                    <span>{isSavingAISettings ? "保存中..." : "保存"}</span>
                                 </button>
                             </div>
                         </motion.div>
@@ -1189,9 +1187,9 @@ export default function UserProfile() {
                             className="flex h-[min(88dvh,760px)] w-full max-w-lg flex-col overflow-hidden glass-panel rounded-3xl border border-white/10 shadow-2xl sm:h-auto sm:max-h-[85vh]"
                         >
                             <div className="shrink-0 px-5 py-4 sm:px-6 border-b border-white/10">
-                                <h2 className="text-lg font-medium text-white/90">TTS 寮曟搸閫夋嫨</h2>
+                                <h2 className="text-lg font-medium text-white/90">TTS 引擎选择</h2>
                                 <p className="text-sm text-white/45 mt-1">
-                                    棣栭〉銆佸啣鎯冲拰 TTS Studio 鐨勮闊冲悎鎴愰兘璧拌繖閲岀殑鍏ㄥ眬璁剧疆銆?
+                                    首页、冥想和 TTS Studio 的语音合成都走这里的全局设置。
                                 </p>
                             </div>
 
@@ -1226,7 +1224,7 @@ export default function UserProfile() {
                                                         <div className="text-sm text-white/90">{TTS_PROVIDER_LABELS[provider]}</div>
                                                         {active && (
                                                             <span className="text-[11px] px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-200">
-                                                                褰撳墠
+                                                                当前
                                                             </span>
                                                         )}
                                                     </div>
@@ -1243,9 +1241,9 @@ export default function UserProfile() {
                                     <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 space-y-4">
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
-                                            <div className="text-sm text-white/90">CosyVoice 鍏ㄥ眬鍙傛暟</div>
+                                            <div className="text-sm text-white/90">CosyVoice 全局参数</div>
                                             <div className="text-xs text-white/45 mt-1">
-                                                杩欎簺鍙傛暟浼氬奖鍝嶉椤点€佸啣鎯冲拰 TTS Studio 鐨?CosyVoice 鍚堟垚銆?
+                                                这些参数会影响首页、冥想和 TTS Studio 的 CosyVoice 合成。
                                             </div>
                                         </div>
                                         <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/60">
@@ -1255,19 +1253,19 @@ export default function UserProfile() {
 
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3">
-                                            <div className="text-xs text-white/45 mb-1">鍏嬮殕闊抽</div>
+                                            <div className="text-xs text-white/45 mb-1">克隆音频</div>
                                             <div className="text-sm text-white/85">
                                                 {COSYVOICE_VOICE_PROFILES.find((profile) => profile.id === cosyvoiceVoiceId)?.cloneAudioName || COSYVOICE_PROFILE.cloneAudioName}
                                             </div>
                                         </div>
                                         <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3">
-                                            <div className="text-xs text-white/45 mb-1">褰撳墠妯″紡</div>
+                                            <div className="text-xs text-white/45 mb-1">当前模式</div>
                                             <div className="text-sm text-white/85">{COSYVOICE_PROFILE.mode}</div>
                                         </div>
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="block text-sm text-white/85">鍏嬮殕闊宠壊</label>
+                                        <label className="block text-sm text-white/85">克隆音色</label>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                             {COSYVOICE_VOICE_PROFILES.map((profile) => {
                                                 const active = cosyvoiceVoiceId === profile.id;
@@ -1293,13 +1291,13 @@ export default function UserProfile() {
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="block text-sm text-white/85">Speed multiplier</label>
+                                        <label className="block text-sm text-white/85">倍速</label>
                                         <input
                                             type="text"
                                             inputMode="decimal"
                                             value={cosyvoiceSpeedInput}
                                             onChange={(e) => {
-                                                const value = e.target.value.replace(/[锛?]/g, ".");
+                                                const value = e.target.value.replace(/[，,]/g, ".");
                                                 if (!/^\d*(?:\.\d*)?$/.test(value)) return;
                                                 setCosyvoiceSpeedInput(value);
                                                 const parsed = Number.parseFloat(value);
@@ -1315,15 +1313,15 @@ export default function UserProfile() {
                                             disabled={ttsProvider !== "cosyvoice"}
                                             className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none disabled:opacity-50"
                                         />
-                                        <div className="text-xs text-white/40">{`Range 0.5 - 2.0, step 0.05, default ${COSYVOICE_PROFILE.speed}`}</div>
+                                        <div className="text-xs text-white/40">范围 0.5 - 2.0，步进 0.05，默认 {COSYVOICE_PROFILE.speed}</div>
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="block text-sm text-white/85">鑷劧璇█鎺у埗鎸囦护</label>
+                                        <label className="block text-sm text-white/85">自然语言控制指令</label>
                                         <div className="mb-3 space-y-2">
                                             <div className="flex items-center justify-between gap-3">
-                                                <div className="text-[11px] text-white/45">鎸囦护棰勮</div>
-                                                <div className="text-[11px] text-white/35">鐐瑰嚮鍚庝細濉厖鍒版枃鏈</div>
+                                                <div className="text-[11px] text-white/45">指令预设</div>
+                                                <div className="text-[11px] text-white/35">点击后会填充到文本框</div>
                                             </div>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                                 {COSYVOICE_INSTRUCTION_PRESETS.map((preset) => {
@@ -1366,7 +1364,7 @@ export default function UserProfile() {
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="block text-sm text-white/85">闅忔満鎺ㄧ悊绉嶅瓙</label>
+                                        <label className="block text-sm text-white/85">随机推理种子</label>
                                         <div className="flex gap-2">
                                             <input
                                                 type="text"
@@ -1384,7 +1382,7 @@ export default function UserProfile() {
                                                 onClick={handleRandomCosyvoiceSeed}
                                                 disabled={ttsProvider !== "cosyvoice"}
                                                 className="shrink-0 rounded-xl border border-white/10 bg-white/10 px-3 py-2.5 text-white/80 hover:bg-white/15 disabled:opacity-50"
-                                                title="闅忔満绉嶅瓙"
+                                                title="随机种子"
                                             >
                                                 <Shuffle className="w-4 h-4" />
                                             </button>
@@ -1395,8 +1393,15 @@ export default function UserProfile() {
 
                                 {ttsProvider === "qwentts" && (
                                     <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 space-y-4">
+                                        <div>
+                                            <div className="text-sm text-white/90">Qwen-TTS 详细设置</div>
+                                            <div className="text-xs text-white/45 mt-1">
+                                                Instruct 支持自然语言指令，VC 支持克隆音色，Flash 是普通低延迟模型。
+                                            </div>
+                                        </div>
+
                                         <div className="space-y-2">
-                                            <label className="block text-sm text-white/85">妯″瀷</label>
+                                            <label className="block text-sm text-white/85">模型</label>
                                             <div className="space-y-2">
                                                 {QWEN_TTS_MODELS.map((model) => {
                                                     const active = qwenTTSModel === model.id;
@@ -1427,7 +1432,7 @@ export default function UserProfile() {
 
                                         {!qwenIsCloneModel && (
                                             <div className="space-y-2">
-                                                <label className="block text-sm text-white/85">绯荤粺闊宠壊</label>
+                                                <label className="block text-sm text-white/85">系统音色</label>
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                     {QWEN_TTS_VOICES.map((voice) => {
                                                         const active = qwenTTSVoice === voice.id;
@@ -1455,10 +1460,10 @@ export default function UserProfile() {
                                         {qwenIsCloneModel && (
                                             <div className="space-y-3">
                                                 <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3 text-xs text-white/55">
-                                                    褰撳墠鏄厠闅嗘ā鍨嬶紝鍙樉绀哄厠闅嗛煶鑹茬浉鍏宠缃紝涓嶆樉绀虹郴缁熼煶鑹插拰鑷劧璇█鎸囦护銆?
+                                                    当前是克隆模型，只显示克隆音色相关设置，不显示系统音色和自然语言指令。
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <label className="block text-sm text-white/85">鍏嬮殕闊宠壊 Profile</label>
+                                                    <label className="block text-sm text-white/85">克隆音色 Profile</label>
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                         {COSYVOICE_VOICE_PROFILES.map((profile) => {
                                                             const active = qwenTTSCloneVoiceId === profile.id;
@@ -1482,7 +1487,7 @@ export default function UserProfile() {
                                                     </div>
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <label className="block text-sm text-white/85">Qwen 鍏嬮殕 voice_id</label>
+                                                    <label className="block text-sm text-white/85">Qwen 克隆 voice_id</label>
                                                     <input
                                                         type="text"
                                                         value={qwenTTSCloneVoiceCloudId}
@@ -1494,7 +1499,7 @@ export default function UserProfile() {
                                         )}
 
                                         <div className="space-y-2">
-                                            <label className="block text-sm text-white/85">璇█</label>
+                                            <label className="block text-sm text-white/85">语言</label>
                                             <select
                                                 value={qwenTTSLanguageType}
                                                 onChange={(e) => {
@@ -1512,13 +1517,13 @@ export default function UserProfile() {
                                         {qwenIsInstructionModel && (
                                             <>
                                                 <div className="space-y-2">
-                                                    <label className="block text-sm text-white/85">璇€熷€惧悜</label>
+                                                    <label className="block text-sm text-white/85">语速倾向</label>
                                                     <input
                                                         type="text"
                                                         inputMode="decimal"
                                                         value={qwenTTSSpeedInput}
                                                         onChange={(e) => {
-                                                            const value = e.target.value.replace(/[锛?]/g, ".");
+                                                            const value = e.target.value.replace(/[，,]/g, ".");
                                                             if (!/^\d*(?:\.\d*)?$/.test(value)) return;
                                                             setQwenTTSSpeedInput(value);
                                                             const parsed = Number.parseFloat(value);
@@ -1535,7 +1540,7 @@ export default function UserProfile() {
                                                     />
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <label className="block text-sm text-white/85">鑷劧璇█棰勮</label>
+                                                    <label className="block text-sm text-white/85">自然语言预设</label>
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                                         {COSYVOICE_INSTRUCTION_PRESETS.map((preset) => {
                                                             const active = qwenTTSInstructions.trim() === preset.prompt;
@@ -1562,7 +1567,7 @@ export default function UserProfile() {
                                                     </div>
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <label className="block text-sm text-white/85">鑷劧璇█鎸囦护</label>
+                                                    <label className="block text-sm text-white/85">自然语言指令</label>
                                                     <textarea
                                                         rows={4}
                                                         value={qwenTTSInstructions}
@@ -1575,7 +1580,7 @@ export default function UserProfile() {
 
                                         {!qwenIsInstructionModel && !qwenIsCloneModel && (
                                             <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3 text-xs text-white/55">
-                                                褰撳墠妯″瀷涓嶆敮鎸佽嚜鐒惰瑷€鎸囦护锛屼篃涓嶆敮鎸佸厠闅嗛煶鑹层€?
+                                                当前模型不支持自然语言指令，也不支持克隆音色。
                                             </div>
                                         )}
                                     </div>
@@ -1584,12 +1589,12 @@ export default function UserProfile() {
                                 {ttsProvider === "cosyvoice35plus" && (
                                     <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 space-y-4">
                                         <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3 text-xs text-white/55">
-                                            杩欐槸 `鍏嬮殕闊宠壊 + 鑷劧璇█鎸囦护 + 纭閫焋 鐨勪簯绔ā寮忋€俙Plus` 鏇撮€傚悎鏈€缁堟垚鍝侊紝
-                                            `Flash` 鏇撮€傚悎棰勮鍜岄绻侀噸鍚堟垚銆?
+                                            这是 `克隆音色 + 自然语言指令 + 硬语速` 的云端模式。`Plus` 更适合最终成品，
+                                            `Flash` 更适合预览和频繁重合成。
                                         </div>
 
                                         <div className="space-y-2">
-                                            <label className="block text-sm text-white/85">妯″瀷</label>
+                                            <label className="block text-sm text-white/85">模型</label>
                                             <div className="space-y-2">
                                                 {COSYVOICE_35_MODELS.map((model) => {
                                                     const active = cosyvoice35PlusModel === model.id;
@@ -1618,7 +1623,7 @@ export default function UserProfile() {
                                         </div>
 
                                         <div className="space-y-2">
-                                            <label className="block text-sm text-white/85">浜戠鍏嬮殕闊宠壊 Profile</label>
+                                            <label className="block text-sm text-white/85">云端克隆音色 Profile</label>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                 {COSYVOICE_VOICE_PROFILES.map((profile) => {
                                                     const active = cosyvoice35PlusVoiceProfileId === profile.id;
@@ -1666,7 +1671,7 @@ export default function UserProfile() {
 
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             <div className="space-y-2">
-                                                <label className="block text-sm text-white/85">璇█鎻愮ず</label>
+                                                <label className="block text-sm text-white/85">语言提示</label>
                                                 <select
                                                     value={cosyvoice35PlusLanguageHint}
                                                     onChange={(e) => {
@@ -1683,13 +1688,13 @@ export default function UserProfile() {
                                             </div>
 
                                             <div className="space-y-2">
-                                                <label className="block text-sm text-white/85">Language hint</label>
+                                                <label className="block text-sm text-white/85">硬语速</label>
                                                 <input
                                                     type="text"
                                                     inputMode="decimal"
                                                     value={cosyvoice35PlusSpeedInput}
                                                     onChange={(e) => {
-                                                        const value = e.target.value.replace(/[锛?]/g, ".");
+                                                        const value = e.target.value.replace(/[，,]/g, ".");
                                                         if (!/^\d*(?:\.\d*)?$/.test(value)) return;
                                                         setCosyvoice35PlusSpeedInput(value);
                                                         const parsed = Number.parseFloat(value);
@@ -1704,12 +1709,12 @@ export default function UserProfile() {
                                                     }}
                                                     className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"
                                                 />
-                                                <div className="text-xs text-white/40">鑼冨洿 0.5 - 2.0锛屾杩?0.05</div>
+                                                <div className="text-xs text-white/40">范围 0.5 - 2.0，步进 0.05</div>
                                             </div>
                                         </div>
 
                                         <div className="space-y-2">
-                                            <label className="block text-sm text-white/85">鑷劧璇█棰勮</label>
+                                            <label className="block text-sm text-white/85">自然语言预设</label>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                                 {COSYVOICE_INSTRUCTION_PRESETS.map((preset) => {
                                                     const active = cosyvoice35PlusInstruction.trim() === preset.prompt;
@@ -1737,7 +1742,7 @@ export default function UserProfile() {
                                         </div>
 
                                         <div className="space-y-2">
-                                            <label className="block text-sm text-white/85">鑷劧璇█鎸囦护</label>
+                                            <label className="block text-sm text-white/85">自然语言指令</label>
                                             <textarea
                                                 rows={4}
                                                 value={cosyvoice35PlusInstruction}
@@ -1752,17 +1757,17 @@ export default function UserProfile() {
                                     <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 space-y-3">
                                         <div className="flex items-start justify-between gap-3">
                                             <div>
-                                                <div className="text-sm text-white/90">EdgeTTS 璇存槑</div>
+                                                <div className="text-sm text-white/90">EdgeTTS 说明</div>
                                                 <div className="text-xs text-white/45 mt-1">
-                                                    褰撳墠妯″紡涓嶉渶瑕侀澶栦簯绔弬鏁版垨鏈湴鏈嶅姟锛岀洿鎺ヤ娇鐢ㄦ祻瑙堝櫒渚ч粯璁ら摼璺€?
+                                                    当前模式不需要额外云端参数或本地服务，直接使用浏览器侧默认链路。
                                                 </div>
                                             </div>
                                             <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/60">
-                                                闆堕厤缃?
+                                                零配置
                                             </div>
                                         </div>
                                         <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-3 text-xs leading-6 text-white/55">
-                                            濡傛灉浣犲彧鎯冲揩閫熻瘯鍚垨涓嶄緷璧?DashScope銆佹湰鍦?CosyVoice 鏈嶅姟锛屽彲浠ョ洿鎺ョ敤 EdgeTTS銆?
+                                            如果你只想快速试听或不依赖 DashScope、本地 CosyVoice 服务，可以直接用 EdgeTTS。
                                         </div>
                                     </div>
                                 )}
@@ -1770,9 +1775,9 @@ export default function UserProfile() {
                                 <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
-                                            <div className="text-sm text-white/90">TTS connectivity test</div>
+                                            <div className="text-sm text-white/90">TTS 连通性测试</div>
                                             <div className="text-xs text-white/45 mt-1">
-                                                CosyVoice 浼氭鏌ユ湰鏈烘湇鍔★紝Qwen-TTS 浼氱敤鐭彞璋冪敤鐧剧偧鐢熸垚涓€娆°€?
+                                                CosyVoice 会检查本机服务，Qwen-TTS 会用短句调用百炼生成一次。
                                             </div>
                                         </div>
                                         <button
@@ -1782,7 +1787,7 @@ export default function UserProfile() {
                                             className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs transition-colors disabled:opacity-50 flex items-center gap-2"
                                         >
                                             {isTestingTTSSettings && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                                            <span>{isTestingTTSSettings ? "Testing..." : "Test connectivity"}</span>
+                                            <span>{isTestingTTSSettings ? "测试中..." : "测试连通性"}</span>
                                         </button>
                                     </div>
 
@@ -1820,7 +1825,7 @@ export default function UserProfile() {
                                     onClick={() => setShowTTSSettings(false)}
                                     className="min-h-11 flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 text-sm transition-colors"
                                 >
-                                    鍙栨秷
+                                    取消
                                 </button>
                                 <button
                                     onClick={handleTestTTSSettings}
@@ -1828,7 +1833,7 @@ export default function UserProfile() {
                                     className="min-h-11 flex-1 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                                 >
                                     {isTestingTTSSettings && <Loader2 className="w-4 h-4 animate-spin" />}
-                                    <span>{isTestingTTSSettings ? "Testing..." : "Test connectivity"}</span>
+                                    <span>{isTestingTTSSettings ? "测试中..." : "测试连通性"}</span>
                                 </button>
                                 <button
                                     onClick={handleSaveTTSSettings}
@@ -1836,7 +1841,7 @@ export default function UserProfile() {
                                     className="col-span-2 min-h-12 flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white text-sm font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2 sm:col-span-1"
                                 >
                                     {isSavingTTSSettings && <Loader2 className="w-4 h-4 animate-spin" />}
-                                    <span>{isSavingTTSSettings ? "淇濆瓨涓?.." : "淇濆瓨"}</span>
+                                    <span>{isSavingTTSSettings ? "保存中..." : "保存"}</span>
                                 </button>
                                 </div>
                             </div>
@@ -1864,13 +1869,13 @@ export default function UserProfile() {
                         >
                             {/* Header */}
                             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-                                <h2 className="text-lg font-medium text-white/90">澹佺焊閫夋嫨</h2>
+                                <h2 className="text-lg font-medium text-white/90">壁纸选择</h2>
                                 <button
                                     onClick={handleRandomWallpaper}
                                     className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-sm text-white/80"
                                 >
                                     <Shuffle className="w-4 h-4" />
-                                    <span>闅忔満澹佺焊</span>
+                                    <span>随机壁纸</span>
                                 </button>
                             </div>
 
@@ -1896,7 +1901,7 @@ export default function UserProfile() {
                                             {wp.type === 'dynamic' ? (
                                                 <div className="absolute inset-0 bg-gradient-to-br from-violet-900 via-indigo-900 to-cyan-900">
                                                     <div className="absolute inset-0 flex items-center justify-center text-white/60 text-xs">
-                                                        鉁?鍔ㄦ€?
+                                                        ✨ 动态
                                                     </div>
                                                 </div>
                                             ) : wp.url ? (
@@ -1908,7 +1913,7 @@ export default function UserProfile() {
                                                 />
                                             ) : (
                                                 <div className="absolute inset-0 bg-gray-800 flex items-center justify-center text-white/40 text-xs">
-                                                    鏃犻瑙?
+                                                    无预览
                                                 </div>
                                             )}
 
@@ -1954,16 +1959,16 @@ export default function UserProfile() {
                                 <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-orange-500/20 flex items-center justify-center">
                                     <Trash2 className="w-6 h-6 text-orange-400" />
                                 </div>
-                                <h2 className="text-lg font-medium text-white/90">娓呴櫎鍐ユ兂鏁版嵁</h2>
+                                <h2 className="text-lg font-medium text-white/90">清除冥想数据</h2>
                             </div>
 
                             {/* Content */}
                             <div className="p-6 text-center">
                                 <p className="text-white/60 text-sm mb-2">
-                                    纭畾瑕佸垹闄ゆ墍鏈夊啣鎯宠褰曞悧锛?
+                                    确定要删除所有冥想记录吗？
                                 </p>
                                 <p className="text-orange-400/80 text-xs">
-                                    鈿狅笍 姝ゆ搷浣滀笉鍙挙閿€锛岃幉鑺辫姳鍥篃灏嗘竻绌?
+                                    ⚠️ 此操作不可撤销，莲花花园也将清空
                                 </p>
                             </div>
 
@@ -1973,14 +1978,14 @@ export default function UserProfile() {
                                     onClick={() => setShowDeleteConfirm(false)}
                                     className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 text-sm transition-colors"
                                 >
-                                    鍙栨秷
+                                    取消
                                 </button>
                                 <button
                                     onClick={handleDeleteMeditationData}
                                     disabled={isDeleting}
                                     className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-400 hover:to-red-400 text-white text-sm font-medium transition-all disabled:opacity-50"
                                 >
-                                    {isDeleting ? "鍒犻櫎涓?.." : "纭鍒犻櫎"}
+                                    {isDeleting ? "删除中..." : "确认删除"}
                                 </button>
                             </div>
                         </motion.div>
@@ -1990,4 +1995,3 @@ export default function UserProfile() {
         </>
     );
 }
-

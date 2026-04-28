@@ -1,9 +1,4 @@
-export type TTSProvider =
-  | "edge"
-  | "cosyvoice"
-  | "qwentts"
-  | "cosyvoice35plus";
-
+export type TTSProvider = "edge" | "cosyvoice" | "qwentts" | "cosyvoice35plus";
 export type CosyVoiceVoiceId = "yupinglu" | "tea";
 export type CosyVoice35Model = "cosyvoice-v3.5-plus" | "cosyvoice-v3.5-flash";
 export type QwenTTSVoiceMode = "system" | "clone";
@@ -78,7 +73,7 @@ export const DEFAULT_COSYVOICE_SPEED = 0.9;
 export const DEFAULT_COSYVOICE_SEED = 0;
 export const DEFAULT_COSYVOICE_VOICE_ID: CosyVoiceVoiceId = "yupinglu";
 export const DEFAULT_COSYVOICE_INSTRUCTION =
-  "Please read in a very gentle, slow, and steady bedtime meditation tone. Keep the energy low, the cadence soft, and leave enough pauses between sentences for breathing and relaxation.";
+  "请用非常轻柔、缓慢、安定的睡前冥想语气朗读，音量感偏低，语尾自然下落，不要有明显情绪起伏。每句话之间保留充分停顿，让听众有时间呼吸和放松，整体像安静陪伴而不是教学";
 
 export const DEFAULT_QWEN_TTS_MODEL: QwenTTSModel = "qwen3-tts-instruct-flash";
 export const DEFAULT_QWEN_TTS_VOICE: QwenTTSVoice = "Seren";
@@ -94,68 +89,65 @@ export const DEFAULT_COSYVOICE_35_PLUS_VOICE_ID = "";
 export const DEFAULT_COSYVOICE_35_FLASH_VOICE_ID = "";
 export const DEFAULT_COSYVOICE_35_PLUS_VOICE_PROFILE_ID: CosyVoiceVoiceId = "yupinglu";
 export const DEFAULT_COSYVOICE_35_PLUS_SPEED = 1;
-export const DEFAULT_COSYVOICE_35_PLUS_INSTRUCTION =
-  "Please read in a soft, slow, and calming meditation tone.";
+export const DEFAULT_COSYVOICE_35_PLUS_INSTRUCTION = "请用轻柔、缓慢、安定的睡前冥想语气朗读。";
 export const DEFAULT_COSYVOICE_35_PLUS_LANGUAGE_HINT: CosyVoice35PlusLanguageHint = "zh";
 
 export const COSYVOICE_INSTRUCTION_PRESETS: readonly CosyVoiceInstructionPreset[] = [
   {
     id: "sleep-companion",
-    label: "Sleep Companion",
-    description: "Default",
+    label: "睡前安抚",
+    description: "默认",
     prompt: DEFAULT_COSYVOICE_INSTRUCTION,
   },
   {
     id: "formal-course",
-    label: "Formal Course",
-    description: "Clear and restrained",
+    label: "正式课程",
+    description: "清晰克制",
     prompt:
-      "Please read like a professional meditation course teacher: natural, steady, clear, and restrained, with clean phrase boundaries and no exaggerated performance.",
+      "请用专业冥想课程老师的语气朗读，声音自然、稳定、清晰，节奏从容，语句边界明确，整体克制，不要耳语，不要撒娇，不要表演化，像正式课程引导。",
   },
   {
     id: "breath-grounding",
-    label: "Breath Grounding",
-    description: "More pauses",
+    label: "呼吸放松",
+    description: "停顿更足",
     prompt:
-      "Please read in a slow, grounded, low-stimulation breathing-guide tone, with light emphasis, full pauses, and soft sentence endings so listeners can follow their breath easily.",
+      "请用缓慢、安稳、低刺激的呼吸引导语气朗读，重音轻，停顿充分，句尾自然收住，让听众容易跟随呼吸，不要明显情绪起伏。",
   },
   {
     id: "warm-neutral",
-    label: "Warm Neutral",
-    description: "Present but not clingy",
+    label: "温柔中性",
+    description: "陪伴不腻",
     prompt:
-      "Please read in a warm but neutral mindfulness tone. Keep the voice soft, clean, and close without sounding overly intimate or theatrical.",
+      "请用温和但中性的正念语气朗读，声音柔和、干净、贴近但不过分亲密，吐字清楚，像安静陪伴，不像舞台朗诵。",
   },
   {
     id: "deep-sleep",
-    label: "Deep Sleep",
-    description: "Slower and steadier",
+    label: "深度助眠",
+    description: "更慢更稳",
     prompt:
-      "Please read in an even softer, slower, and steadier sleep-support tone with low intensity, low variation, soft endings, and widened pauses.",
+      "请用更轻、更慢、更稳定的睡前助眠语气朗读，整体低饱和度、低起伏，句尾轻轻落下，停顿拉开，让人容易放松入睡。",
   },
   {
     id: "tea-calm",
-    label: "Tea Calm",
-    description: "Quiet and clear",
+    label: "茶席安定",
+    description: "宁静清透",
     prompt:
-      "Please read in a quiet, clear, and tea-ceremony-inspired guiding tone, calm and gentle, with a slightly slower pace and natural pauses.",
+      "请用安静、清透、舒缓的茶席引导语气朗读，声音平和、柔顺、克制，语速偏慢，停顿自然，整体让人感到安定而不过分亲密。",
   },
 ] as const;
 
 export const COSYVOICE_VOICE_PROFILES = [
   {
     id: "yupinglu",
-    label: "Yupinglu",
-    cloneAudioName: "yupinglu-9_16k_mono.wav",
-    promptText:
-      "This is a meditation audio test sample, 1234567. Hello, this is generated from the CosyVoice3 model.",
+    label: "玉屏路",
+    cloneAudioName: "玉屏路 9_16k_mono.wav",
+    promptText: "这是一段冥想音频的测试，1234567，你好这是从cosyvoice3模型测试，正念鸭梨实验室出品。",
   },
   {
     id: "tea",
-    label: "Tea Voice",
+    label: "茶语音色",
     cloneAudioName: "tea_clone_20260421b_16k_mono.wav",
-    promptText:
-      "Let us set down the noise and busyness, and return to inner calm through a cup of tea.",
+    promptText: "我们放下忙碌与杂念，借由一杯茶回归内心的安静",
   },
 ] as const satisfies ReadonlyArray<{
   id: CosyVoiceVoiceId;
@@ -168,44 +160,43 @@ export const QWEN_TTS_MODELS: readonly QwenTTSModelOption[] = [
   {
     id: "qwen3-tts-instruct-flash",
     label: "Qwen3 TTS Instruct Flash",
-    description: "Natural language instruction model with style and pacing control.",
+    description: "自然语言指令模型，支持风格和语速倾向。",
   },
   {
     id: "qwen3-tts-flash",
     label: "Qwen3 TTS Flash",
-    description: "Low-latency base model without natural-language instructions.",
+    description: "普通低延迟模型，不支持自然语言指令。",
   },
   {
     id: "qwen3-tts-vc-2026-01-22",
     label: "Qwen3 TTS VC",
-    description: "Official voice-clone model without natural-language instructions.",
+    description: "官方克隆音色模型，不支持自然语言指令。",
   },
 ] as const;
 
 export const QWEN_TTS_VOICES: readonly QwenTTSVoiceOption[] = [
-  { id: "Seren", label: "Seren", description: "Warm and natural" },
-  { id: "Cherry", label: "Cherry", description: "Bright and delicate" },
-  { id: "Ethan", label: "Ethan", description: "Steady male voice" },
-  { id: "Chelsie", label: "Chelsie", description: "Soft female voice" },
-  { id: "Dylan", label: "Dylan", description: "Balanced neutral tone" },
-  { id: "Jada", label: "Jada", description: "Clean and clear" },
-  { id: "Sunny", label: "Sunny", description: "Lighter and brisk" },
-  { id: "Alex", label: "Alex", description: "General neutral tone" },
-  { id: "Bella", label: "Bella", description: "Gentle companion tone" },
-  { id: "Li", label: "Li", description: "Natural Chinese voice" },
+  { id: "Seren", label: "Seren", description: "温和自然" },
+  { id: "Cherry", label: "Cherry", description: "明亮细腻" },
+  { id: "Ethan", label: "Ethan", description: "沉稳男声" },
+  { id: "Chelsie", label: "Chelsie", description: "轻柔女声" },
+  { id: "Dylan", label: "Dylan", description: "平稳中性" },
+  { id: "Jada", label: "Jada", description: "清晰干净" },
+  { id: "Sunny", label: "Sunny", description: "更轻快" },
+  { id: "Alex", label: "Alex", description: "通用中性" },
+  { id: "Bella", label: "Bella", description: "柔和陪伴" },
+  { id: "Li", label: "Li", description: "中文自然" },
 ] as const;
 
 export const COSYVOICE_35_MODELS: readonly CosyVoice35ModelOption[] = [
   {
     id: "cosyvoice-v3.5-plus",
     label: "CosyVoice 3.5 Plus",
-    description:
-      "Higher quality production model with cloning, natural-language instructions, and expressive pacing.",
+    description: "高质量成品档，支持克隆、自然语言指令和硬语速，价格更高。",
   },
   {
     id: "cosyvoice-v3.5-flash",
     label: "CosyVoice 3.5 Flash",
-    description: "Better for preview and frequent regeneration, with lower latency and lower cost.",
+    description: "预览和频繁重合成更合适，支持克隆、自然语言指令和硬语速，价格更低。",
   },
 ] as const;
 
@@ -216,15 +207,15 @@ export const TTS_PROVIDER_LABELS: Record<TTSProvider, string> = {
   cosyvoice35plus: "CosyVoice 3.5",
 };
 
-export const TTS_PROVIDER_DESCRIPTIONS: Partial<Record<TTSProvider, string>> = {
-  edge: "Best browser compatibility and zero extra setup.",
-  cosyvoice: "Local CosyVoice3 with natural-language control.",
-  qwentts: "Alibaba Qwen-TTS with system voices or VC cloning.",
-  cosyvoice35plus: "Alibaba CosyVoice 3.5 with switchable Plus and Flash models.",
+export const TTS_PROVIDER_DESCRIPTIONS: Record<TTSProvider, string> = {
+  edge: "浏览器兼容性最好，零配置。",
+  cosyvoice: "本地 CosyVoice3，自然语言控制。",
+  qwentts: "阿里 Qwen-TTS，可选系统音色或 VC 克隆。",
+  cosyvoice35plus: "阿里 CosyVoice 3.5，可切换 Plus / Flash，支持克隆、自然语言和硬语速。",
 };
 
 export const COSYVOICE_PROFILE = {
-  mode: "natural-language-control",
+  mode: "自然语言控制",
   cloneAudioName: COSYVOICE_VOICE_PROFILES[0].cloneAudioName,
   stream: true,
   speed: DEFAULT_COSYVOICE_SPEED,
@@ -235,12 +226,7 @@ export const COSYVOICE_PROFILE = {
 type TTSSettingsInput = Partial<Record<keyof TTSSettings, unknown>>;
 
 export function isTTSProvider(value: unknown): value is TTSProvider {
-  return (
-    value === "edge" ||
-    value === "cosyvoice" ||
-    value === "qwentts" ||
-    value === "cosyvoice35plus"
-  );
+  return value === "edge" || value === "cosyvoice" || value === "qwentts" || value === "cosyvoice35plus";
 }
 
 export function isCosyVoiceVoiceId(value: unknown): value is CosyVoiceVoiceId {
@@ -255,9 +241,7 @@ export function isQwenTTSLanguageType(value: unknown): value is QwenTTSLanguageT
   return value === "Chinese" || value === "English";
 }
 
-export function isCosyVoice35PlusLanguageHint(
-  value: unknown
-): value is CosyVoice35PlusLanguageHint {
+export function isCosyVoice35PlusLanguageHint(value: unknown): value is CosyVoice35PlusLanguageHint {
   return value === "zh" || value === "en";
 }
 
@@ -317,9 +301,7 @@ function normalizeString(value: unknown, defaultValue = "") {
 
 export function normalizeTTSSettings(input: TTSSettingsInput): TTSSettings {
   const provider = isTTSProvider(input.provider) ? input.provider : DEFAULT_TTS_PROVIDER;
-  const qwenTTSModel = isQwenTTSModel(input.qwenTTSModel)
-    ? input.qwenTTSModel
-    : DEFAULT_QWEN_TTS_MODEL;
+  const qwenTTSModel = isQwenTTSModel(input.qwenTTSModel) ? input.qwenTTSModel : DEFAULT_QWEN_TTS_MODEL;
   const requestedVoiceMode = isQwenTTSVoiceMode(input.qwenTTSVoiceMode)
     ? input.qwenTTSVoiceMode
     : DEFAULT_QWEN_TTS_VOICE_MODE;
@@ -327,18 +309,13 @@ export function normalizeTTSSettings(input: TTSSettingsInput): TTSSettings {
   return {
     provider,
     cosyvoiceSpeed: normalizeSpeed(input.cosyvoiceSpeed, DEFAULT_COSYVOICE_SPEED),
-    cosyvoiceInstruction: normalizeInstruction(
-      input.cosyvoiceInstruction,
-      DEFAULT_COSYVOICE_INSTRUCTION
-    ),
+    cosyvoiceInstruction: normalizeInstruction(input.cosyvoiceInstruction, DEFAULT_COSYVOICE_INSTRUCTION),
     cosyvoiceSeed: normalizeSeed(input.cosyvoiceSeed),
     cosyvoiceVoiceId: isCosyVoiceVoiceId(input.cosyvoiceVoiceId)
       ? input.cosyvoiceVoiceId
       : DEFAULT_COSYVOICE_VOICE_ID,
     qwenTTSModel,
-    qwenTTSVoice: isQwenTTSVoice(input.qwenTTSVoice)
-      ? input.qwenTTSVoice
-      : DEFAULT_QWEN_TTS_VOICE,
+    qwenTTSVoice: isQwenTTSVoice(input.qwenTTSVoice) ? input.qwenTTSVoice : DEFAULT_QWEN_TTS_VOICE,
     qwenTTSVoiceMode: isQwenTTSCloneModel(qwenTTSModel) ? "clone" : requestedVoiceMode,
     qwenTTSCloneVoiceId: isCosyVoiceVoiceId(input.qwenTTSCloneVoiceId)
       ? input.qwenTTSCloneVoiceId
@@ -351,28 +328,16 @@ export function normalizeTTSSettings(input: TTSSettingsInput): TTSSettings {
     qwenTTSLanguageType: isQwenTTSLanguageType(input.qwenTTSLanguageType)
       ? input.qwenTTSLanguageType
       : DEFAULT_QWEN_TTS_LANGUAGE_TYPE,
-    qwenTTSInstructions: normalizeInstruction(
-      input.qwenTTSInstructions,
-      DEFAULT_QWEN_TTS_INSTRUCTIONS
-    ),
+    qwenTTSInstructions: normalizeInstruction(input.qwenTTSInstructions, DEFAULT_QWEN_TTS_INSTRUCTIONS),
     cosyvoice35PlusModel: isCosyVoice35Model(input.cosyvoice35PlusModel)
       ? input.cosyvoice35PlusModel
       : DEFAULT_COSYVOICE_35_PLUS_MODEL,
-    cosyvoice35PlusVoiceId: normalizeString(
-      input.cosyvoice35PlusVoiceId,
-      DEFAULT_COSYVOICE_35_PLUS_VOICE_ID
-    ),
-    cosyvoice35FlashVoiceId: normalizeString(
-      input.cosyvoice35FlashVoiceId,
-      DEFAULT_COSYVOICE_35_FLASH_VOICE_ID
-    ),
+    cosyvoice35PlusVoiceId: normalizeString(input.cosyvoice35PlusVoiceId, DEFAULT_COSYVOICE_35_PLUS_VOICE_ID),
+    cosyvoice35FlashVoiceId: normalizeString(input.cosyvoice35FlashVoiceId, DEFAULT_COSYVOICE_35_FLASH_VOICE_ID),
     cosyvoice35PlusVoiceProfileId: isCosyVoiceVoiceId(input.cosyvoice35PlusVoiceProfileId)
       ? input.cosyvoice35PlusVoiceProfileId
       : DEFAULT_COSYVOICE_35_PLUS_VOICE_PROFILE_ID,
-    cosyvoice35PlusSpeed: normalizeSpeed(
-      input.cosyvoice35PlusSpeed,
-      DEFAULT_COSYVOICE_35_PLUS_SPEED
-    ),
+    cosyvoice35PlusSpeed: normalizeSpeed(input.cosyvoice35PlusSpeed, DEFAULT_COSYVOICE_35_PLUS_SPEED),
     cosyvoice35PlusInstruction: normalizeInstruction(
       input.cosyvoice35PlusInstruction,
       DEFAULT_COSYVOICE_35_PLUS_INSTRUCTION
