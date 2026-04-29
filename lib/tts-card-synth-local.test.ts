@@ -42,15 +42,16 @@ test("auto follows the current settings when a matching local version exists", (
 
 test("manual local selection can pin a different provider version for the same card", () => {
   const edgeSettings = normalizeTTSSettings({ provider: "edge" });
-  const cosySettings = normalizeTTSSettings({
-    provider: "cosyvoice35plus",
-    cosyvoice35PlusModel: "cosyvoice-v3.5-flash",
+  const mimoSettings = normalizeTTSSettings({
+    provider: "mimotts",
+    mimoTTSModel: "mimo-v2.5-tts-voicedesign",
+    mimoTTSInstruction: "女声，温柔，慢速。",
   });
 
   const edgeSnapshot = buildSynthSnapshot("card-local-1", edgeSettings, "2026-04-26T10:00:00.000Z");
-  const cosySnapshot = buildSynthSnapshot("card-local-1", cosySettings, "2026-04-26T10:05:00.000Z");
+  const mimoSnapshot = buildSynthSnapshot("card-local-1", mimoSettings, "2026-04-26T10:05:00.000Z");
   const edgeCacheKey = buildTTSCardAudioCacheKey(card, edgeSettings, edgeSnapshot);
-  const cosyCacheKey = buildTTSCardAudioCacheKey(card, cosySettings, cosySnapshot);
+  const mimoCacheKey = buildTTSCardAudioCacheKey(card, mimoSettings, mimoSnapshot);
 
   const resolved = resolveLocalTTSCardVersion({
     card,
@@ -65,21 +66,21 @@ test("manual local selection can pin a different provider version for the same c
         modelLabel: "edgetts",
       },
       {
-        id: cosyCacheKey,
+        id: mimoCacheKey,
         cardId: card.id,
-        cacheKey: cosyCacheKey,
-        synthesizedAt: cosySnapshot.synthesizedAt,
-        snapshot: cosySnapshot,
-        modelLabel: "cy3.5-flash",
+        cacheKey: mimoCacheKey,
+        synthesizedAt: mimoSnapshot.synthesizedAt,
+        snapshot: mimoSnapshot,
+        modelLabel: "mimo-design",
       },
     ],
-    selectedVersionCacheKey: cosyCacheKey,
+    selectedVersionCacheKey: mimoCacheKey,
     legacySnapshot: null,
   });
 
   assert.equal(resolved.source, "manual");
-  assert.equal(resolved.cacheKey, cosyCacheKey);
-  assert.equal(resolved.snapshot?.provider, "cosyvoice35plus");
+  assert.equal(resolved.cacheKey, mimoCacheKey);
+  assert.equal(resolved.snapshot?.provider, "mimotts");
   assert.equal(resolved.compatibleVersions.length, 2);
 });
 

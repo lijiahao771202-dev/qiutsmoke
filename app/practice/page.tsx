@@ -16,6 +16,7 @@ import { unlockAudio, playCompletionSound, getSharedAudioContext } from "@/lib/a
 import { useGlobalWhiteNoise } from "@/contexts/WhiteNoiseContext";
 import { SoundscapesContent } from "@/components/soundscapes/SoundscapesContent";
 import { usePracticeKeepAwake } from "@/hooks/usePracticeKeepAwake";
+import { completeMeditationSession, createMeditationSession } from "@/lib/hooks/useData";
 
 import scriptsPrepare from "@/app/data/scripts_prepare.json";
 import scriptsRecognize from "@/app/data/scripts_recognize.json";
@@ -2897,18 +2898,11 @@ function PracticeContent() {
         // 📊 Record Session Start to Database
         try {
             const themeName = THEMES[selectedTheme]?.name || "正式练习";
-            fetch(getApiUrl('/api/meditation/sessions'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    topicId: `practice-${selectedTheme.toLowerCase()}`,
-                    topicName: `正式练习 - ${themeName}`
-                })
-            }).then(async res => {
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data?.id) setCurrentSessionId(data.id);
-                }
+            createMeditationSession({
+                topicId: `practice-${selectedTheme.toLowerCase()}`,
+                topicName: `正式练习 - ${themeName}`,
+            }).then((data) => {
+                if (data?.id) setCurrentSessionId(data.id);
             }).catch(e => console.error("Failed to start session recording", e));
         } catch (e) {
             console.error("Failed to start session recording", e);
@@ -2987,14 +2981,7 @@ function PracticeContent() {
 
         // 📊 Record Session End to Database
         if (currentSessionId) {
-            fetch(getApiUrl('/api/meditation/sessions'), {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: currentSessionId,
-                    durationSeconds: elapsedSeconds
-                })
-            }).then(() => {
+            completeMeditationSession(currentSessionId, elapsedSeconds).then(() => {
                 setCurrentSessionId(null); // Clear for next session
 
                 // 🔔 Auto-refresh break reminder (reschedule for 3 days from now)

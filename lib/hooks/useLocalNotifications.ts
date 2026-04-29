@@ -8,7 +8,8 @@ import {
     generateMultipleDailyMessages,
     generateBreakReminderMessage
 } from "@/lib/utils/notificationMessages";
-import { getApiUrl } from "@/lib/config";
+import * as localDB from "@/lib/localDB";
+import { computeMeditationStats, type Session } from "@/lib/hooks/useData";
 
 // 通知 ID 范围
 // 1000-1099: 每日提醒
@@ -107,16 +108,15 @@ export function useLocalNotifications() {
      */
     const fetchUserStats = async (): Promise<UserStats | null> => {
         try {
-            const res = await fetch(getApiUrl("/api/meditation/stats"));
-            if (res.ok) {
-                const data = await res.json();
-                return {
-                    totalSessions: data.totalSessions || 0,
-                    totalMinutes: data.totalMinutes || 0,
-                    currentStreak: data.currentStreak || 0,
-                    daysSinceLastMeditation: data.daysSinceLastMeditation || 0,
-                };
-            }
+            const sessions = (await localDB.getAll<Session & { syncStatus?: string }>("meditation_sessions"))
+                .filter((session) => session.syncStatus !== "pending_delete");
+            const stats = computeMeditationStats(sessions);
+            return {
+                totalSessions: stats.totalSessions || 0,
+                totalMinutes: stats.totalMinutes || stats.totalDurationMinutes || 0,
+                currentStreak: stats.currentStreak || 0,
+                daysSinceLastMeditation: stats.daysSinceLastMeditation || 0,
+            };
         } catch (e) {
             console.error("[Notifications] Failed to fetch stats:", e);
         }

@@ -22,6 +22,11 @@ function readCookieSettings(jar: Awaited<ReturnType<typeof cookies>>) {
     cosyvoiceInstruction: jar.get("cosyvoice_instruction")?.value,
     cosyvoiceSeed: jar.get("cosyvoice_seed")?.value,
     cosyvoiceVoiceId: jar.get("cosyvoice_voice_id")?.value,
+    mimoTTSModel: jar.get("mimo_tts_model")?.value,
+    mimoTTSVoice: jar.get("mimo_tts_voice")?.value,
+    mimoTTSInstruction: jar.get("mimo_tts_instruction")?.value,
+    mimoTTSVoiceDesignPrompt: jar.get("mimo_tts_voice_design_prompt")?.value,
+    mimoTTSCloneVoiceUrl: jar.get("mimo_tts_clone_voice_url")?.value,
     qwenTTSModel: jar.get("qwen_tts_model")?.value,
     qwenTTSVoice: jar.get("qwen_tts_voice")?.value,
     qwenTTSVoiceMode: jar.get("qwen_tts_voice_mode")?.value,
@@ -48,6 +53,8 @@ function getEnvVoiceId(prefix: "COSYVOICE_35_PLUS" | "COSYVOICE_35_FLASH", profi
 function applyServerVoiceDefaults(settings: TTSSettings): TTSSettings {
   return {
     ...settings,
+    mimoTTSCloneVoiceUrl:
+      settings.mimoTTSCloneVoiceUrl || process.env.DEFAULT_MIMO_TTS_CLONE_VOICE_URL || "",
     cosyvoice35PlusVoiceId:
       settings.cosyvoice35PlusVoiceId || getEnvVoiceId("COSYVOICE_35_PLUS", settings.cosyvoice35PlusVoiceProfileId),
     cosyvoice35FlashVoiceId:
@@ -62,6 +69,11 @@ function setTTSCookies(res: NextResponse, settings: ReturnType<typeof normalizeT
   res.cookies.set("cosyvoice_instruction", settings.cosyvoiceInstruction, { path: "/", maxAge });
   res.cookies.set("cosyvoice_seed", String(settings.cosyvoiceSeed), { path: "/", maxAge });
   res.cookies.set("cosyvoice_voice_id", settings.cosyvoiceVoiceId, { path: "/", maxAge });
+  res.cookies.set("mimo_tts_model", settings.mimoTTSModel, { path: "/", maxAge });
+  res.cookies.set("mimo_tts_voice", settings.mimoTTSVoice, { path: "/", maxAge });
+  res.cookies.set("mimo_tts_instruction", settings.mimoTTSInstruction, { path: "/", maxAge });
+  res.cookies.set("mimo_tts_voice_design_prompt", settings.mimoTTSVoiceDesignPrompt, { path: "/", maxAge });
+  res.cookies.set("mimo_tts_clone_voice_url", settings.mimoTTSCloneVoiceUrl, { path: "/", maxAge });
   res.cookies.set("qwen_tts_model", settings.qwenTTSModel, { path: "/", maxAge });
   res.cookies.set("qwen_tts_voice", settings.qwenTTSVoice, { path: "/", maxAge });
   res.cookies.set("qwen_tts_voice_mode", settings.qwenTTSVoiceMode, { path: "/", maxAge });
@@ -110,6 +122,11 @@ export async function GET() {
         cosyvoice_instruction,
         cosyvoice_seed,
         cosyvoice_voice_id,
+        mimo_tts_model,
+        mimo_tts_voice,
+        mimo_tts_instruction,
+        mimo_tts_voice_design_prompt,
+        mimo_tts_clone_voice_url,
         qwen_tts_model,
         qwen_tts_voice,
         qwen_tts_voice_mode,
@@ -136,6 +153,12 @@ export async function GET() {
       cosyvoiceInstruction: jar.get("cosyvoice_instruction")?.value || row.cosyvoice_instruction,
       cosyvoiceSeed: jar.get("cosyvoice_seed")?.value || row.cosyvoice_seed,
       cosyvoiceVoiceId: jar.get("cosyvoice_voice_id")?.value || row.cosyvoice_voice_id,
+      mimoTTSModel: jar.get("mimo_tts_model")?.value || row.mimo_tts_model,
+      mimoTTSVoice: jar.get("mimo_tts_voice")?.value || row.mimo_tts_voice,
+      mimoTTSInstruction: jar.get("mimo_tts_instruction")?.value || row.mimo_tts_instruction,
+      mimoTTSVoiceDesignPrompt:
+        jar.get("mimo_tts_voice_design_prompt")?.value || row.mimo_tts_voice_design_prompt,
+      mimoTTSCloneVoiceUrl: jar.get("mimo_tts_clone_voice_url")?.value || row.mimo_tts_clone_voice_url,
       qwenTTSModel: jar.get("qwen_tts_model")?.value || row.qwen_tts_model,
       qwenTTSVoice: jar.get("qwen_tts_voice")?.value || row.qwen_tts_voice,
       qwenTTSVoiceMode: jar.get("qwen_tts_voice_mode")?.value || row.qwen_tts_voice_mode,
@@ -195,6 +218,11 @@ export async function POST(req: Request) {
         cosyvoice_instruction,
         cosyvoice_seed,
         cosyvoice_voice_id,
+        mimo_tts_model,
+        mimo_tts_voice,
+        mimo_tts_instruction,
+        mimo_tts_voice_design_prompt,
+        mimo_tts_clone_voice_url,
         qwen_tts_model,
         qwen_tts_voice,
         qwen_tts_voice_mode,
@@ -219,6 +247,11 @@ export async function POST(req: Request) {
         ${settings.cosyvoiceInstruction},
         ${settings.cosyvoiceSeed},
         ${settings.cosyvoiceVoiceId},
+        ${settings.mimoTTSModel},
+        ${settings.mimoTTSVoice},
+        ${settings.mimoTTSInstruction},
+        ${settings.mimoTTSVoiceDesignPrompt},
+        ${settings.mimoTTSCloneVoiceUrl},
         ${settings.qwenTTSModel},
         ${settings.qwenTTSVoice},
         ${settings.qwenTTSVoiceMode},
@@ -242,6 +275,11 @@ export async function POST(req: Request) {
           cosyvoice_instruction = EXCLUDED.cosyvoice_instruction,
           cosyvoice_seed = EXCLUDED.cosyvoice_seed,
           cosyvoice_voice_id = EXCLUDED.cosyvoice_voice_id,
+          mimo_tts_model = EXCLUDED.mimo_tts_model,
+          mimo_tts_voice = EXCLUDED.mimo_tts_voice,
+          mimo_tts_instruction = EXCLUDED.mimo_tts_instruction,
+          mimo_tts_voice_design_prompt = EXCLUDED.mimo_tts_voice_design_prompt,
+          mimo_tts_clone_voice_url = EXCLUDED.mimo_tts_clone_voice_url,
           qwen_tts_model = EXCLUDED.qwen_tts_model,
           qwen_tts_voice = EXCLUDED.qwen_tts_voice,
           qwen_tts_voice_mode = EXCLUDED.qwen_tts_voice_mode,

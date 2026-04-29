@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { User, Session, AuthChangeEvent } from "@supabase/supabase-js";
 
@@ -40,11 +40,10 @@ function setCachedUser(user: User | null) {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     // 🚀 核心优化：用 localStorage 缓存的用户信息初始化
     // 这是同步读取，零延迟！
-    const cachedUser = getCachedUser();
-    const [user, setUser] = useState<User | null>(cachedUser);
+    const [user, setUser] = useState<User | null>(() => getCachedUser());
     // 如果有缓存，直接视为"不在加载"，页面秒出
-    const [loading, setLoading] = useState(!cachedUser);
-    const supabase = createClient();
+    const [loading, setLoading] = useState(() => !getCachedUser());
+    const supabase = useMemo(() => createClient(), []);
 
     useEffect(() => {
         let isMounted = true;

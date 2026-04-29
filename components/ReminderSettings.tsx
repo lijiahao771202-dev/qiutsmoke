@@ -6,7 +6,8 @@ import { Bell, X, Plus, Trash2, Clock, Check, Sparkles, Moon } from "lucide-reac
 import { useLocalNotifications } from "@/lib/hooks/useLocalNotifications";
 import { getRecommendedTimes, getDaysSinceLastMeditation } from "@/lib/utils/habitAnalyzer";
 import { cn } from "@/lib/utils";
-import { getApiUrl } from "@/lib/config";
+import * as localDB from "@/lib/localDB";
+import type { Session } from "@/lib/hooks/useData";
 
 interface ReminderSettingsProps {
     onClose: () => void;
@@ -72,25 +73,28 @@ export default function ReminderSettings({ onClose }: ReminderSettingsProps) {
     useEffect(() => {
         const fetchSessions = async () => {
             try {
-                const res = await fetch(getApiUrl("/api/meditation/sessions?limit=50"));
-                if (res.ok) {
-                    const data = await res.json();
-                    const sessions = data.sessions || [];
+                const sessions = (await localDB.getAll<Session & { syncStatus?: string }>("meditation_sessions"))
+                    .filter((session) => session.syncStatus !== "pending_delete")
+                    .slice(0, 50)
+                    .map((session) => ({
+                        id: session.id,
+                        duration_seconds: session.duration_seconds || 0,
+                        completed_at: session.ended_at || session.started_at,
+                    }));
 
-                    // 获取推荐时间
-                    const recommended = getRecommendedTimes(sessions, 2);
-                    setRecommendedTimes(recommended);
+                // 获取推荐时间
+                const recommended = getRecommendedTimes(sessions, 2);
+                setRecommendedTimes(recommended);
 
-                    // 获取断档天数
-                    const days = getDaysSinceLastMeditation(sessions);
-                    setDaysSinceLastMeditation(days);
+                // 获取断档天数
+                const days = getDaysSinceLastMeditation(sessions);
+                setDaysSinceLastMeditation(days);
 
-                    // 如果用户没有保存过设置，自动采用推荐时间
-                    const saved = localStorage.getItem(STORAGE_KEY);
-                    if (!saved && recommended.length > 0) {
-                        setTimes(recommended);
-                        console.log("[ReminderSettings] Auto-applied recommended times:", recommended);
-                    }
+                // 如果用户没有保存过设置，自动采用推荐时间
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (!saved && recommended.length > 0) {
+                    setTimes(recommended);
+                    console.log("[ReminderSettings] Auto-applied recommended times:", recommended);
                 }
             } catch (e) {
                 console.error("Failed to fetch sessions:", e);

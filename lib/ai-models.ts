@@ -1,4 +1,4 @@
-export type AIProvider = "deepseek" | "nvidia";
+export type AIProvider = "deepseek" | "nvidia" | "mimo";
 export type AIReasoningEffort = "high" | "max";
 
 export type AIModelFamily =
@@ -8,7 +8,8 @@ export type AIModelFamily =
   | "google"
   | "glm"
   | "moonshot"
-  | "openai-oss";
+  | "openai-oss"
+  | "mimo";
 
 export interface AIModelOption {
   id: string;
@@ -39,11 +40,13 @@ export const DEFAULT_DEEPSEEK_REASONING_EFFORT: AIReasoningEffort = "high";
 export const DEFAULT_AI_MODEL_BY_PROVIDER: Record<AIProvider, string> = {
   deepseek: "deepseek-v4-flash",
   nvidia: "moonshotai/kimi-k2-instruct",
+  mimo: "mimo-v2.5",
 };
 
 export const AI_PROVIDER_LABELS: Record<AIProvider, string> = {
   deepseek: "DeepSeek 官方 API",
   nvidia: "NVIDIA NIM API",
+  mimo: "小米 MiMo 官方 API",
 };
 
 export const DEEPSEEK_REASONING_EFFORT_OPTIONS: Array<{
@@ -106,6 +109,12 @@ export const AI_MODEL_FAMILY_OPTIONS: AIModelFamilyOption[] = [
     provider: "nvidia",
     label: "OpenAI OSS",
     description: "开源大模型，适合通用文本与推理。",
+  },
+  {
+    id: "mimo",
+    provider: "mimo",
+    label: "MiMo 系列",
+    description: "小米官方 OpenAI 兼容接口，支持 MiMo V2.5 系列。",
   },
 ];
 
@@ -257,6 +266,20 @@ export const AI_MODEL_OPTIONS: AIModelOption[] = [
     label: "GPT OSS 20B",
     description: "更轻更快，适合低延迟体验。",
   },
+  {
+    id: "mimo-v2.5",
+    provider: "mimo",
+    family: "mimo",
+    label: "MiMo V2.5",
+    description: "小米 MiMo V2.5 通用模型，官方标注支持 1M 上下文。",
+  },
+  {
+    id: "mimo-v2.5-pro",
+    provider: "mimo",
+    family: "mimo",
+    label: "MiMo V2.5 Pro",
+    description: "小米 MiMo V2.5 Pro，高质量生成选项。",
+  },
 ];
 
 function isDeepSeekAliasThatForcesThinking(model: string) {
@@ -264,7 +287,7 @@ function isDeepSeekAliasThatForcesThinking(model: string) {
 }
 
 export function isAIProvider(value: unknown): value is AIProvider {
-  return value === "deepseek" || value === "nvidia";
+  return value === "deepseek" || value === "nvidia" || value === "mimo";
 }
 
 export function isAIReasoningEffort(value: unknown): value is AIReasoningEffort {

@@ -2,6 +2,8 @@ import type {
   CosyVoice35Model,
   CosyVoice35PlusLanguageHint,
   CosyVoiceVoiceId,
+  MimoTTSModel,
+  MimoTTSVoice,
   QwenTTSLanguageType,
   QwenTTSModel,
   QwenTTSVoice,
@@ -18,6 +20,11 @@ export type TTSCardSynthSnapshot = {
   cosyvoiceSpeed?: number;
   cosyvoiceInstruction?: string;
   cosyvoiceSeed?: number;
+  mimoTTSModel?: MimoTTSModel;
+  mimoTTSVoice?: MimoTTSVoice;
+  mimoTTSInstruction?: string;
+  mimoTTSVoiceDesignPrompt?: string;
+  mimoTTSCloneVoiceUrl?: string;
   qwenTTSModel?: QwenTTSModel;
   qwenTTSVoice?: QwenTTSVoice;
   qwenTTSVoiceMode?: QwenTTSVoiceMode;
@@ -85,6 +92,17 @@ export function buildSynthSnapshot(
     };
   }
 
+  if (settings.provider === "mimotts") {
+    return {
+      ...base,
+      mimoTTSModel: settings.mimoTTSModel,
+      mimoTTSVoice: settings.mimoTTSVoice,
+      mimoTTSInstruction: settings.mimoTTSInstruction.trim(),
+      mimoTTSVoiceDesignPrompt: settings.mimoTTSVoiceDesignPrompt.trim(),
+      mimoTTSCloneVoiceUrl: settings.mimoTTSCloneVoiceUrl.trim(),
+    };
+  }
+
   if (settings.provider === "cosyvoice35plus") {
     return {
       ...base,
@@ -132,6 +150,20 @@ function buildProviderSignature(
       };
     }
 
+    if (provider === "mimotts") {
+      return {
+        provider,
+        model: snapshot.mimoTTSModel,
+        voice: snapshot.mimoTTSVoice,
+        instruction: snapshot.mimoTTSInstruction || "",
+        voiceDesignPrompt:
+          snapshot.mimoTTSModel === "mimo-v2.5-tts-voicedesign"
+            ? snapshot.mimoTTSVoiceDesignPrompt || ""
+            : "",
+        cloneVoiceUrl: snapshot.mimoTTSCloneVoiceUrl || "",
+      };
+    }
+
     if (provider === "cosyvoice35plus") {
       return {
         provider,
@@ -169,6 +201,20 @@ function buildProviderSignature(
       speed: activeSettings.qwenTTSSpeed,
       languageType: activeSettings.qwenTTSLanguageType,
       instructions: activeSettings.qwenTTSInstructions.trim(),
+    };
+  }
+
+  if (provider === "mimotts") {
+    return {
+      provider,
+      model: activeSettings.mimoTTSModel,
+      voice: activeSettings.mimoTTSVoice,
+      instruction: activeSettings.mimoTTSInstruction.trim(),
+      voiceDesignPrompt:
+        activeSettings.mimoTTSModel === "mimo-v2.5-tts-voicedesign"
+          ? activeSettings.mimoTTSVoiceDesignPrompt.trim()
+          : "",
+      cloneVoiceUrl: activeSettings.mimoTTSCloneVoiceUrl.trim(),
     };
   }
 
@@ -220,6 +266,11 @@ export function getSynthModelBadgeLabel(snapshot?: TTSCardSynthSnapshot | null) 
       ? "cy3.5-flash"
       : "3.5plus";
   }
+  if (snapshot.provider === "mimotts") {
+    if (snapshot.mimoTTSModel === "mimo-v2.5-tts-voiceclone") return "mimo-clone";
+    if (snapshot.mimoTTSModel === "mimo-v2.5-tts-voicedesign") return "mimo-design";
+    return "mimo";
+  }
   if (snapshot.provider === "qwentts") {
     if (snapshot.qwenTTSModel === "qwen3-tts-vc-2026-01-22") return "qwen-vc";
     if (snapshot.qwenTTSModel === "qwen3-tts-flash") return "qwen-flash";
@@ -236,6 +287,11 @@ export function getTTSSettingsModelBadgeLabel(settings: TTSSettings) {
     return settings.cosyvoice35PlusModel === "cosyvoice-v3.5-flash"
       ? "cy3.5-flash"
       : "3.5plus";
+  }
+  if (settings.provider === "mimotts") {
+    if (settings.mimoTTSModel === "mimo-v2.5-tts-voiceclone") return "mimo-clone";
+    if (settings.mimoTTSModel === "mimo-v2.5-tts-voicedesign") return "mimo-design";
+    return "mimo";
   }
   if (settings.provider === "qwentts") {
     if (settings.qwenTTSModel === "qwen3-tts-vc-2026-01-22") return "qwen-vc";
@@ -294,6 +350,19 @@ export function applySynthSnapshotToSettings(
         snapshot.qwenTTSLanguageType || activeSettings.qwenTTSLanguageType,
       qwenTTSInstructions:
         snapshot.qwenTTSInstructions || activeSettings.qwenTTSInstructions,
+    };
+  }
+
+  if (snapshot.provider === "mimotts") {
+    return {
+      ...activeSettings,
+      provider: snapshot.provider,
+      mimoTTSModel: snapshot.mimoTTSModel || activeSettings.mimoTTSModel,
+      mimoTTSVoice: snapshot.mimoTTSVoice || activeSettings.mimoTTSVoice,
+      mimoTTSInstruction: snapshot.mimoTTSInstruction || activeSettings.mimoTTSInstruction,
+      mimoTTSVoiceDesignPrompt:
+        snapshot.mimoTTSVoiceDesignPrompt || activeSettings.mimoTTSVoiceDesignPrompt,
+      mimoTTSCloneVoiceUrl: snapshot.mimoTTSCloneVoiceUrl || activeSettings.mimoTTSCloneVoiceUrl,
     };
   }
 

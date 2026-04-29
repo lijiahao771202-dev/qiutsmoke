@@ -1,15 +1,16 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Play, Trash2, Clock, Volume2, Sparkles, ChevronRight, ChevronDown, Settings, Info, Save, X, Edit2, Check, ArrowRight, Music, RotateCcw, Download, Pencil, RotateCw, Pause, Eye } from "lucide-react";
+import { Plus, Play, Trash2, Clock, Volume2, Sparkles, ChevronRight, ChevronDown, Settings, Info, Save, X, Edit2, Check, ArrowRight, Music, RotateCcw, Download, Pencil, RotateCw, Pause, Eye, MessageSquareText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { shouldBypassWebAudioForBackgroundPlayback } from "@/lib/audio-platform";
 import AuthGuard from "@/components/AuthGuard";
 import { saveAudioCache, getAudioCache, deleteAudioCache } from "@/lib/audioCache";
 import { getCloudTTSAudioCache, saveCloudTTSAudioCache } from "@/lib/cloudTTSAudioCache";
 import { GlassCard } from "@/components/ui/GlassCard";
-import { useTTSCards, type TTSCard } from "@/lib/hooks/useData";
+import { completeMeditationSession, createMeditationSession, useTTSCards, type TTSCard } from "@/lib/hooks/useData";
 import { getApiUrl } from "@/lib/config";
 import { buildCosyVoiceCardSSMLChunks } from "@/lib/cosyvoice-card-ssml";
 import {
@@ -17,6 +18,18 @@ import {
     estimateMeditationScriptDurationSeconds,
     formatDurationMinutes,
 } from "@/lib/meditation-script-duration";
+import {
+    appendGenerateStreamChunk,
+    createGenerateStreamState,
+} from "@/lib/generate-stream-protocol";
+import {
+    appendRevisionAssistantHistory,
+    applyRewriteStreamText,
+    createRewriteStreamState,
+    restorePreviousDraftAfterRewriteFailure,
+    type GenerateRevisionMessage,
+    type RewriteStreamState,
+} from "@/lib/ai-revision-flow";
 import { estimateTTSCardPrice, type TTSPriceBadgeTone } from "@/lib/tts-pricing";
 import {
     applySynthSnapshotToSettings,
@@ -49,8 +62,23 @@ import {
     DEFAULT_COSYVOICE_35_PLUS_SPEED,
     DEFAULT_COSYVOICE_35_PLUS_VOICE_ID,
     DEFAULT_COSYVOICE_35_PLUS_VOICE_PROFILE_ID,
-    DEFAULT_COSYVOICE_VOICE_ID,DEFAULT_TTS_PROVIDER,isCosyVoice35Model,isCosyVoice35PlusLanguageHint,isTTSProvider, normalizeTTSSettings,
-    type CosyVoiceVoiceId,type TTSProvider,
+    DEFAULT_COSYVOICE_VOICE_ID,
+    DEFAULT_MIMO_TTS_CLONE_VOICE_URL,
+    DEFAULT_MIMO_TTS_INSTRUCTION,
+    DEFAULT_MIMO_TTS_MODEL,
+    DEFAULT_MIMO_TTS_VOICE,
+    DEFAULT_MIMO_TTS_VOICE_DESIGN_PROMPT,
+    DEFAULT_TTS_PROVIDER,
+    isCosyVoice35Model,
+    isCosyVoice35PlusLanguageHint,
+    isMimoTTSModel,
+    isMimoTTSVoice,
+    isTTSProvider,
+    normalizeTTSSettings,
+    type CosyVoiceVoiceId,
+    type MimoTTSModel,
+    type MimoTTSVoice,
+    type TTSProvider,
     type TTSSettings,
 } from "@/lib/tts-settings";
 
@@ -58,9 +86,25 @@ import {
 // Re-export for backwards compatibility
 export type { TTSCard } from "@/lib/hooks/useData";
 import { useHaptics } from "@/lib/hooks/useHaptics";
-import TTSStudioPlayer from "@/components/tts/TTSStudioPlayer";
 import { useWhiteNoise, AMBIENT_SOUNDS, type AmbientSoundType } from "@/hooks/useWhiteNoise";
 import { getDefaultTTSStudioAmbientPreset } from "@/lib/tts-studio-ambient";
+import {
+    getLocalSingleton,
+    saveLocalSingleton,
+    LOCAL_TTS_SETTINGS_ID,
+    LOCAL_TTS_STUDIO_CATEGORIES_ID,
+} from "@/lib/local-settings";
+import {
+    addTTSStudioCategory,
+    addTTSStudioSubcategory,
+    buildCreateCardCategoryAssignment,
+    filterTTSStudioCardsBySelection,
+    getTTSStudioCategories,
+    normalizeTTSStudioCategoryConfig,
+    TTS_STUDIO_ALL_CATEGORY_ID,
+    type NormalizedTTSStudioCategoryConfig,
+    type TTSStudioCategory,
+} from "@/lib/tts-studio-taxonomy";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -71,6 +115,11 @@ import { DESIRE_GAME_CARDS } from "./desireGameCards";
 import { RAIN_ADVANCED_CARDS } from "./rainAdvancedCards";
 import { EMOTION_ANXIETY_CARDS } from "./emotionAnxietyCards";
 import { EMOTION_BODY_SCAN_CARDS } from "./bodyScanCards";
+
+const TTSStudioPlayer = dynamic(() => import("@/components/tts/TTSStudioPlayer"), {
+    ssr: false,
+    loading: () => null,
+});
 
 const GUIDANCE_BADGES: Record<string, { label: string; color: string }> = {
     light: { label: "🍃 轻引导", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/20" },
@@ -86,6 +135,50 @@ const PRICE_BADGE_STYLES: Record<TTSPriceBadgeTone, string> = {
 
 const COSYVOICE_SSML_CHUNK_CONCURRENCY = 4;
 const AI_DURATION_OPTIONS = [3, 5, 10, 15, 20, 25, 30, 35, 40] as const;
+const TTS_STUDIO_CATEGORY_TONE_CLASSES: Record<TTSStudioCategory["tone"], { active: string; idle: string; subActive: string; subIdle: string }> = {
+    neutral: {
+        active: "bg-white text-black shadow-lg",
+        idle: "bg-white/5 text-white/60 hover:bg-white/10",
+        subActive: "bg-white text-black shadow-md",
+        subIdle: "bg-white/5 text-white/55 hover:bg-white/10",
+    },
+    amber: {
+        active: "bg-amber-500 text-white shadow-lg shadow-amber-500/20",
+        idle: "bg-amber-500/10 text-amber-300/80 hover:bg-amber-500/20",
+        subActive: "bg-amber-500 text-white shadow-md shadow-amber-500/20",
+        subIdle: "bg-amber-500/10 text-amber-300/80 hover:bg-amber-500/20",
+    },
+    rose: {
+        active: "bg-rose-500 text-white shadow-lg shadow-rose-500/20",
+        idle: "bg-rose-500/10 text-rose-300/80 hover:bg-rose-500/20",
+        subActive: "bg-rose-500 text-white shadow-md shadow-rose-500/20",
+        subIdle: "bg-rose-500/10 text-rose-300/80 hover:bg-rose-500/20",
+    },
+    purple: {
+        active: "bg-purple-500 text-white shadow-lg shadow-purple-500/20",
+        idle: "bg-purple-500/10 text-purple-300/80 hover:bg-purple-500/20",
+        subActive: "bg-purple-500 text-white shadow-md shadow-purple-500/20",
+        subIdle: "bg-purple-500/10 text-purple-300/80 hover:bg-purple-500/20",
+    },
+    teal: {
+        active: "bg-teal-500 text-white shadow-lg shadow-teal-500/20",
+        idle: "bg-teal-500/10 text-teal-300/80 hover:bg-teal-500/20",
+        subActive: "bg-teal-500 text-white shadow-md shadow-teal-500/20",
+        subIdle: "bg-teal-500/10 text-teal-300/80 hover:bg-teal-500/20",
+    },
+    indigo: {
+        active: "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20",
+        idle: "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20",
+        subActive: "bg-indigo-500 text-white shadow-md shadow-indigo-500/20",
+        subIdle: "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20",
+    },
+    cyan: {
+        active: "bg-cyan-500 text-white shadow-lg shadow-cyan-500/20",
+        idle: "bg-cyan-500/10 text-cyan-300/80 hover:bg-cyan-500/20",
+        subActive: "bg-cyan-500 text-white shadow-md shadow-cyan-500/20",
+        subIdle: "bg-cyan-500/10 text-cyan-300/80 hover:bg-cyan-500/20",
+    },
+};
 
 type FetchResponseError = Error & {
     status?: number;
@@ -120,6 +213,57 @@ type RetrievalDebugPayload = {
     references: RetrievalDebugReference[];
 };
 
+type AIGenerationContext = {
+    topic: string;
+    details: string;
+    duration: number;
+    guidanceLevel: 'light' | 'medium' | 'heavy';
+};
+
+async function readGenerateResponseStream(
+    response: Response,
+    callbacks: {
+        onText: (text: string) => void;
+        onRagDebug?: (debug: RetrievalDebugPayload) => void;
+    }
+) {
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("无法读取响应");
+
+    const decoder = new TextDecoder();
+    let streamState = createGenerateStreamState<RetrievalDebugPayload>();
+    let emittedRagDebug = false;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        streamState = appendGenerateStreamChunk(
+            streamState,
+            decoder.decode(value, { stream: true })
+        );
+
+        if (!emittedRagDebug && streamState.ragDebug) {
+            callbacks.onRagDebug?.(streamState.ragDebug);
+            emittedRagDebug = true;
+        }
+
+        callbacks.onText(streamState.text);
+    }
+
+    const trailingText = decoder.decode();
+    if (trailingText) {
+        streamState = appendGenerateStreamChunk(streamState, trailingText);
+        callbacks.onText(streamState.text);
+    }
+
+    if (streamState.error) {
+        throw new Error(streamState.error);
+    }
+
+    return streamState;
+}
+
 const RAG_STAGE_LABELS: Record<string, string> = {
     arrival: "安顿进入",
     breath: "呼吸锚定",
@@ -142,6 +286,45 @@ function isMeteredTTSProvider(provider: TTSProvider) {
 
 function buildAudioChunkCacheKey(audioCacheKey: string, chunkIndex: number) {
     return `${audioCacheKey}::chunk::${chunkIndex}`;
+}
+
+const DEFAULT_TEXT_SEGMENT_CONCURRENCY = 3;
+const MIMO_TEXT_SEGMENT_CONCURRENCY = 12;
+const MIMO_CLONE_TEXT_SEGMENT_CONCURRENCY = 12;
+const LOCAL_COSYVOICE_TEXT_SEGMENT_CONCURRENCY = 2;
+
+function getTextSegmentConcurrency(settings: TTSSettings) {
+    if (settings.provider === "mimotts") {
+        return settings.mimoTTSModel === "mimo-v2.5-tts-voiceclone"
+            ? MIMO_CLONE_TEXT_SEGMENT_CONCURRENCY
+            : MIMO_TEXT_SEGMENT_CONCURRENCY;
+    }
+    if (settings.provider === "cosyvoice") return LOCAL_COSYVOICE_TEXT_SEGMENT_CONCURRENCY;
+    return DEFAULT_TEXT_SEGMENT_CONCURRENCY;
+}
+
+function getTTSFetchRetryCount(settings: TTSSettings) {
+    if (settings.provider === "mimotts") return 5;
+    return 3;
+}
+
+function getTTSFetchTimeoutMs(settings: TTSSettings) {
+    if (settings.provider === "mimotts") return 150000;
+    return 60000;
+}
+
+function countCardTextSegments(content: string) {
+    let total = 0;
+    const regex = /(\[(?:pause|rate)[^\]]+\])/g;
+    const parts = content.split(regex);
+
+    for (const part of parts) {
+        if (!part.trim()) continue;
+        if (part.startsWith("[")) continue;
+        total += 1;
+    }
+
+    return total;
 }
 
 function extractErrorDetails(raw: string) {
@@ -176,6 +359,15 @@ function getErrorDetails(error: unknown) {
     return typeof error === "string" ? error : "未知错误";
 }
 
+function isRetryableTTSFailure(error: unknown) {
+    const status = error instanceof Error ? (error as FetchResponseError).status : undefined;
+    if (status === 408 || status === 409 || status === 425 || status === 429) return true;
+    if (typeof status === "number" && status >= 500) return true;
+
+    const details = getErrorDetails(error);
+    return /Empty reply from server|curl: \((52|56|28)\)|Connection reset|ECONNRESET|timed out|timeout|aborted|JSON parse failed|中途断开|云端波动/i.test(details);
+}
+
 function shouldSurfaceSSMLFailure(error: unknown) {
     const details = getErrorDetails(error);
     return /AllocationQuota\.|DASHSCOPE_API_KEY|api key|unauthorized|forbidden|quota|余额|exhausted/i.test(details);
@@ -183,6 +375,7 @@ function shouldSurfaceSSMLFailure(error: unknown) {
 
 function toHumanReadableSynthesisError(error: unknown) {
     const details = getErrorDetails(error);
+    const resumeHint = details.match(/（已保留[^）]+）/)?.[0] || "";
 
     if (/AllocationQuota\.FreeTierOnly/i.test(details)) {
         return "CosyVoice 3.5 Flash 免费额度已用完，不是文本太长。去 DashScope 关闭“仅使用免费额度”，或切到 Plus / 其他 TTS 后再试。";
@@ -190,6 +383,10 @@ function toHumanReadableSynthesisError(error: unknown) {
 
     if (/DASHSCOPE_API_KEY/i.test(details)) {
         return "当前缺少 DashScope API Key，CosyVoice 3.5 现在无法合成。";
+    }
+
+    if (/Empty reply from server/i.test(details)) {
+        return `MiMo 官方接口中途断开了这次合成请求，系统已经自动重试过。常见原因是云端波动，或者当前这段文本 / 声音描述组合触发了接口不稳定。${resumeHint || "已成功的分段会保留；再次点击合成会继续补缺失段。"}`;
     }
 
     return details || "合成失败，请稍后再试。";
@@ -205,6 +402,17 @@ function getShortGenerationMessage(content: string, targetSeconds: number) {
 }
 
 async function deleteAudioChunkCaches(audioCacheKey: string, content: string) {
+    const genericTextSegmentCount = countCardTextSegments(content);
+    await Promise.all(
+        Array.from({ length: genericTextSegmentCount }, async (_, index) => {
+            try {
+                await deleteAudioCache(buildAudioChunkCacheKey(audioCacheKey, index));
+            } catch (error) {
+                console.warn(`[AudioCache] 删除逐段缓存失败: ${index}`, error);
+            }
+        })
+    );
+
     const chunks = buildCosyVoiceCardSSMLChunks(content);
     const chunkIndexes = chunks
         .map((chunk, index) => (chunk.type === "ssml" ? index : null))
@@ -368,6 +576,19 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
     const [guidanceLevel, setGuidanceLevel] = useState<'light' | 'medium' | 'heavy'>('medium');
     const [ragDebug, setRagDebug] = useState<RetrievalDebugPayload | null>(null);
     const [showRag, setShowRag] = useState(false);
+    const [lastGenerationContext, setLastGenerationContext] = useState<AIGenerationContext | null>(null);
+    const [revisionHistory, setRevisionHistory] = useState<GenerateRevisionMessage[]>([]);
+    const [revisionFeedback, setRevisionFeedback] = useState("");
+    const [isRevisionDialogOpen, setIsRevisionDialogOpen] = useState(false);
+    const [isRewriting, setIsRewriting] = useState(false);
+    const isGenerationBusy = aiGenerating || isRewriting;
+
+    const resetRevisionState = () => {
+        setRevisionHistory([]);
+        setRevisionFeedback("");
+        setIsRevisionDialogOpen(false);
+        setLastGenerationContext(null);
+    };
 
     const handleSubmit = async () => {
         if (!text.trim()) return;
@@ -384,6 +605,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
             setText("");
             setTitle("");
             setAiPrompt("");
+            resetRevisionState();
             setIsCollapsed(true);
             triggerSuccess();
         } catch (e) {
@@ -396,20 +618,21 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
 
     // AI 扩展提示词
     const handleEnhancePrompt = async () => {
-        if (!title.trim() || isEnhancing) {
-            if (!title.trim()) {
-                window.alert("请先在上方输入标题作为扩展主题");
+        const sourcePrompt = aiPrompt.trim() || title.trim();
+        if (!sourcePrompt || isEnhancing || isGenerationBusy) {
+            if (!sourcePrompt) {
+                window.alert("请先输入标题，或直接在扩写提示词里写一点想法");
             }
             return;
         }
 
         setIsEnhancing(true);
-        setAiPrompt(""); 
+        setAiPrompt("");
         try {
             const response = await fetch("/api/enhance-prompt", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ topic: title }),
+                body: JSON.stringify({ topic: sourcePrompt }),
             });
 
             if (!response.ok) throw new Error("扩展失败");
@@ -440,85 +663,174 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
 
     // AI 生成冥想文本
     const handleAIGenerate = async () => {
-        if (!title.trim() || aiGenerating) {
-            if (!title.trim()) window.alert("请先输入标题");
+        const topic = title.trim() || aiPrompt.trim();
+        if (!topic || isGenerationBusy) {
+            if (!topic) window.alert("请先输入标题，或直接填写扩写提示词");
             return;
         }
 
         setAiGenerating(true);
         setText("");
+        resetRevisionState();
         setRagDebug(null);
         setShowRag(false);
         const { totalSeconds } = buildAIGenerationTargets(aiDuration, guidanceLevel);
 
         try {
             const finalPrompt = aiPrompt.trim();
+            const generationContext: AIGenerationContext = {
+                topic,
+                details: title.trim() ? finalPrompt : "",
+                duration: aiDuration,
+                guidanceLevel,
+            };
 
             const response = await fetch("/api/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    topic: title.trim(),
-                    details: finalPrompt,
-                    duration: aiDuration,
-                    guidanceLevel,
+                    topic: generationContext.topic,
+                    details: generationContext.details,
+                    duration: generationContext.duration,
+                    guidanceLevel: generationContext.guidanceLevel,
                 }),
             });
 
-            if (!response.ok) throw new Error("生成失败");
-
-            const reader = response.body?.getReader();
-            if (!reader) throw new Error("无法读取响应");
-
-            const decoder = new TextDecoder();
-            let rawBuffer = "";
-            let hasParsedRag = false;
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                rawBuffer += decoder.decode(value, { stream: true });
-                
-                if (!hasParsedRag) {
-                    if (rawBuffer.includes('__RAG_END__')) {
-                        const parts = rawBuffer.split('__RAG_END__');
-                        try {
-                            const ragJson = parts[0].replace('__RAG_START__', '');
-                            const parsed = JSON.parse(ragJson);
-                            if (Array.isArray(parsed) && parsed.length > 0) {
-                                setRagDebug({ references: parsed });
-                            } else if (parsed && Array.isArray(parsed.references) && parsed.references.length > 0) {
-                                setRagDebug(parsed);
-                            }
-                        } catch(e) {
-                            console.error("Failed to parse RAG payload", e);
-                        }
-                        hasParsedRag = true;
-                        setText(parts[1]);
-                    } else if (!rawBuffer.startsWith('__RAG_START__')) {
-                        hasParsedRag = true;
-                        setText(rawBuffer);
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => "");
+                let errorMessage = `生成失败：HTTP ${response.status}`;
+                try {
+                    const payload = JSON.parse(errorText);
+                    errorMessage =
+                        payload?.details ||
+                        payload?.error ||
+                        payload?.message ||
+                        errorMessage;
+                } catch {
+                    if (errorText.trim()) {
+                        errorMessage = errorText.trim().slice(0, 300);
                     }
-                } else {
-                    const parts = rawBuffer.split('__RAG_END__');
-                    setText(parts.length > 1 ? parts[1] : parts[0]);
                 }
+                throw new Error(errorMessage);
             }
 
-            const shortGenerationMessage = getShortGenerationMessage(text || rawBuffer.split('__RAG_END__').pop() || "", totalSeconds);
+            const streamState = await readGenerateResponseStream(response, {
+                onText: setText,
+                onRagDebug: (debug) => {
+                    if (Array.isArray(debug?.references) && debug.references.length > 0) {
+                        setRagDebug(debug);
+                    }
+                },
+            });
+
+            const shortGenerationMessage = getShortGenerationMessage(streamState.text, totalSeconds);
             if (shortGenerationMessage) {
                 window.alert(shortGenerationMessage);
             }
-            
+            setLastGenerationContext(generationContext);
             triggerSuccess(); 
         } catch (e) {
             console.error("AI 生成失败:", e);
             triggerHeavy(); 
-            window.alert("生成失败，请重试...");
+            window.alert(e instanceof Error ? e.message : "生成失败，请重试...");
         } finally {
             setAiGenerating(false);
         }
     };
+
+    const handleAIRewrite = async () => {
+        const feedback = revisionFeedback.trim();
+        const previousText = text.trim();
+        if (isGenerationBusy) return;
+        if (!previousText) {
+            window.alert("请先生成或填写正文，再进行评价重写");
+            return;
+        }
+        if (!feedback) {
+            window.alert("请先写下你希望 AI 怎么改");
+            return;
+        }
+
+        const fallbackTopic = title.trim() || aiPrompt.trim();
+        const generationContext: AIGenerationContext = lastGenerationContext ?? {
+            topic: fallbackTopic,
+            details: title.trim() ? aiPrompt.trim() : "",
+            duration: aiDuration,
+            guidanceLevel,
+        };
+        if (!generationContext.topic.trim()) {
+            window.alert("缺少原始主题，无法带上下文重写");
+            return;
+        }
+
+        let rewriteState: RewriteStreamState = createRewriteStreamState(text);
+        const { totalSeconds } = buildAIGenerationTargets(generationContext.duration, generationContext.guidanceLevel);
+        setIsRewriting(true);
+        setIsRevisionDialogOpen(false);
+        setRagDebug(null);
+        setShowRag(false);
+
+        try {
+            const response = await fetch("/api/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    topic: generationContext.topic,
+                    details: generationContext.details,
+                    duration: generationContext.duration,
+                    guidanceLevel: generationContext.guidanceLevel,
+                    revision: {
+                        currentDraft: text,
+                        feedback,
+                        history: revisionHistory,
+                    },
+                }),
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => "");
+                throw new Error(errorText.trim() || `重写失败：HTTP ${response.status}`);
+            }
+
+            await readGenerateResponseStream(response, {
+                onText: (nextText) => {
+                    rewriteState = applyRewriteStreamText(rewriteState, nextText);
+                    setText(rewriteState.displayText);
+                },
+                onRagDebug: (debug) => {
+                    if (Array.isArray(debug?.references) && debug.references.length > 0) {
+                        setRagDebug(debug);
+                    }
+                },
+            });
+
+            const finalText = rewriteState.displayText;
+            const shortGenerationMessage = getShortGenerationMessage(finalText, totalSeconds);
+            if (shortGenerationMessage) {
+                window.alert(shortGenerationMessage);
+            }
+            setRevisionHistory((history) => appendRevisionAssistantHistory(history, feedback, finalText));
+            setRevisionFeedback("");
+            setLastGenerationContext(generationContext);
+            triggerSuccess();
+        } catch (e) {
+            console.error("AI 评价重写失败:", e);
+            setText(restorePreviousDraftAfterRewriteFailure(rewriteState));
+            setIsRevisionDialogOpen(true);
+            triggerHeavy();
+            window.alert(e instanceof Error ? e.message : "重写失败，请再试一次");
+        } finally {
+            setIsRewriting(false);
+        }
+    };
+
+    const revisionContext = lastGenerationContext ?? {
+        topic: title.trim() || aiPrompt.trim() || "当前新稿",
+        details: title.trim() ? aiPrompt.trim() : "",
+        duration: aiDuration,
+        guidanceLevel,
+    };
+    const revisionGuidanceLabel = GUIDANCE_BADGES[revisionContext.guidanceLevel]?.label ?? "引导模式";
 
     return (
         // 移除 layout 动画，避免展开/折叠时的弹跳效果
@@ -581,18 +893,18 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
 
                                     <div className="relative space-y-3">
                                         
-                                        {/* 自动扩展提示词区域 (Read Only) */}
+                                        {/* 自动扩展提示词区域 */}
                                         <div className="relative">
                                             <textarea
                                                 value={aiPrompt}
-                                                readOnly
-                                                placeholder="AI 将自动为您扩展详细的提示词要求..."
+                                                onChange={(e) => setAiPrompt(e.target.value)}
+                                                placeholder="可以自己输入扩写要求，也可以先写标题后点右侧自动扩展..."
                                                 className="w-full h-20 bg-black/20 rounded-xl px-4 py-3 pr-24 text-sm text-white/80 placeholder:text-white/30 resize-none outline-none border border-white/5 scrollbar-thin scrollbar-thumb-white/10"
                                             />
                                             <button 
                                                 onClick={handleEnhancePrompt}
-                                                disabled={aiGenerating || isEnhancing || !title.trim()}
-                                                title="根据标题自动扩展提示词"
+                                                disabled={isGenerationBusy || isEnhancing || (!title.trim() && !aiPrompt.trim())}
+                                                title="根据标题或已输入的想法自动扩展提示词"
                                                 className="absolute right-2 top-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-white/10 hover:bg-white/20 text-rose-200 transition-colors disabled:opacity-30 flex items-center gap-1"
                                             >
                                                 {isEnhancing ? (
@@ -608,7 +920,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                 value={guidanceLevel}
                                                 onChange={(e) => setGuidanceLevel(e.target.value as any)}
                                                 className="bg-black/20 backdrop-blur rounded-lg px-2 py-1.5 text-xs text-white/90 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 cursor-pointer transition-all"
-                                                disabled={aiGenerating || isEnhancing}
+                                                disabled={isGenerationBusy || isEnhancing}
                                             >
                                                 <option value="light" className="bg-zinc-800">🍃 轻引导</option>
                                                 <option value="medium" className="bg-zinc-800">⚖️ 中引导</option>
@@ -618,7 +930,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                 value={aiDuration}
                                                 onChange={(e) => setAiDuration(Number(e.target.value))}
                                                 className="bg-black/20 backdrop-blur rounded-lg px-2 py-1.5 text-xs text-white/90 focus:ring-1 focus:ring-rose-500/40 outline-none border border-white/5 cursor-pointer transition-all"
-                                                disabled={aiGenerating || isEnhancing}
+                                                disabled={isGenerationBusy || isEnhancing}
                                                 title="选择时长"
                                             >
                                                 {AI_DURATION_OPTIONS.map((duration) => (
@@ -646,20 +958,20 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                 whileTap={{ scale: 0.96 }}
                                                 onTapStart={triggerMedium}
                                                 onClick={handleAIGenerate}
-                                                disabled={!title.trim() || aiGenerating}
+                                                disabled={(!title.trim() && !aiPrompt.trim()) || isGenerationBusy}
                                                 className={cn(
                                                     "flex items-center gap-1.5 px-4 py-1.5 rounded-lg font-medium text-xs transition-all shadow-lg",
-                                                    !title.trim() || aiGenerating
+                                                    (!title.trim() && !aiPrompt.trim()) || isGenerationBusy
                                                         ? "bg-white/5 text-white/20 cursor-not-allowed border border-white/5"
                                                         : "bg-white/10 hover:bg-white/20 text-white border border-white/10"
                                                 )}
                                             >
-                                                {aiGenerating ? (
+                                                {isGenerationBusy ? (
                                                     <span className="animate-spin w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full" />
                                                 ) : (
                                                     <Sparkles className="w-3.5 h-3.5 text-rose-300" />
                                                 )}
-                                                <span className={aiGenerating ? "text-white/80" : "text-rose-100"}>{aiGenerating ? "创作中..." : "✨ AI 创作正文"}</span>
+                                                <span className={isGenerationBusy ? "text-white/80" : "text-rose-100"}>{isRewriting ? "重写中..." : aiGenerating ? "创作中..." : "✨ AI 创作正文"}</span>
                                             </motion.button>
                                         </div>
 
@@ -739,12 +1051,25 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
 
                                         {/* 文本输入/展示区 */}
                                         <div className="pt-1">
-                                            <div className="text-xs text-rose-200/50 font-medium mb-1 pl-1">正文内容 (AI 创作后可在此检查与修改)</div>
+                                            <div className="flex items-center justify-between gap-3 mb-1 pl-1">
+                                                <div className="text-xs text-rose-200/50 font-medium">正文内容 (AI 创作后可在此检查与修改)</div>
+                                                {text.trim() && !isGenerationBusy && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsRevisionDialogOpen(true)}
+                                                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs font-medium text-amber-100 hover:bg-amber-300/20 transition-colors"
+                                                    >
+                                                        <MessageSquareText className="w-3.5 h-3.5" />
+                                                        评价重写
+                                                    </button>
+                                                )}
+                                            </div>
                                             <textarea
                                                 value={text}
                                                 onChange={(e) => setText(e.target.value)}
                                                 placeholder="正文内容将在这里生成..."
                                                 aria-label="正文内容"
+                                                disabled={isGenerationBusy}
                                                 className="w-full h-32 bg-black/20 text-rose-50/90 text-sm p-3 rounded-xl placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-rose-500/40 border border-white/5 resize-none leading-relaxed scrollbar-thin scrollbar-thumb-white/10"
                                             />
                                         </div>
@@ -756,10 +1081,10 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                 whileTap={{ scale: 0.96 }}
                                                 onClick={handleSubmit}
                                                 onTapStart={triggerLight}
-                                                disabled={!text.trim() || isLoading || aiGenerating}
+                                                disabled={!text.trim() || isLoading || isGenerationBusy}
                                                 className={cn(
                                                     "flex items-center gap-2 px-5 py-2 rounded-xl font-medium text-sm transition-all shadow-lg",
-                                                    !text.trim() || aiGenerating
+                                                    !text.trim() || isGenerationBusy
                                                         ? "bg-white/5 text-white/20 cursor-not-allowed border border-white/5"
                                                         : "bg-gradient-to-r from-rose-400/90 to-pink-500/90 hover:from-rose-400 hover:to-pink-400 text-white shadow-rose-500/20 backdrop-blur-md border border-white/10"
                                                 )}
@@ -778,6 +1103,117 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                     </AnimatePresence>
                 </div>
             </GlassCard>
+
+            <AnimatePresence>
+                {isRevisionDialogOpen && (
+                    <motion.div
+                        className="fixed inset-0 z-[90] flex items-center justify-center px-4 py-6"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                    >
+                        <motion.div
+                            className="absolute inset-0 bg-slate-950/55 backdrop-blur-xl"
+                            onClick={() => {
+                                if (!isGenerationBusy) setIsRevisionDialogOpen(false);
+                            }}
+                        />
+                        <motion.div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="revision-dialog-title"
+                            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                            transition={SPRING_SNAPPY}
+                            className="relative w-full max-w-lg overflow-hidden rounded-[1.75rem] border border-white/15 bg-slate-950/80 shadow-2xl shadow-black/50 backdrop-blur-2xl"
+                        >
+                            <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_15%_0%,rgba(251,113,133,0.22),transparent_34%),radial-gradient(circle_at_90%_20%,rgba(56,189,248,0.18),transparent_32%),linear-gradient(145deg,rgba(255,255,255,0.10),transparent_42%)]" />
+                            <div className="relative p-5 space-y-4">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-[11px] font-medium text-amber-100">
+                                            <MessageSquareText className="w-3.5 h-3.5" />
+                                            带上下文重写
+                                        </div>
+                                        <h3 id="revision-dialog-title" className="mt-3 text-xl font-semibold text-white">
+                                            评价这版生成
+                                        </h3>
+                                        <p className="mt-1 text-sm leading-relaxed text-white/55">
+                                            写下你不满意的地方，AI 会基于当前完整稿重新生成一版，不做局部补丁。
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsRevisionDialogOpen(false)}
+                                        disabled={isGenerationBusy}
+                                        className="rounded-full border border-white/10 bg-white/5 p-2 text-white/55 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+                                        aria-label="关闭评价重写弹窗"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+
+                                <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-xs text-white/60">
+                                    <div className="font-medium text-white/85 line-clamp-1">{revisionContext.topic}</div>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        <span className="rounded-full bg-white/10 px-2 py-1">{revisionContext.duration} 分钟</span>
+                                        <span className="rounded-full bg-white/10 px-2 py-1">{revisionGuidanceLabel}</span>
+                                        <span className="rounded-full bg-white/10 px-2 py-1">当前 {text.trim().length} 字</span>
+                                        {revisionHistory.length > 0 && (
+                                            <span className="rounded-full bg-amber-300/10 px-2 py-1 text-amber-100">
+                                                已有 {Math.floor(revisionHistory.length / 2)} 轮评价
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <textarea
+                                    value={revisionFeedback}
+                                    onChange={(e) => setRevisionFeedback(e.target.value)}
+                                    placeholder="比如：开头太快，身体线索太少；pause 太密；语气还不够像正念引导；请增加段落间沉浸感..."
+                                    autoFocus
+                                    disabled={isGenerationBusy}
+                                    className="min-h-36 w-full resize-none rounded-2xl border border-white/10 bg-black/25 p-4 text-sm leading-relaxed text-white/85 outline-none transition placeholder:text-white/25 focus:border-amber-200/30 focus:ring-2 focus:ring-amber-200/10 disabled:opacity-60"
+                                />
+
+                                <div className="rounded-2xl border border-emerald-300/15 bg-emerald-300/10 px-3 py-2 text-xs leading-relaxed text-emerald-50/70">
+                                    重写时会先保留旧稿；只有新稿第一个内容片段到达后，才会开始替换。失败会自动恢复旧稿。
+                                </div>
+
+                                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsRevisionDialogOpen(false)}
+                                        disabled={isGenerationBusy}
+                                        className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleAIRewrite}
+                                        disabled={!revisionFeedback.trim() || isGenerationBusy}
+                                        className={cn(
+                                            "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-lg transition",
+                                            !revisionFeedback.trim() || isGenerationBusy
+                                                ? "border border-white/5 bg-white/5 text-white/25"
+                                                : "border border-amber-200/20 bg-gradient-to-r from-amber-300/80 to-rose-400/85 text-slate-950 shadow-rose-500/20 hover:from-amber-200 hover:to-rose-300"
+                                        )}
+                                    >
+                                        {isRewriting ? (
+                                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950/20 border-t-slate-950" />
+                                        ) : (
+                                            <Sparkles className="h-4 w-4" />
+                                        )}
+                                        按评价重写
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
@@ -943,6 +1379,40 @@ const runLimitedConcurrency = async <T,>(
     );
 };
 
+const runLimitedConcurrencyCollectingErrors = async <T,>(
+    items: T[],
+    limit: number,
+    worker: (item: T, index: number) => Promise<void>,
+    shouldKeepGoing: (error: unknown) => boolean = isRetryableTTSFailure
+) => {
+    const workerCount = Math.min(Math.max(1, limit), items.length);
+    let nextIndex = 0;
+    let stopScheduling = false;
+    const errors: unknown[] = [];
+
+    await Promise.all(
+        Array.from({ length: workerCount }, async () => {
+            while (true) {
+                if (stopScheduling) return;
+                const currentIndex = nextIndex;
+                nextIndex++;
+                if (currentIndex >= items.length) return;
+
+                try {
+                    await worker(items[currentIndex], currentIndex);
+                } catch (error) {
+                    errors.push(error);
+                    if (!shouldKeepGoing(error)) {
+                        stopScheduling = true;
+                    }
+                }
+            }
+        })
+    );
+
+    return errors;
+};
+
 // -----------------------------------------------------------------------------
 // Component: TTS Card with Audio Logic
 // -----------------------------------------------------------------------------
@@ -951,7 +1421,11 @@ const runLimitedConcurrency = async <T,>(
 const synthesizingCardsSet = new Set<string>();
 
 // 🌟 全局进度存储 - 支持后台合成和页面切换恢复
-type SynthesisProgress = { current: number; total: number };
+type SynthesisProgress = {
+    current: number;
+    total: number;
+    phase?: "checking" | "synthesizing";
+};
 const synthesizingProgressMap = new Map<string, SynthesisProgress>();
 const synthesizingSubscribers = new Map<string, Set<(progress: SynthesisProgress) => void>>();
 
@@ -962,6 +1436,13 @@ function updateSynthesisProgress(cardId: string, progress: SynthesisProgress) {
     if (subscribers) {
         subscribers.forEach(callback => callback(progress));
     }
+}
+
+function formatSynthesisProgress(progress: SynthesisProgress) {
+    if (progress.phase === "checking" || progress.total <= 0) {
+        return "检查中…";
+    }
+    return `${progress.current}/${progress.total}`;
 }
 
 // 订阅进度更新
@@ -1013,16 +1494,20 @@ function TTSCardItem({
     card,
     onDelete,
     onEdit,
+    onMove,
     onView,
     ttsSettings,
-    index = 0
+    index = 0,
+    canMove = true,
 }: {
     card: TTSCard;
     onDelete: (id: string) => void;
     onEdit: (card: TTSCard) => void;
+    onMove?: (card: TTSCard) => void;
     onView: (card: TTSCard, preferredCacheKey?: string) => void;
     ttsSettings: TTSSettings;
-    index?: number
+    index?: number;
+    canMove?: boolean;
 }) {
     // ... (keep existing state declarations)
     // Queue State
@@ -1517,22 +2002,7 @@ function TTSCardItem({
             try {
                 const res = await fetchWithRetry("/api/tts", {
                     method: "POST",
-                    body: JSON.stringify({
-                        text: item.content,
-                        provider: ttsSettings.provider,
-                        cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
-                        cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
-                        cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
-                        cosyvoice35PlusModel: ttsSettings.cosyvoice35PlusModel,
-                        cosyvoice35PlusVoiceId: ttsSettings.cosyvoice35PlusVoiceId,
-                        cosyvoice35FlashVoiceId: ttsSettings.cosyvoice35FlashVoiceId,
-                        cosyvoice35PlusVoiceProfileId: ttsSettings.cosyvoice35PlusVoiceProfileId,
-                        cosyvoice35PlusSpeed: ttsSettings.cosyvoice35PlusSpeed,
-                        cosyvoice35PlusInstruction: ttsSettings.cosyvoice35PlusInstruction,
-                        cosyvoice35PlusLanguageHint: ttsSettings.cosyvoice35PlusLanguageHint,
-                        cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,voice: item.voiceId,
-                        rate: item.rate
-                    }),
+                    body: JSON.stringify(buildTTSRequestPayload(item.content, item.voiceId, item.rate)),
                 });
                 if (res && res.ok) {
                     const blob = await res.blob();
@@ -1748,6 +2218,99 @@ function TTSCardItem({
     // -------------------------------------------------------------------------
     // 一键合成完整音频
     // -------------------------------------------------------------------------
+    const buildTTSRequestPayload = (
+        text: string,
+        voice: string,
+        rate: string,
+        options: { enableSSML?: boolean } = {}
+    ) => ({
+        text,
+        voice,
+        rate,
+        enableSSML: options.enableSSML,
+        provider: ttsSettings.provider,
+        cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
+        cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
+        cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
+        cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,
+        mimoTTSModel: ttsSettings.mimoTTSModel,
+        mimoTTSVoice: ttsSettings.mimoTTSVoice,
+        mimoTTSInstruction: ttsSettings.mimoTTSInstruction,
+        mimoTTSVoiceDesignPrompt: ttsSettings.mimoTTSVoiceDesignPrompt,
+        mimoTTSCloneVoiceUrl: ttsSettings.mimoTTSCloneVoiceUrl,
+        qwenTTSModel: ttsSettings.qwenTTSModel,
+        qwenTTSVoice: ttsSettings.qwenTTSVoice,
+        qwenTTSVoiceMode: ttsSettings.qwenTTSVoiceMode,
+        qwenTTSCloneVoiceId: ttsSettings.qwenTTSCloneVoiceId,
+        qwenTTSCloneVoiceCloudId: ttsSettings.qwenTTSCloneVoiceCloudId,
+        qwenTTSSpeed: ttsSettings.qwenTTSSpeed,
+        qwenTTSLanguageType: ttsSettings.qwenTTSLanguageType,
+        qwenTTSInstructions: ttsSettings.qwenTTSInstructions,
+        cosyvoice35PlusModel: ttsSettings.cosyvoice35PlusModel,
+        cosyvoice35PlusVoiceId: ttsSettings.cosyvoice35PlusVoiceId,
+        cosyvoice35FlashVoiceId: ttsSettings.cosyvoice35FlashVoiceId,
+        cosyvoice35PlusVoiceProfileId: ttsSettings.cosyvoice35PlusVoiceProfileId,
+        cosyvoice35PlusSpeed: ttsSettings.cosyvoice35PlusSpeed,
+        cosyvoice35PlusInstruction: ttsSettings.cosyvoice35PlusInstruction,
+        cosyvoice35PlusLanguageHint: ttsSettings.cosyvoice35PlusLanguageHint,
+    });
+
+    const preflightCurrentTTS = async () => {
+        if (ttsSettings.provider === "edge") return;
+
+        if (ttsSettings.provider === "mimotts") {
+            if (ttsSettings.mimoTTSModel === "mimo-v2.5-tts-voiceclone") {
+                const cloneSource = ttsSettings.mimoTTSCloneVoiceUrl.trim();
+                if (!cloneSource) {
+                    throw new Error("合成前检查失败：请先填写 MiMo 克隆音色的参考音频路径或 URL。");
+                }
+            }
+            return;
+        }
+
+        const res = await fetch(getApiUrl("/api/tts-settings/test"), {
+            method: "POST",
+            cache: "no-store",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                provider: ttsSettings.provider,
+                cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
+                cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
+                cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
+                cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,
+                mimoTTSModel: ttsSettings.mimoTTSModel,
+                mimoTTSVoice: ttsSettings.mimoTTSVoice,
+                mimoTTSInstruction: ttsSettings.mimoTTSInstruction,
+                mimoTTSVoiceDesignPrompt: ttsSettings.mimoTTSVoiceDesignPrompt,
+                mimoTTSCloneVoiceUrl: ttsSettings.mimoTTSCloneVoiceUrl,
+                qwenTTSModel: ttsSettings.qwenTTSModel,
+                qwenTTSVoice: ttsSettings.qwenTTSVoice,
+                qwenTTSVoiceMode: ttsSettings.qwenTTSVoiceMode,
+                qwenTTSCloneVoiceId: ttsSettings.qwenTTSCloneVoiceId,
+                qwenTTSCloneVoiceCloudId: ttsSettings.qwenTTSCloneVoiceCloudId,
+                qwenTTSSpeed: ttsSettings.qwenTTSSpeed,
+                qwenTTSLanguageType: ttsSettings.qwenTTSLanguageType,
+                qwenTTSInstructions: ttsSettings.qwenTTSInstructions,
+                cosyvoice35PlusModel: ttsSettings.cosyvoice35PlusModel,
+                cosyvoice35PlusVoiceId: ttsSettings.cosyvoice35PlusVoiceId,
+                cosyvoice35FlashVoiceId: ttsSettings.cosyvoice35FlashVoiceId,
+                cosyvoice35PlusVoiceProfileId: ttsSettings.cosyvoice35PlusVoiceProfileId,
+                cosyvoice35PlusSpeed: ttsSettings.cosyvoice35PlusSpeed,
+                cosyvoice35PlusInstruction: ttsSettings.cosyvoice35PlusInstruction,
+                cosyvoice35PlusLanguageHint: ttsSettings.cosyvoice35PlusLanguageHint,
+            }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.ok) {
+            const modelHint = typeof data?.model === "string" ? `模型 ${data.model} · ` : "";
+            const detail = typeof data?.error === "string" && data.error.trim()
+                ? data.error.trim()
+                : `HTTP ${res.status}`;
+            throw new Error(`合成前检查失败：${modelHint}${detail}`);
+        }
+    };
+
     const synthesizeAndDownload = async () => {
         if (isSynthesizing) return;
         // 🔒 标记全局合成状态
@@ -1755,16 +2318,17 @@ function TTSCardItem({
         synthesizingCardsSet.add(card.id);
 
         setIsSynthesizing(true);
-        updateSynthesisProgress(card.id, { current: 0, total: 0 });
+        updateSynthesisProgress(card.id, { current: 0, total: 0, phase: "checking" });
 
         try {
             const nextSynthSnapshot = buildSynthSnapshot(card.id, ttsSettings);
             const targetAudioCacheKey = buildTTSCardAudioCacheKey(card, ttsSettings, nextSynthSnapshot);
+            await preflightCurrentTTS();
 
             if (ttsSettings.provider === "cosyvoice35plus") {
                 const ssmlChunks = buildCosyVoiceCardSSMLChunks(card.content);
                 const ssmlAudioChunks = ssmlChunks.filter((chunk) => chunk.type === "ssml");
-                updateSynthesisProgress(card.id, { current: 0, total: ssmlAudioChunks.length });
+                updateSynthesisProgress(card.id, { current: 0, total: ssmlAudioChunks.length, phase: "synthesizing" });
 
                 try {
                     const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -1802,6 +2366,7 @@ function TTSCardItem({
                                 updateSynthesisProgress(card.id, {
                                     current: completedAudioChunks,
                                     total: ssmlAudioChunks.length,
+                                    phase: "synthesizing",
                                 });
                                 return;
                             } catch (error) {
@@ -1812,18 +2377,9 @@ function TTSCardItem({
 
                         const res = await fetchWithRetry("/api/tts", {
                             method: "POST",
-                            body: JSON.stringify({
-                                text: chunk.ssml,
-                                provider: ttsSettings.provider,
-                                cosyvoice35PlusModel: ttsSettings.cosyvoice35PlusModel,
-                                cosyvoice35PlusVoiceId: ttsSettings.cosyvoice35PlusVoiceId,
-                                cosyvoice35FlashVoiceId: ttsSettings.cosyvoice35FlashVoiceId,
-                                cosyvoice35PlusVoiceProfileId: ttsSettings.cosyvoice35PlusVoiceProfileId,
-                                cosyvoice35PlusSpeed: ttsSettings.cosyvoice35PlusSpeed,
-                                cosyvoice35PlusInstruction: ttsSettings.cosyvoice35PlusInstruction,
-                                cosyvoice35PlusLanguageHint: ttsSettings.cosyvoice35PlusLanguageHint,
-                                enableSSML: true,
-                            }),
+                            body: JSON.stringify(
+                                buildTTSRequestPayload(chunk.ssml, card.voice_id, card.rate || "0%", { enableSSML: true })
+                            ),
                         });
 
                         if (!res || !res.ok) {
@@ -1846,6 +2402,7 @@ function TTSCardItem({
                         updateSynthesisProgress(card.id, {
                             current: completedAudioChunks,
                             total: ssmlAudioChunks.length,
+                            phase: "synthesizing",
                         });
                     });
 
@@ -1885,7 +2442,7 @@ function TTSCardItem({
                     });
                     setLegacySynthSnapshot(nextSynthSnapshot);
                     setSelectedVersionCacheKey(targetAudioCacheKey);
-                    updateSynthesisProgress(card.id, { current: ssmlAudioChunks.length, total: ssmlAudioChunks.length });
+                    updateSynthesisProgress(card.id, { current: ssmlAudioChunks.length, total: ssmlAudioChunks.length, phase: "synthesizing" });
                     console.log(`[Synthesize] ✅ ${ttsSettings.cosyvoice35PlusModel} SSML 分块合成完成并已缓存`);
                     triggerSuccess();
                     return;
@@ -1900,10 +2457,11 @@ function TTSCardItem({
             // 1. 解析内容为片段
             type SynthSegment =
                 | { type: 'pause', duration: number }
-                | { type: 'text', content: string, rate: string, voiceId: string };
+                | { type: 'text', content: string, rate: string, voiceId: string, textIndex: number };
 
             const segments: SynthSegment[] = [];
             let currentRate = card.rate || "0%";
+            let nextTextIndex = 0;
             const regex = /(\[(?:pause|rate)[^\]]+\])/g;
             const parts = card.content.split(regex);
 
@@ -1920,93 +2478,120 @@ function TTSCardItem({
                         if (match) currentRate = match[1];
                     }
                 } else {
-                    segments.push({ type: 'text', content: part, rate: currentRate, voiceId: card.voice_id });
+                    segments.push({
+                        type: 'text',
+                        content: part,
+                        rate: currentRate,
+                        voiceId: card.voice_id,
+                        textIndex: nextTextIndex,
+                    });
+                    nextTextIndex++;
                 }
             }
 
             const textSegments = segments.filter(s => s.type === 'text');
-            updateSynthesisProgress(card.id, { current: 0, total: textSegments.length });
+            updateSynthesisProgress(card.id, { current: 0, total: textSegments.length, phase: "synthesizing" });
 
             // 2. 创建 AudioContext
             const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
             const ctx = new AC();
 
-            // 3. 获取所有音频 ArrayBuffer
-            const audioBuffers: AudioBuffer[] = [];
-            let textIndex = 0;
-            let actualSampleRate = 24000; // TTS 默认采样率，会在第一个解码后更新
-            const segmentFailures: string[] = [];
+            // 3. 并发获取所有文本段音频。每段都会单独落盘缓存，失败后下次只补缺失段。
+            const textAudioBuffers: AudioBuffer[] = new Array(textSegments.length);
+            let completedTextSegments = 0;
+            const textConcurrency = getTextSegmentConcurrency(ttsSettings);
+            const textFetchRetries = getTTSFetchRetryCount(ttsSettings);
+            const textFetchTimeoutMs = getTTSFetchTimeoutMs(ttsSettings);
+            console.log(
+                `[Synthesize] 文本分段并发合成: ${textSegments.length} 段，并发 ${textConcurrency}，每段最多重试 ${textFetchRetries} 次`
+            );
 
-            for (const seg of segments) {
-                if (seg.type === 'pause') {
-                    // 静音会在拼接时根据实际采样率生成
-                    audioBuffers.push({ type: 'pause', duration: seg.duration } as any);
-                } else {
-                    // 请求 TTS
+            const markTextSegmentCompleted = () => {
+                completedTextSegments++;
+                updateSynthesisProgress(card.id, {
+                    current: completedTextSegments,
+                    total: textSegments.length,
+                    phase: "synthesizing",
+                });
+            };
+
+            const textSegmentErrors = await runLimitedConcurrencyCollectingErrors(
+                textSegments,
+                textConcurrency,
+                async (seg) => {
+                    const currentTextIndex = seg.textIndex + 1;
+                    const chunkCacheKey = buildAudioChunkCacheKey(targetAudioCacheKey, seg.textIndex);
                     try {
+                        const cachedChunkBlob = await getAudioCache(chunkCacheKey);
+                        if (cachedChunkBlob) {
+                            try {
+                                const cachedArrayBuffer = await cachedChunkBlob.arrayBuffer();
+                                const cachedDecoded = await ctx.decodeAudioData(cachedArrayBuffer.slice(0));
+                                textAudioBuffers[seg.textIndex] = cachedDecoded;
+                                markTextSegmentCompleted();
+                                console.log(`[Synthesize] 文本段 ${currentTextIndex}/${textSegments.length} 命中分段缓存`);
+                                return;
+                            } catch (error) {
+                                console.warn(`[Synthesize] 逐段缓存损坏，删除后重新合成: ${currentTextIndex}`, error);
+                                await deleteAudioCache(chunkCacheKey).catch(() => undefined);
+                            }
+                        }
+
                         const res = await fetchWithRetry("/api/tts", {
                             method: "POST",
-                            body: JSON.stringify({
-                                text: seg.content,
-                                provider: ttsSettings.provider,
-                                cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
-                                cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
-                                cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
-                                cosyvoice35PlusModel: ttsSettings.cosyvoice35PlusModel,
-                                cosyvoice35PlusVoiceId: ttsSettings.cosyvoice35PlusVoiceId,
-                                cosyvoice35FlashVoiceId: ttsSettings.cosyvoice35FlashVoiceId,
-                                cosyvoice35PlusVoiceProfileId: ttsSettings.cosyvoice35PlusVoiceProfileId,
-                                cosyvoice35PlusSpeed: ttsSettings.cosyvoice35PlusSpeed,
-                                cosyvoice35PlusInstruction: ttsSettings.cosyvoice35PlusInstruction,
-                                cosyvoice35PlusLanguageHint: ttsSettings.cosyvoice35PlusLanguageHint,
-                                cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,voice: seg.voiceId,
-                                rate: seg.rate
-                            }),
-                        });
+                            body: JSON.stringify(buildTTSRequestPayload(seg.content, seg.voiceId, seg.rate)),
+                        }, textFetchRetries, textFetchTimeoutMs);
                         if (res && res.ok) {
                             const arrayBuffer = await res.arrayBuffer();
-                            const decoded = await ctx.decodeAudioData(arrayBuffer);
-                            // 使用第一个 TTS 的采样率
-                            if (textIndex === 0) {
-                                actualSampleRate = decoded.sampleRate;
-                                console.log("[Synthesize] 实际采样率:", actualSampleRate);
-                            }
+                            const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0));
                             // 🎵 应用 50ms 淡入淡出，避免拼接顿挫感
                             applyFadeIn(decoded, 30);
-                            audioBuffers.push(decoded);
+                            await saveAudioCache(
+                                chunkCacheKey,
+                                new Blob([arrayBuffer], { type: res.headers.get("content-type") || "audio/wav" })
+                            );
+                            textAudioBuffers[seg.textIndex] = decoded;
+                            markTextSegmentCompleted();
                         } else {
                             const details = res ? await res.text().catch(() => "") : "";
                             throw createFetchResponseError(res?.status || 500, details);
                         }
                     } catch (e) {
                         console.error("[Synthesize] TTS fetch failed", e);
-                        segmentFailures.push(getErrorDetails(e));
+                        const preview = seg.content.replace(/\s+/g, " ").trim().slice(0, 32);
+                        const suffix = preview ? `（第 ${currentTextIndex}/${textSegments.length} 段：${preview}${seg.content.trim().length > 32 ? "…" : ""}）` : "";
+                        throw new Error(`${getErrorDetails(e)}${suffix}`);
                     }
-                    textIndex++;
-                    updateSynthesisProgress(card.id, { current: textIndex, total: textSegments.length });
                 }
-            }
+            );
 
-            if (segmentFailures.length > 0) {
-                throw new Error(`逐段合成失败：${segmentFailures[0]}`);
+            if (textSegmentErrors.length > 0) {
+                const completed = textAudioBuffers.filter(Boolean).length;
+                const firstError = textSegmentErrors[0];
+                throw new Error(
+                    `${getErrorDetails(firstError)}（已保留 ${completed}/${textSegments.length} 段分段缓存；再次点击合成会从缺失段继续，不会从头重来）`
+                );
             }
 
             // 4. 处理静音并计算总长度
             const finalBuffers: AudioBuffer[] = [];
             let numberOfChannels = 1; // 默认单声道
+            const firstTextAudioBuffer = textAudioBuffers.find(Boolean);
+            let actualSampleRate = firstTextAudioBuffer?.sampleRate || 24000; // TTS 默认采样率，会在第一个解码后更新
+            console.log("[Synthesize] 实际采样率:", actualSampleRate);
 
             // 先检测实际声道数
-            for (const buf of audioBuffers) {
-                if ((buf as any).type !== 'pause' && buf.numberOfChannels) {
+            for (const buf of textAudioBuffers) {
+                if (buf?.numberOfChannels) {
                     numberOfChannels = Math.max(numberOfChannels, buf.numberOfChannels);
                 }
             }
             console.log("[Synthesize] 声道数:", numberOfChannels);
 
-            for (const buf of audioBuffers) {
-                if ((buf as any).type === 'pause') {
+            for (const seg of segments) {
+                if (seg.type === 'pause') {
                     // 生成与实际采样率和声道数匹配的静音（带微小抖动，避免完全静音不自然）
-                    const samples = Math.floor(actualSampleRate * (buf as any).duration);
+                    const samples = Math.floor(actualSampleRate * seg.duration);
                     const silenceBuffer = ctx.createBuffer(numberOfChannels, samples, actualSampleRate);
 
                     // 🎵 添加极微小的抖动噪声，让过渡更自然
@@ -2020,6 +2605,10 @@ function TTSCardItem({
 
                     finalBuffers.push(silenceBuffer);
                 } else {
+                    const buf = textAudioBuffers[seg.textIndex];
+                    if (!buf) {
+                        throw new Error(`第 ${seg.textIndex + 1}/${textSegments.length} 段音频缺失；再次点击合成会继续补齐。`);
+                    }
                     finalBuffers.push(buf);
                 }
             }
@@ -2099,13 +2688,9 @@ function TTSCardItem({
 
         // 🪷 记录冥想会话（声波工坊也计入）
         try {
-            fetch(getApiUrl('/api/meditation/sessions'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    topicId: `tts-${card.id}`,
-                    topicName: card.title || "声波工坊"
-                })
+            createMeditationSession({
+                topicId: `tts-${card.id}`,
+                topicName: card.title || "声波工坊",
             }).catch(e => console.error("Failed to record TTS session", e));
         } catch (e) {
             console.error("Failed to record session", e);
@@ -2171,22 +2756,7 @@ function TTSCardItem({
                         fetchingIdsRef.current.add(item.id);
                         const res = await fetchWithRetry("/api/tts", {
                             method: "POST",
-                            body: JSON.stringify({
-                                text: item.content,
-                                provider: ttsSettings.provider,
-                                cosyvoiceSpeed: ttsSettings.cosyvoiceSpeed,
-                                cosyvoiceInstruction: ttsSettings.cosyvoiceInstruction,
-                                cosyvoiceSeed: ttsSettings.cosyvoiceSeed,
-                                cosyvoice35PlusModel: ttsSettings.cosyvoice35PlusModel,
-                                cosyvoice35PlusVoiceId: ttsSettings.cosyvoice35PlusVoiceId,
-                                cosyvoice35FlashVoiceId: ttsSettings.cosyvoice35FlashVoiceId,
-                                cosyvoice35PlusVoiceProfileId: ttsSettings.cosyvoice35PlusVoiceProfileId,
-                                cosyvoice35PlusSpeed: ttsSettings.cosyvoice35PlusSpeed,
-                                cosyvoice35PlusInstruction: ttsSettings.cosyvoice35PlusInstruction,
-                                cosyvoice35PlusLanguageHint: ttsSettings.cosyvoice35PlusLanguageHint,
-                                cosyvoiceVoiceId: ttsSettings.cosyvoiceVoiceId,voice: item.voiceId,
-                                rate: item.rate
-                            }),
+                            body: JSON.stringify(buildTTSRequestPayload(item.content, item.voiceId, item.rate)),
                         });
                         if (res && res.ok) {
                             const blob = await res.blob();
@@ -2262,6 +2832,10 @@ function TTSCardItem({
                     const looksLikeAppJson = contentType.includes("application/json") && details.includes("\"error\"");
 
                     if (looksLikeAppJson) {
+                        const extracted = extractErrorDetails(details);
+                        if (isRetryableTTSFailure(createFetchResponseError(response.status, extracted))) {
+                            throw createFetchResponseError(response.status, details);
+                        }
                         return response;
                     }
 
@@ -2273,7 +2847,8 @@ function TTSCardItem({
                     if (response.status >= 400 && response.status < 500 && response.status !== 429) {
                         return response;
                     }
-                    throw new Error(`Request failed: ${response.status}`);
+                    const details = await response.clone().text().catch(() => "");
+                    throw createFetchResponseError(response.status, details);
                 }
 
                 return response;
@@ -2367,21 +2942,14 @@ function TTSCardItem({
             // 📊 统计记录: 创建新的 session
             const sessionIdRef = { current: null as string | null };
             try {
-                const res = await fetch(getApiUrl('/api/meditation/sessions'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        topicId: `tts-${card.id}`,
-                        topicName: `声波工坊 - ${card.title || '未命名'}`
-                    })
+                const data = await createMeditationSession({
+                    topicId: `tts-${card.id}`,
+                    topicName: `声波工坊 - ${card.title || '未命名'}`,
                 });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data?.id) {
-                        sessionIdRef.current = data.id;
-                        setCurrentSessionId(data.id);
-                        console.log('[TTS] Session 开始:', data.id);
-                    }
+                if (data?.id) {
+                    sessionIdRef.current = data.id;
+                    setCurrentSessionId(data.id);
+                    console.log('[TTS] Session 开始:', data.id);
                 }
             } catch (e) {
                 console.error('[TTS] 创建 session 失败', e);
@@ -2407,14 +2975,7 @@ function TTSCardItem({
                     const sessionId = sessionIdRef.current;
                     if (sessionId && audio.duration) {
                         const durationSeconds = Math.round(audio.duration);
-                        fetch(getApiUrl('/api/meditation/sessions'), {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                id: sessionId,
-                                durationSeconds
-                            })
-                        }).then(() => {
+                        completeMeditationSession(sessionId, durationSeconds).then(() => {
                             console.log('[TTS] Session 结束:', sessionId, `, ${durationSeconds}秒`);
                             setCurrentSessionId(null);
                         }).catch(e => console.error('[TTS] 更新 session 失败', e));
@@ -2747,7 +3308,7 @@ function TTSCardItem({
                                                     {isSynthesizing ? (
                                                         <>
                                                             <span className="animate-spin w-4 h-4 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full" />
-                                                            <span>{synthesizeProgress.current}/{synthesizeProgress.total}</span>
+                                                            <span>{formatSynthesisProgress(synthesizeProgress)}</span>
                                                         </>
                                                     ) : (
                                                         <>
@@ -2834,6 +3395,16 @@ function TTSCardItem({
                                                     <Pencil className="w-4 h-4" />
                                                     <span>编辑卡片</span>
                                                 </button>
+
+                                                {canMove && onMove && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setShowCardMenu(false); onMove(card); }}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-cyan-300 hover:bg-cyan-500/20 transition-colors"
+                                                    >
+                                                        <ArrowRight className="w-4 h-4" />
+                                                        <span>移动到标签</span>
+                                                    </button>
+                                                )}
 
                                                 {/* 删除 */}
                                                 <button
@@ -2949,7 +3520,7 @@ function TTSCardItem({
                             {isSynthesizing && (
                                 <div className="flex items-center gap-2 text-xs text-emerald-300/80 animate-pulse">
                                     <span className="font-medium">合成中...</span>
-                                    <span className="font-mono">{synthesizeProgress.current}/{synthesizeProgress.total}</span>
+                                    <span className="font-mono">{formatSynthesisProgress(synthesizeProgress)}</span>
                                 </div>
                             )}
 
@@ -3106,19 +3677,112 @@ function TTSCardItem({
 // -----------------------------------------------------------------------------
 export default function TTSStudioPage() {
     // 使用 SWR 缓存数据
-    const { cards: ttsCards, addCard: apiAddCard, deleteCard: apiDeleteCard, isLoading: isLoadingCards } = useTTSCards();
-    const [activeCategory, setActiveCategory] = useState<'all' | 'desire-game' | 'rain' | 'rain-advanced' | 'emotion-anxiety' | 'emotion-body-scan'>('all');
-    const [activeSubCategory, setActiveSubCategory] = useState<string>('all');
+    const { cards: ttsCards, addCard: apiAddCard, patchCard: apiPatchCard, deleteCard: apiDeleteCard, isLoading: isLoadingCards } = useTTSCards();
+    const [activeCategory, setActiveCategory] = useState<string>(TTS_STUDIO_ALL_CATEGORY_ID);
+    const [activeSubCategory, setActiveSubCategory] = useState<string>(TTS_STUDIO_ALL_CATEGORY_ID);
+    const [categoryConfig, setCategoryConfig] = useState<NormalizedTTSStudioCategoryConfig>(
+        normalizeTTSStudioCategoryConfig(null)
+    );
+    const [tagDialogMode, setTagDialogMode] = useState<"root" | "child" | null>(null);
+    const [newTagName, setNewTagName] = useState("");
+    const [movingCard, setMovingCard] = useState<TTSCard | null>(null);
+    const [moveCategoryId, setMoveCategoryId] = useState<string>(TTS_STUDIO_ALL_CATEGORY_ID);
+    const [moveSubCategoryId, setMoveSubCategoryId] = useState<string>(TTS_STUDIO_ALL_CATEGORY_ID);
 
-    const handleCategoryChange = (category: typeof activeCategory) => {
+    const studioCategories = useMemo(() => getTTSStudioCategories(categoryConfig), [categoryConfig]);
+    const activeCategoryConfig = studioCategories.find((category) => category.id === activeCategory) ?? null;
+    const activeCategoryChildren = activeCategoryConfig?.children ?? [];
+    const moveCategoryConfig = studioCategories.find((category) => category.id === moveCategoryId) ?? null;
+    const moveCategoryChildren = moveCategoryConfig?.children ?? [];
+    const ttsCardIds = useMemo(() => new Set(ttsCards.map((card) => card.id)), [ttsCards]);
+    const createCategoryAssignment = useMemo(
+        () => buildCreateCardCategoryAssignment({
+            categoryId: activeCategory,
+            subcategoryId: activeSubCategory,
+        }),
+        [activeCategory, activeSubCategory],
+    );
+
+    const saveCategoryConfig = async (nextConfig: NormalizedTTSStudioCategoryConfig) => {
+        setCategoryConfig(nextConfig);
+        await saveLocalSingleton("user_settings", LOCAL_TTS_STUDIO_CATEGORIES_ID, nextConfig);
+    };
+
+    const handleCategoryChange = (category: string) => {
         setActiveCategory(category);
-        setActiveSubCategory('all');
+        setActiveSubCategory(TTS_STUDIO_ALL_CATEGORY_ID);
+    };
+
+    const createLocalCategoryId = (prefix: "tag" | "subtag") => {
+        if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+            return `custom-${prefix}-${crypto.randomUUID()}`;
+        }
+        return `custom-${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    };
+
+    const openTagDialog = (mode: "root" | "child") => {
+        setTagDialogMode(mode);
+        setNewTagName("");
+    };
+
+    const handleCreateTag = async () => {
+        const label = newTagName.trim();
+        if (!label || !tagDialogMode) return;
+
+        const nextConfig =
+            tagDialogMode === "root"
+                ? addTTSStudioCategory(categoryConfig, label, () => createLocalCategoryId("tag"))
+                : addTTSStudioSubcategory(categoryConfig, activeCategory, label, () => createLocalCategoryId("subtag"));
+        await saveCategoryConfig(nextConfig);
+
+        const nextCategories = getTTSStudioCategories(nextConfig);
+        if (tagDialogMode === "root") {
+            const created = nextConfig.customCategories[nextConfig.customCategories.length - 1];
+            if (created) {
+                setActiveCategory(created.id);
+                setActiveSubCategory(TTS_STUDIO_ALL_CATEGORY_ID);
+            }
+        } else {
+            const createdChild = nextCategories
+                .find((category) => category.id === activeCategory)
+                ?.children?.at(-1);
+            if (createdChild) {
+                setActiveSubCategory(createdChild.id);
+            }
+        }
+
+        setTagDialogMode(null);
+        setNewTagName("");
+    };
+
+    const handleOpenMoveCard = (card: TTSCard) => {
+        setMovingCard(card);
+        setMoveCategoryId(card.category_id || TTS_STUDIO_ALL_CATEGORY_ID);
+        setMoveSubCategoryId(card.subcategory_id || TTS_STUDIO_ALL_CATEGORY_ID);
+    };
+
+    const handleMoveCard = async () => {
+        if (!movingCard) return;
+        const patch = buildCreateCardCategoryAssignment({
+            categoryId: moveCategoryId,
+            subcategoryId: moveSubCategoryId,
+        });
+        await apiPatchCard(movingCard.id, {
+            category_id: patch.category_id ?? null,
+            subcategory_id: patch.subcategory_id ?? null,
+        });
+        setMovingCard(null);
     };
     const [ttsProvider, setTTSProvider] = useState<TTSProvider>(DEFAULT_TTS_PROVIDER);
     const [cosyvoiceSpeed, setCosyvoiceSpeed] = useState<number>(COSYVOICE_PROFILE.speed);
     const [cosyvoiceInstruction, setCosyvoiceInstruction] = useState<string>(COSYVOICE_PROFILE.instruction);
     const [cosyvoiceSeed, setCosyvoiceSeed] = useState<number>(COSYVOICE_PROFILE.seed);
     const [cosyvoiceVoiceId, setCosyvoiceVoiceId] = useState<CosyVoiceVoiceId>(DEFAULT_COSYVOICE_VOICE_ID);// 🚀 iOS 性能优化：延迟动画启动，等待页面完成静态渲染
+    const [mimoTTSModel, setMimoTTSModel] = useState<MimoTTSModel>(DEFAULT_MIMO_TTS_MODEL);
+    const [mimoTTSVoice, setMimoTTSVoice] = useState<MimoTTSVoice>(DEFAULT_MIMO_TTS_VOICE);
+    const [mimoTTSInstruction, setMimoTTSInstruction] = useState<string>(DEFAULT_MIMO_TTS_INSTRUCTION);
+    const [mimoTTSVoiceDesignPrompt, setMimoTTSVoiceDesignPrompt] = useState<string>(DEFAULT_MIMO_TTS_VOICE_DESIGN_PROMPT);
+    const [mimoTTSCloneVoiceUrl, setMimoTTSCloneVoiceUrl] = useState<string>(DEFAULT_MIMO_TTS_CLONE_VOICE_URL);
     const [cosyvoice35PlusModel, setCosyvoice35PlusModel] = useState(DEFAULT_COSYVOICE_35_PLUS_MODEL);
     const [cosyvoice35PlusVoiceId, setCosyvoice35PlusVoiceId] = useState(DEFAULT_COSYVOICE_35_PLUS_VOICE_ID);
     const [cosyvoice35FlashVoiceId, setCosyvoice35FlashVoiceId] = useState(DEFAULT_COSYVOICE_35_FLASH_VOICE_ID);
@@ -3138,13 +3802,49 @@ export default function TTSStudioPage() {
     useEffect(() => {
         (async () => {
             try {
-                const res = await fetch(getApiUrl("/api/tts-settings"), {
-                    method: "GET",
-                    cache: "no-store",
-                });
-                if (!res.ok) return;
+                const savedConfig = await getLocalSingleton(
+                    "user_settings",
+                    LOCAL_TTS_STUDIO_CATEGORIES_ID,
+                    normalizeTTSStudioCategoryConfig(null),
+                );
+                setCategoryConfig(normalizeTTSStudioCategoryConfig(savedConfig));
+            } catch {
+                setCategoryConfig(normalizeTTSStudioCategoryConfig(null));
+            }
+        })();
+    }, []);
 
-                const data = await res.json();
+    useEffect(() => {
+        if (
+            moveSubCategoryId !== TTS_STUDIO_ALL_CATEGORY_ID &&
+            !moveCategoryChildren.some((child) => child.id === moveSubCategoryId)
+        ) {
+            setMoveSubCategoryId(TTS_STUDIO_ALL_CATEGORY_ID);
+        }
+    }, [moveCategoryChildren, moveSubCategoryId]);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const data = await getLocalSingleton("user_settings", LOCAL_TTS_SETTINGS_ID, normalizeTTSSettings({
+                    provider: ttsProvider,
+                    cosyvoiceSpeed,
+                    cosyvoiceInstruction,
+                    cosyvoiceSeed,
+                    cosyvoiceVoiceId,
+                    mimoTTSModel,
+                    mimoTTSVoice,
+                    mimoTTSInstruction,
+                    mimoTTSVoiceDesignPrompt,
+                    mimoTTSCloneVoiceUrl,
+                    cosyvoice35PlusModel,
+                    cosyvoice35PlusVoiceId,
+                    cosyvoice35FlashVoiceId,
+                    cosyvoice35PlusVoiceProfileId,
+                    cosyvoice35PlusSpeed,
+                    cosyvoice35PlusInstruction,
+                    cosyvoice35PlusLanguageHint,
+                }));
                 if (isTTSProvider(data?.provider)) {
                     setTTSProvider(data.provider);
                 }
@@ -3159,6 +3859,21 @@ export default function TTSStudioPage() {
                 }
                 if (data?.cosyvoiceVoiceId === "yupinglu" || data?.cosyvoiceVoiceId === "tea") {
                     setCosyvoiceVoiceId(data.cosyvoiceVoiceId);
+                }
+                if (isMimoTTSModel(data?.mimoTTSModel)) {
+                    setMimoTTSModel(data.mimoTTSModel);
+                }
+                if (isMimoTTSVoice(data?.mimoTTSVoice)) {
+                    setMimoTTSVoice(data.mimoTTSVoice);
+                }
+                if (typeof data?.mimoTTSInstruction === "string") {
+                    setMimoTTSInstruction(data.mimoTTSInstruction);
+                }
+                if (typeof data?.mimoTTSVoiceDesignPrompt === "string") {
+                    setMimoTTSVoiceDesignPrompt(data.mimoTTSVoiceDesignPrompt);
+                }
+                if (typeof data?.mimoTTSCloneVoiceUrl === "string") {
+                    setMimoTTSCloneVoiceUrl(data.mimoTTSCloneVoiceUrl);
                 }
                 if (isCosyVoice35Model(data?.cosyvoice35PlusModel)) {
                     setCosyvoice35PlusModel(data.cosyvoice35PlusModel);
@@ -3203,6 +3918,21 @@ export default function TTSStudioPage() {
             if (detail.cosyvoiceVoiceId === "yupinglu" || detail.cosyvoiceVoiceId === "tea") {
                 setCosyvoiceVoiceId(detail.cosyvoiceVoiceId);
             }
+            if (isMimoTTSModel(detail.mimoTTSModel)) {
+                setMimoTTSModel(detail.mimoTTSModel);
+            }
+            if (isMimoTTSVoice(detail.mimoTTSVoice)) {
+                setMimoTTSVoice(detail.mimoTTSVoice);
+            }
+            if (typeof detail.mimoTTSInstruction === "string") {
+                setMimoTTSInstruction(detail.mimoTTSInstruction);
+            }
+            if (typeof detail.mimoTTSVoiceDesignPrompt === "string") {
+                setMimoTTSVoiceDesignPrompt(detail.mimoTTSVoiceDesignPrompt);
+            }
+            if (typeof detail.mimoTTSCloneVoiceUrl === "string") {
+                setMimoTTSCloneVoiceUrl(detail.mimoTTSCloneVoiceUrl);
+            }
             if (isCosyVoice35Model(detail.cosyvoice35PlusModel)) {
                 setCosyvoice35PlusModel(detail.cosyvoice35PlusModel);
             }
@@ -3238,6 +3968,11 @@ export default function TTSStudioPage() {
         cosyvoiceInstruction,
         cosyvoiceSeed,
         cosyvoiceVoiceId,
+        mimoTTSModel,
+        mimoTTSVoice,
+        mimoTTSInstruction,
+        mimoTTSVoiceDesignPrompt,
+        mimoTTSCloneVoiceUrl,
         cosyvoice35PlusModel,
         cosyvoice35PlusVoiceId,
         cosyvoice35FlashVoiceId,
@@ -3478,15 +4213,19 @@ export default function TTSStudioPage() {
     };
 
     const displayCards = useMemo(() => {
-        let list = ttsCards;
-        if (activeCategory === 'desire-game') list = DESIRE_GAME_CARDS;
-        else if (activeCategory === 'rain') list = RAIN_CARDS;
-        else if (activeCategory === 'rain-advanced') list = RAIN_ADVANCED_CARDS;
-        else if (activeCategory === 'emotion-anxiety') list = EMOTION_ANXIETY_CARDS;
-        else if (activeCategory === 'emotion-body-scan') list = EMOTION_BODY_SCAN_CARDS;
+        const userCards = filterTTSStudioCardsBySelection(ttsCards, {
+            categoryId: activeCategory,
+            subcategoryId: activeSubCategory,
+        });
+        let builtInCards: TTSCard[] = [];
+        if (activeCategory === 'desire-game') builtInCards = DESIRE_GAME_CARDS;
+        else if (activeCategory === 'rain') builtInCards = RAIN_CARDS;
+        else if (activeCategory === 'rain-advanced') builtInCards = RAIN_ADVANCED_CARDS;
+        else if (activeCategory === 'emotion-anxiety') builtInCards = EMOTION_ANXIETY_CARDS;
+        else if (activeCategory === 'emotion-body-scan') builtInCards = EMOTION_BODY_SCAN_CARDS;
 
-        if (activeCategory === 'emotion-body-scan' && activeSubCategory !== 'all') {
-            list = list.filter(card => {
+        if (activeSubCategory !== TTS_STUDIO_ALL_CATEGORY_ID) {
+            builtInCards = activeCategory === 'emotion-body-scan' ? builtInCards.filter(card => {
                 const title = card.title || "";
                 if (activeSubCategory === 'quick') return title.includes('⚡');
                 if (activeSubCategory === 'basic') return title.includes('⚖️') || title.includes('🧘‍♀️');
@@ -3494,10 +4233,10 @@ export default function TTSStudioPage() {
                 if (activeSubCategory === 'sleep') return title.includes('💤');
                 if (activeSubCategory === 'visual') return title.includes('🌿');
                 if (activeSubCategory === 'active') return title.includes('🏃');
-                return true;
-            });
+                return false;
+            }) : [];
         }
-        return list;
+        return [...userCards, ...builtInCards];
     }, [activeCategory, activeSubCategory, ttsCards]);
 
     const handlePrev = () => {
@@ -3572,27 +4311,16 @@ export default function TTSStudioPage() {
 
             if (!response.ok) throw new Error("生成失败");
 
-            const reader = response.body?.getReader();
-            if (!reader) throw new Error("无法读取响应");
-
-            const decoder = new TextDecoder();
-            let fullContent = "";
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                const chunk = decoder.decode(value);
-                fullContent += chunk;
-                setEditContent(fullContent);
-            }
-            const shortGenerationMessage = getShortGenerationMessage(fullContent, totalSeconds);
+            const streamState = await readGenerateResponseStream(response, {
+                onText: setEditContent,
+            });
+            const shortGenerationMessage = getShortGenerationMessage(streamState.text, totalSeconds);
             if (shortGenerationMessage) {
                 window.alert(shortGenerationMessage);
             }
         } catch (e) {
             console.error("AI 生成失败:", e);
-            setEditContent("生成失败，请重试...");
+            window.alert(e instanceof Error ? e.message : "生成失败，请重试...");
         } finally {
             setAiGeneratingEdit(false);
         }
@@ -3602,16 +4330,11 @@ export default function TTSStudioPage() {
         if (!editingCard) return;
         setIsSaving(true);
         try {
-            const res = await fetch("/api/tts/cards", {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    id: editingCard.id,
-                    title: editTitle,
-                    content: editContent,
-                    voiceId: editVoiceId,
-                    guidanceLevel: guidanceLevelEdit, // Save guidance level
-                })
+            const res = await apiPatchCard(editingCard.id, {
+                title: editTitle,
+                content: editContent,
+                voice_id: editVoiceId,
+                guidance_level: guidanceLevelEdit,
             });
             if (res.ok) {
                 setEditingCard(null);
@@ -3646,65 +4369,91 @@ export default function TTSStudioPage() {
 
                     {/* 🔥 新建卡片 - 无入场动画 */}
                     <div>
-                        <GlassInput onAddCard={apiAddCard} />
+                        <GlassInput
+                            onAddCard={(card) => apiAddCard({
+                                ...card,
+                                ...createCategoryAssignment,
+                            })}
+                        />
                     </div>
 
                     {/* 分类标签 */}
                     <div className="flex gap-4 mt-8 mb-6 px-1 overflow-x-auto pb-2 scrollbar-hide [-webkit-overflow-scrolling:touch]">
                         <button 
-                            onClick={() => handleCategoryChange('all')} 
-                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex-shrink-0 whitespace-nowrap", activeCategory === 'all' ? "bg-white text-black shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10")}
+                            onClick={() => handleCategoryChange(TTS_STUDIO_ALL_CATEGORY_ID)} 
+                            className={cn(
+                                "px-5 py-2.5 rounded-full text-sm font-medium transition-all flex-shrink-0 whitespace-nowrap",
+                                activeCategory === TTS_STUDIO_ALL_CATEGORY_ID
+                                    ? TTS_STUDIO_CATEGORY_TONE_CLASSES.neutral.active
+                                    : TTS_STUDIO_CATEGORY_TONE_CLASSES.neutral.idle
+                            )}
                         >
                             全部语料
                         </button>
-                        <button 
-                            onClick={() => handleCategoryChange('desire-game')} 
-                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap", activeCategory === 'desire-game' ? "bg-amber-500 text-white shadow-lg shadow-amber-500/20" : "bg-amber-500/10 text-amber-300/80 hover:bg-amber-500/20")}
+                        {studioCategories.map((category) => (
+                            <button
+                                key={category.id}
+                                onClick={() => handleCategoryChange(category.id)}
+                                className={cn(
+                                    "px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap",
+                                    activeCategory === category.id
+                                        ? TTS_STUDIO_CATEGORY_TONE_CLASSES[category.tone].active
+                                        : TTS_STUDIO_CATEGORY_TONE_CLASSES[category.tone].idle
+                                )}
+                            >
+                                <span>{category.icon}</span> {category.label}
+                            </button>
+                        ))}
+                        <button
+                            onClick={() => openTagDialog("root")}
+                            className="px-4 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap border border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80"
                         >
-                            <span>🪞</span> 欲望的博弈
-                        </button>
-                        <button 
-                            onClick={() => handleCategoryChange('rain')} 
-                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap", activeCategory === 'rain' ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20" : "bg-rose-500/10 text-rose-300/80 hover:bg-rose-500/20")}
-                        >
-                            <span>🌊</span> RAIN 简易版
-                        </button>
-                        <button 
-                            onClick={() => handleCategoryChange('rain-advanced')} 
-                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap", activeCategory === 'rain-advanced' ? "bg-purple-500 text-white shadow-lg shadow-purple-500/20" : "bg-purple-500/10 text-purple-300/80 hover:bg-purple-500/20")}
-                        >
-                            <span>🔥</span> RAIN 进阶版
-                        </button>
-                        <button 
-                            onClick={() => handleCategoryChange('emotion-anxiety')} 
-                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap", activeCategory === 'emotion-anxiety' ? "bg-teal-500 text-white shadow-lg shadow-teal-500/20" : "bg-teal-500/10 text-teal-300/80 hover:bg-teal-500/20")}
-                        >
-                            <span>🌧️</span> 情绪：焦虑
-                        </button>
-                        <button 
-                            onClick={() => handleCategoryChange('emotion-body-scan')} 
-                            className={cn("px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap", activeCategory === 'emotion-body-scan' ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}
-                        >
-                            <span>🧘‍♀️</span> 身体扫描
+                            <Plus className="w-4 h-4" />
+                            新建标签
                         </button>
                     </div>
 
-                    {/* Secondary Navigation for Body Scan */}
+                    {/* Secondary Navigation */}
                     <AnimatePresence>
-                        {activeCategory === 'emotion-body-scan' && (
+                        {activeCategoryConfig && (
                             <motion.div 
                                 initial={{ opacity: 0, height: 0, marginTop: 0 }}
                                 animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
                                 exit={{ opacity: 0, height: 0, marginTop: 0 }}
                                 className="flex overflow-x-auto pb-2 scrollbar-hide space-x-2 [-webkit-overflow-scrolling:touch]"
                             >
-                                <button onClick={() => setActiveSubCategory('all')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'all' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>全部</button>
-                                <button onClick={() => setActiveSubCategory('quick')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'quick' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>⚡ 急救重置</button>
-                                <button onClick={() => setActiveSubCategory('basic')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'basic' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>⚖️ 基础练习</button>
-                                <button onClick={() => setActiveSubCategory('deep')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'deep' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>🌌 深度疗愈</button>
-                                <button onClick={() => setActiveSubCategory('sleep')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'sleep' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>💤 助眠冬眠</button>
-                                <button onClick={() => setActiveSubCategory('visual')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'visual' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>🌿 高级意象</button>
-                                <button onClick={() => setActiveSubCategory('active')} className={cn("px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap", activeSubCategory === 'active' ? "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" : "bg-indigo-500/10 text-indigo-300/80 hover:bg-indigo-500/20")}>🏃 特殊情境</button>
+                                <button
+                                    onClick={() => setActiveSubCategory(TTS_STUDIO_ALL_CATEGORY_ID)}
+                                    className={cn(
+                                        "px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap",
+                                        activeSubCategory === TTS_STUDIO_ALL_CATEGORY_ID
+                                            ? TTS_STUDIO_CATEGORY_TONE_CLASSES[activeCategoryConfig.tone].subActive
+                                            : TTS_STUDIO_CATEGORY_TONE_CLASSES[activeCategoryConfig.tone].subIdle
+                                    )}
+                                >
+                                    全部
+                                </button>
+                                {activeCategoryChildren.map((child) => (
+                                    <button
+                                        key={child.id}
+                                        onClick={() => setActiveSubCategory(child.id)}
+                                        className={cn(
+                                            "px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 whitespace-nowrap",
+                                            activeSubCategory === child.id
+                                                ? TTS_STUDIO_CATEGORY_TONE_CLASSES[activeCategoryConfig.tone].subActive
+                                                : TTS_STUDIO_CATEGORY_TONE_CLASSES[activeCategoryConfig.tone].subIdle
+                                        )}
+                                    >
+                                        {child.icon} {child.label}
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={() => openTagDialog("child")}
+                                    className="px-4 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap border border-white/10 bg-white/5 text-white/55 hover:bg-white/10 hover:text-white/80"
+                                >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    二级标签
+                                </button>
                             </motion.div>
                         )}
                     </AnimatePresence>
@@ -3747,9 +4496,11 @@ export default function TTSStudioPage() {
                                             card={card}
                                             onDelete={handleDelete}
                                             onEdit={handleEdit}
+                                            onMove={handleOpenMoveCard}
                                             onView={(c, preferredCacheKey) => handlePlayCard(c, preferredCacheKey)}
                                             ttsSettings={ttsSettings}
                                             index={index}
+                                            canMove={ttsCardIds.has(card.id)}
                                         />
                                     ))}
                                 </motion.div>
@@ -3958,6 +4709,165 @@ export default function TTSStudioPage() {
                                         className="px-6 py-2 rounded-xl bg-white text-black font-medium text-sm hover:bg-white/90 transition-colors"
                                     >
                                         关闭
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* 标签创建弹窗 */}
+                <AnimatePresence>
+                    {tagDialogMode && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/55 backdrop-blur-md"
+                            onClick={() => setTagDialogMode(null)}
+                        >
+                            <motion.div
+                                initial={{ scale: 0.94, opacity: 0, y: 12 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                exit={{ scale: 0.94, opacity: 0, y: 12 }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-full max-w-sm overflow-hidden rounded-3xl border border-white/10 bg-slate-950/85 p-5 shadow-2xl backdrop-blur-2xl"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-xs font-medium text-cyan-200/70">
+                                            {tagDialogMode === "root" ? "一级标签" : activeCategoryConfig ? `二级标签 · ${activeCategoryConfig.label}` : "二级标签"}
+                                        </div>
+                                        <h3 className="mt-1 text-lg font-semibold text-white">
+                                            {tagDialogMode === "root" ? "新建标签" : "新建二级标签"}
+                                        </h3>
+                                    </div>
+                                    <button
+                                        onClick={() => setTagDialogMode(null)}
+                                        className="rounded-full p-2 text-white/45 hover:bg-white/10 hover:text-white"
+                                        aria-label="关闭标签弹窗"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                </div>
+
+                                <input
+                                    value={newTagName}
+                                    onChange={(e) => setNewTagName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") void handleCreateTag();
+                                    }}
+                                    autoFocus
+                                    placeholder={tagDialogMode === "root" ? "例如：睡前练习" : "例如：雨天、晨间、复盘"}
+                                    className="mt-5 w-full rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-cyan-300/30 focus:ring-2 focus:ring-cyan-300/10"
+                                />
+
+                                <div className="mt-5 flex justify-end gap-2">
+                                    <button
+                                        onClick={() => setTagDialogMode(null)}
+                                        className="rounded-xl bg-white/5 px-4 py-2 text-sm text-white/65 hover:bg-white/10 hover:text-white"
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        onClick={() => void handleCreateTag()}
+                                        disabled={!newTagName.trim()}
+                                        className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-400/20 disabled:bg-white/10 disabled:text-white/25"
+                                    >
+                                        创建
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* 移动卡片弹窗 */}
+                <AnimatePresence>
+                    {movingCard && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/55 backdrop-blur-md"
+                            onClick={() => setMovingCard(null)}
+                        >
+                            <motion.div
+                                initial={{ scale: 0.94, opacity: 0, y: 12 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                exit={{ scale: 0.94, opacity: 0, y: 12 }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-slate-950/85 p-5 shadow-2xl backdrop-blur-2xl"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-xs font-medium text-cyan-200/70">移动卡片</div>
+                                        <h3 className="mt-1 text-lg font-semibold text-white line-clamp-1">
+                                            {movingCard.title || "未命名卡片"}
+                                        </h3>
+                                    </div>
+                                    <button
+                                        onClick={() => setMovingCard(null)}
+                                        className="rounded-full p-2 text-white/45 hover:bg-white/10 hover:text-white"
+                                        aria-label="关闭移动弹窗"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                </div>
+
+                                <div className="mt-5 space-y-4">
+                                    <div className="space-y-2">
+                                        <label className="text-xs text-white/45">一级标签</label>
+                                        <select
+                                            value={moveCategoryId}
+                                            onChange={(e) => {
+                                                setMoveCategoryId(e.target.value);
+                                                setMoveSubCategoryId(TTS_STUDIO_ALL_CATEGORY_ID);
+                                            }}
+                                            className="w-full rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-white outline-none focus:border-cyan-300/30"
+                                        >
+                                            <option value={TTS_STUDIO_ALL_CATEGORY_ID} className="bg-zinc-900">全部语料</option>
+                                            {studioCategories.map((category) => (
+                                                <option key={category.id} value={category.id} className="bg-zinc-900">
+                                                    {category.icon} {category.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-xs text-white/45">二级标签</label>
+                                        <select
+                                            value={moveSubCategoryId}
+                                            onChange={(e) => setMoveSubCategoryId(e.target.value)}
+                                            disabled={moveCategoryId === TTS_STUDIO_ALL_CATEGORY_ID || moveCategoryChildren.length === 0}
+                                            className="w-full rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-white outline-none focus:border-cyan-300/30 disabled:opacity-45"
+                                        >
+                                            <option value={TTS_STUDIO_ALL_CATEGORY_ID} className="bg-zinc-900">不指定二级标签</option>
+                                            {moveCategoryChildren.map((child) => (
+                                                <option key={child.id} value={child.id} className="bg-zinc-900">
+                                                    {child.icon} {child.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {moveCategoryId !== TTS_STUDIO_ALL_CATEGORY_ID && moveCategoryChildren.length === 0 && (
+                                            <p className="text-xs text-white/35">这个一级标签下还没有二级标签。</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="mt-5 flex justify-end gap-2">
+                                    <button
+                                        onClick={() => setMovingCard(null)}
+                                        className="rounded-xl bg-white/5 px-4 py-2 text-sm text-white/65 hover:bg-white/10 hover:text-white"
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        onClick={() => void handleMoveCard()}
+                                        className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-400/20 hover:bg-cyan-300"
+                                    >
+                                        移动
                                     </button>
                                 </div>
                             </motion.div>

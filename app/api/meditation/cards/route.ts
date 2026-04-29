@@ -44,6 +44,7 @@ export async function POST(req: Request) {
         const { data, error } = await supabase
             .from('meditation_topics')
             .insert({
+                ...(body.id ? { id: body.id } : {}),
                 user_id: user.id,
                 title,
                 prompt,

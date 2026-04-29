@@ -59,6 +59,7 @@ export async function POST(request: Request) {
         const { data, error } = await supabase
             .from("user_danger_times")
             .insert({
+                ...(body.id ? { id: body.id } : {}),
                 user_id: user.id,
                 time_slot: formattedTime,
                 label: label || "",

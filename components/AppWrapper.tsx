@@ -1,16 +1,22 @@
 "use client";
 
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { usePathname } from 'next/navigation';
 import { BackgroundProvider, useBackground, WALLPAPERS } from './BackgroundContext';
 import NavBar from './NavBar';
-import UserProfile from './UserProfile';
 import { AuthProvider } from './AuthProvider';
 import { AnimatePresence, motion } from 'framer-motion';
 import { PushSubscriber } from './PushSubscriber';
 import { useBackgroundSync } from '@/lib/hooks/useSync';
+import { primeLocalDataCaches } from '@/lib/hooks/useData';
 
 // 懒加载重量级组件
 const DarkFluidBackground = lazy(() => import('./DarkFluidBackground').then(mod => ({ default: mod.DarkFluidBackground })));
+const UserProfile = dynamic(() => import('./UserProfile'), {
+    ssr: false,
+    loading: () => null,
+});
 
 function BackgroundLayer() {
     const { currentWallpaper, wallpaperId } = useBackground();
@@ -170,22 +176,48 @@ function PremiumGlassLayer() {
     );
 }
 
-import { usePathname } from 'next/navigation';
-import { PageTransition } from './PageTransition';
+type LocalIdleWindow = Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+    cancelIdleCallback?: (handle: number) => void;
+};
 
 export default function AppWrapper({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const isAdmin = pathname?.startsWith('/admin');
     const isSoundscapes = pathname?.startsWith('/practice/soundscapes');
     const isAuth = pathname?.startsWith('/auth');
+    const [backgroundWidgetsReady, setBackgroundWidgetsReady] = useState(false);
 
     // 后台静默同步 IndexedDB ↔ Supabase
     useBackgroundSync();
 
+    useEffect(() => {
+        let cancelled = false;
+        const startDeferredWork = () => {
+            primeLocalDataCaches();
+            if (!cancelled) setBackgroundWidgetsReady(true);
+        };
+        const idleWindow = window as LocalIdleWindow;
+
+        if (typeof idleWindow.requestIdleCallback === 'function') {
+            const idleId = idleWindow.requestIdleCallback(startDeferredWork, { timeout: 1500 });
+            return () => {
+                cancelled = true;
+                idleWindow.cancelIdleCallback?.(idleId);
+            };
+        }
+
+        const timeoutId = globalThis.setTimeout(startDeferredWork, 500);
+        return () => {
+            cancelled = true;
+            globalThis.clearTimeout(timeoutId);
+        };
+    }, []);
+
     return (
         <BackgroundProvider>
             <AuthProvider>
-                <PushSubscriber />
+                {backgroundWidgetsReady && <PushSubscriber />}
                 {!isAdmin && !isAuth && <BackgroundLayer />}
                 {!isAdmin && !isAuth && <PremiumGlassLayer />}
                 {!isAdmin && !isAuth && <IOS26CompatLayer />}
@@ -194,7 +226,7 @@ export default function AppWrapper({ children }: { children: React.ReactNode }) 
                     {children}
                 </div>
                 {!isAdmin && !isSoundscapes && !isAuth && <NavBar />}
-                {!isAdmin && !isSoundscapes && !isAuth && <UserProfile />}
+                {backgroundWidgetsReady && !isAdmin && !isSoundscapes && !isAuth && <UserProfile />}
             </AuthProvider>
         </BackgroundProvider>
     );

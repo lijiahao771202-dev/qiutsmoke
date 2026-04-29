@@ -2,15 +2,22 @@
 
 import { CardStack } from "../components/ui/CardStack";
 import { motion, AnimatePresence } from "framer-motion";
+import dynamic from "next/dynamic";
 import { useState, useEffect, useRef } from "react";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 
-import { LotusGarden } from "@/components/LotusGarden";
 import { useMeditationSessions } from "@/lib/hooks/useData";
 
 import JourneyCard from "@/components/ui/JourneyCard";
 import PulseCard from "@/components/ui/PulseCard";
 
+const LotusGarden = dynamic(
+  () => import("@/components/LotusGarden").then((mod) => mod.LotusGarden),
+  {
+    ssr: false,
+    loading: () => null,
+  }
+);
 
 // MILESTONES removed (moved to JourneyCard)
 // Animation Constants (Apple Spring Physics)

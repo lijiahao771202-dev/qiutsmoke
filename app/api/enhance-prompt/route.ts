@@ -2,6 +2,11 @@ import { cookies } from "next/headers";
 import { sql } from "@vercel/postgres";
 import { normalizeAISettings } from "../../../lib/ai-models";
 import { buildDeepSeekChatCompletionBody } from "../../../lib/deepseek-chat";
+import {
+  buildMimoChatCompletionBody,
+  getMimoChatCompletionsUrl,
+  resolveMimoAIKey,
+} from "../../../lib/mimo-ai";
 import { ensureTables, hasDb } from "@/lib/db";
 
 async function resolveStoredAISettings() {
@@ -64,6 +69,29 @@ function getUpstreamConfig(
     };
   }
 
+  if (provider === "mimo") {
+    return {
+      url: getMimoChatCompletionsUrl(),
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        Authorization: `Bearer ${key}`,
+      },
+      body: (messages: Array<{ role: string; content: string }>) =>
+        JSON.stringify(
+          buildMimoChatCompletionBody({
+            model,
+            messages,
+            temperature: 0.6,
+            maxTokens,
+            frequencyPenalty: 0.1,
+            presencePenalty: 0.1,
+            stream: true,
+          })
+        ),
+    };
+  }
+
   return {
     url: "https://api.deepseek.com/chat/completions",
     headers: {
@@ -111,6 +139,8 @@ export async function POST(req: Request) {
     const key =
       effectiveSettings.provider === "nvidia"
         ? process.env.NVIDIA_API_KEY
+        : effectiveSettings.provider === "mimo"
+          ? resolveMimoAIKey()
         : body?.apiKey || process.env.DEEPSEEK_API_KEY;
 
     console.log("[AI Request][enhance-prompt][start]", JSON.stringify({
@@ -122,7 +152,12 @@ export async function POST(req: Request) {
     }));
 
     if (!key) {
-      const label = effectiveSettings.provider === "nvidia" ? "NVIDIA_API_KEY" : "DeepSeek API Key";
+      const label =
+        effectiveSettings.provider === "nvidia"
+          ? "NVIDIA_API_KEY"
+          : effectiveSettings.provider === "mimo"
+            ? "MIMO_API_KEY"
+            : "DeepSeek API Key";
       return new Response(JSON.stringify({ error: `缺少 ${label}` }), {
         status: 400,
         headers: { "Content-Type": "application/json" },

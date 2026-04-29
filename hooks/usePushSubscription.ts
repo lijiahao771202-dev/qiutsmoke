@@ -2,6 +2,19 @@
 
 import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import * as localDB from "@/lib/localDB";
+
+const AUTH_CACHE_KEY = "rain_auth_cache";
+
+function getCachedUserId(): string | null {
+    try {
+        const cached = localStorage.getItem(AUTH_CACHE_KEY);
+        const user = cached ? JSON.parse(cached) : null;
+        return typeof user?.id === "string" ? user.id : null;
+    } catch {
+        return null;
+    }
+}
 
 /**
  * 注册 Service Worker
@@ -77,10 +90,13 @@ export function usePushSubscription() {
                 });
             }
 
-            // 检查用户是否已登录
-            const supabase = createClient();
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
+            // 优先使用本地缓存，避免启动时等待 Supabase auth 网络请求。
+            const cachedUserId = getCachedUserId();
+            const supabase = cachedUserId ? null : createClient();
+            const sessionUserId = cachedUserId
+                ? cachedUserId
+                : (await supabase!.auth.getSession()).data.session?.user?.id ?? null;
+            if (!sessionUserId) {
                 console.log("[Push] 用户未登录，跳过订阅");
                 return;
             }
@@ -91,7 +107,7 @@ export function usePushSubscription() {
 
                 if (existingSub) {
                     console.log("[Push] 已有订阅，检查是否需要更新...");
-                    await saveSubscription(user.id, existingSub);
+                    await saveSubscription(sessionUserId, existingSub);
                     hasSubscribed.current = true;
                     return;
                 }
@@ -139,7 +155,7 @@ export function usePushSubscription() {
                 });
 
                 console.log("[Push] 订阅成功，保存到数据库...");
-                await saveSubscription(user.id, subscription);
+                await saveSubscription(sessionUserId, subscription);
                 hasSubscribed.current = true;
                 console.log("[Push] ✅ 推送订阅完成");
             } catch (e) {
@@ -158,14 +174,26 @@ async function saveSubscription(userId: string, subscription: PushSubscription) 
     try {
         const supabase = createClient();
         const subJson = subscription.toJSON();
-
-        // 数据库表结构: endpoint, p256dh, auth（分开的字段）
-        const { error } = await supabase.from("push_subscriptions").upsert({
+        const record = {
+            id: userId,
             user_id: userId,
-            endpoint: subJson.endpoint,
+            endpoint: subJson.endpoint || "",
             p256dh: subJson.keys?.p256dh || "",
             auth: subJson.keys?.auth || "",
             updated_at: new Date().toISOString(),
+            syncStatus: "dirty" as const,
+            updatedAt: new Date().toISOString(),
+        };
+
+        await localDB.put("push_subscriptions", record);
+
+        // 数据库表结构: endpoint, p256dh, auth（分开的字段）
+        const { error } = await supabase.from("push_subscriptions").upsert({
+            user_id: record.user_id,
+            endpoint: record.endpoint,
+            p256dh: record.p256dh,
+            auth: record.auth,
+            updated_at: record.updated_at,
         }, {
             onConflict: "user_id"
         });

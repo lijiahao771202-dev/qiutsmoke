@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     try {
         const supabase = getSupabaseClient();
         const body = await req.json();
-        const { title, content, voiceId, voice_id, rate, guidanceLevel, guidance_level } = body;
+        const { id, title, content, voiceId, voice_id, rate, guidanceLevel, guidance_level } = body;
 
         console.log(`[TTS Cards POST Impl] Received: title=${title}, voice=${voice_id || voiceId}, content_len=${content?.length}`);
 
@@ -59,6 +59,7 @@ export async function POST(req: Request) {
         const { data, error } = await supabase
             .from('tts_cards')
             .insert({
+                ...(id ? { id } : {}),
                 title: title || undefined, // undefined will likely skip if column has default or insert null. If DB column is not not-null it works.
                 content,
                 voice_id: voice_id || voiceId || 'zh-CN-XiaohanNeural',

@@ -22,6 +22,11 @@ export async function ensureTables() {
     cosyvoice_instruction text,
     cosyvoice_seed integer,
     cosyvoice_voice_id text,
+    mimo_tts_model text,
+    mimo_tts_voice text,
+    mimo_tts_instruction text,
+    mimo_tts_voice_design_prompt text,
+    mimo_tts_clone_voice_url text,
     qwen_tts_model text,
     qwen_tts_voice text,
     qwen_tts_voice_mode text,
@@ -48,6 +53,11 @@ export async function ensureTables() {
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_instruction text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_seed integer`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cosyvoice_voice_id text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS mimo_tts_model text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS mimo_tts_voice text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS mimo_tts_instruction text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS mimo_tts_voice_design_prompt text`;
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS mimo_tts_clone_voice_url text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_model text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_voice text`;
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS qwen_tts_voice_mode text`;

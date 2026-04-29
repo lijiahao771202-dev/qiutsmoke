@@ -17,6 +17,17 @@ import {
   type TTSSettings,
 } from "@/lib/tts-settings";
 import {
+  buildMimoTTSPayload,
+  buildMimoTTSInstructionWithRate,
+  decodeMimoTTSAudioBase64,
+  extractMimoTTSAudioBase64,
+  getMimoTTSResponseErrorMessage,
+  getMimoTTSEndpoint,
+  postMimoTTSJsonWithCurl,
+  resolveMimoTTSCloneVoiceSource,
+  shouldRetryMimoTTSResponse,
+} from "@/lib/mimo-tts";
+import {
   buildQwenTTSPayload,
   downloadQwenTTSAudio,
   extractQwenTTSAudioUrl,
@@ -64,6 +75,11 @@ type TTSRequest = {
   qwenTTSSpeed?: unknown;
   qwenTTSLanguageType?: unknown;
   qwenTTSInstructions?: unknown;
+  mimoTTSModel?: unknown;
+  mimoTTSVoice?: unknown;
+  mimoTTSInstruction?: unknown;
+  mimoTTSVoiceDesignPrompt?: unknown;
+  mimoTTSCloneVoiceUrl?: unknown;
   cosyvoice35PlusModel?: unknown;
   cosyvoice35PlusVoiceId?: unknown;
   cosyvoice35FlashVoiceId?: unknown;
@@ -86,6 +102,11 @@ async function getPersistedTTSSettings(): Promise<TTSSettings> {
     cosyvoiceInstruction: jar.get("cosyvoice_instruction")?.value,
     cosyvoiceSeed: jar.get("cosyvoice_seed")?.value,
     cosyvoiceVoiceId: jar.get("cosyvoice_voice_id")?.value,
+    mimoTTSModel: jar.get("mimo_tts_model")?.value,
+    mimoTTSVoice: jar.get("mimo_tts_voice")?.value,
+    mimoTTSInstruction: jar.get("mimo_tts_instruction")?.value,
+    mimoTTSVoiceDesignPrompt: jar.get("mimo_tts_voice_design_prompt")?.value,
+    mimoTTSCloneVoiceUrl: jar.get("mimo_tts_clone_voice_url")?.value,
     qwenTTSModel: jar.get("qwen_tts_model")?.value,
     qwenTTSVoice: jar.get("qwen_tts_voice")?.value,
     qwenTTSVoiceMode: jar.get("qwen_tts_voice_mode")?.value,
@@ -120,6 +141,11 @@ async function getPersistedTTSSettings(): Promise<TTSSettings> {
       cosyvoice_instruction,
       cosyvoice_seed,
       cosyvoice_voice_id,
+      mimo_tts_model,
+      mimo_tts_voice,
+      mimo_tts_instruction,
+      mimo_tts_voice_design_prompt,
+      mimo_tts_clone_voice_url,
       qwen_tts_model,
       qwen_tts_voice,
       qwen_tts_voice_mode,
@@ -138,12 +164,19 @@ async function getPersistedTTSSettings(): Promise<TTSSettings> {
     FROM user_settings
     WHERE user_id = ${uid}
   `;
-  return normalizeTTSSettings({
+  const normalized = normalizeTTSSettings({
     provider: cookieValues.provider || rows.rows?.[0]?.tts_provider,
     cosyvoiceSpeed: cookieValues.cosyvoiceSpeed || rows.rows?.[0]?.cosyvoice_speed,
     cosyvoiceInstruction: cookieValues.cosyvoiceInstruction || rows.rows?.[0]?.cosyvoice_instruction,
     cosyvoiceSeed: cookieValues.cosyvoiceSeed || rows.rows?.[0]?.cosyvoice_seed,
     cosyvoiceVoiceId: cookieValues.cosyvoiceVoiceId || rows.rows?.[0]?.cosyvoice_voice_id,
+    mimoTTSModel: cookieValues.mimoTTSModel || rows.rows?.[0]?.mimo_tts_model,
+    mimoTTSVoice: cookieValues.mimoTTSVoice || rows.rows?.[0]?.mimo_tts_voice,
+    mimoTTSInstruction: cookieValues.mimoTTSInstruction || rows.rows?.[0]?.mimo_tts_instruction,
+    mimoTTSVoiceDesignPrompt:
+      cookieValues.mimoTTSVoiceDesignPrompt || rows.rows?.[0]?.mimo_tts_voice_design_prompt,
+    mimoTTSCloneVoiceUrl:
+      cookieValues.mimoTTSCloneVoiceUrl || rows.rows?.[0]?.mimo_tts_clone_voice_url,
     qwenTTSModel: cookieValues.qwenTTSModel || rows.rows?.[0]?.qwen_tts_model,
     qwenTTSVoice: cookieValues.qwenTTSVoice || rows.rows?.[0]?.qwen_tts_voice,
     qwenTTSVoiceMode: cookieValues.qwenTTSVoiceMode || rows.rows?.[0]?.qwen_tts_voice_mode,
@@ -171,6 +204,11 @@ async function getPersistedTTSSettings(): Promise<TTSSettings> {
     cosyvoice35PlusLanguageHint:
       cookieValues.cosyvoice35PlusLanguageHint || rows.rows?.[0]?.cosyvoice_35_plus_language_hint,
   });
+  return {
+    ...normalized,
+    mimoTTSCloneVoiceUrl:
+      normalized.mimoTTSCloneVoiceUrl || process.env.DEFAULT_MIMO_TTS_CLONE_VOICE_URL || "",
+  };
 }
 
 function splitForGoogleTTS(input: string, maxLen = 180): string[] {
@@ -443,6 +481,120 @@ async function synthesizeQwenTTSAudio(text: string, settings: TTSSettings) {
   });
 }
 
+async function synthesizeMimoTTSAudio(text: string, settings: TTSSettings, rate = DEFAULT_RATE) {
+  const apiKey = process.env.MIMO_API_KEY || process.env.MIMO_TTS_API_KEY;
+  if (!apiKey) {
+    return new Response(JSON.stringify({ error: "缺少 MIMO_API_KEY", provider: "mimotts" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const endpoint = getMimoTTSEndpoint(process.env.MIMO_TTS_BASE_URL);
+  const effectiveSettings =
+    settings.mimoTTSModel === "mimo-v2.5-tts-voiceclone" &&
+    !settings.mimoTTSCloneVoiceUrl.trim() &&
+    process.env.DEFAULT_MIMO_TTS_CLONE_VOICE_URL
+      ? { ...settings, mimoTTSCloneVoiceUrl: process.env.DEFAULT_MIMO_TTS_CLONE_VOICE_URL }
+      : settings;
+
+  if (effectiveSettings.mimoTTSModel === "mimo-v2.5-tts-voiceclone" && !effectiveSettings.mimoTTSCloneVoiceUrl.trim()) {
+    return new Response(
+      JSON.stringify({
+        error: "MiMo voice clone 缺少参考音频",
+        provider: "mimotts",
+        model: effectiveSettings.mimoTTSModel,
+        details: "请先填写参考音频路径或 URL。",
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const timeoutMs = Number(process.env.MIMO_TTS_TIMEOUT_MS || 120000);
+  const maxAttempts = Math.max(1, Number.parseInt(process.env.MIMO_TTS_SYNTH_RETRIES || "4", 10));
+
+  try {
+    const resolvedCloneVoice =
+      effectiveSettings.mimoTTSModel === "mimo-v2.5-tts-voiceclone"
+        ? await resolveMimoTTSCloneVoiceSource(effectiveSettings.mimoTTSCloneVoiceUrl)
+        : undefined;
+    const payload = buildMimoTTSPayload(
+      text,
+      {
+        ...effectiveSettings,
+        mimoTTSInstruction: buildMimoTTSInstructionWithRate(effectiveSettings.mimoTTSInstruction, rate),
+      },
+      resolvedCloneVoice
+    );
+
+    let lastDetails = "";
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let data: unknown;
+      try {
+        data = await postMimoTTSJsonWithCurl(endpoint, apiKey, payload, timeoutMs);
+      } catch (error) {
+        lastDetails = error instanceof Error ? error.message : String(error);
+        if (attempt < maxAttempts && shouldRetryMimoTTSResponse(lastDetails)) {
+          await new Promise((resolve) => setTimeout(resolve, 1200 * attempt));
+          continue;
+        }
+        throw error;
+      }
+
+      const audioBase64 = extractMimoTTSAudioBase64(data);
+
+      if (audioBase64) {
+        const audioBuffer = decodeMimoTTSAudioBase64(audioBase64);
+        return new Response(new Uint8Array(audioBuffer), {
+          status: 200,
+          headers: {
+            "Content-Type": "audio/wav",
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "no-cache",
+            "X-TTS-Impl": "mimotts",
+            "X-TTS-Model": effectiveSettings.mimoTTSModel,
+          },
+        });
+      }
+
+      lastDetails = getMimoTTSResponseErrorMessage(data) || "MiMo 返回中缺少音频数据";
+      if (attempt < maxAttempts && shouldRetryMimoTTSResponse(data)) {
+        await new Promise((resolve) => setTimeout(resolve, 1200 * attempt));
+        continue;
+      }
+
+      return new Response(
+        JSON.stringify({
+          error: "MiMo TTS synthesis failed",
+          provider: "mimotts",
+          model: effectiveSettings.mimoTTSModel,
+          details: lastDetails,
+          attempts: attempt,
+        }),
+        {
+          status: 502,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    throw new Error(lastDetails || "MiMo TTS synthesis failed after retries.");
+  } catch (error) {
+    return new Response(
+      JSON.stringify({
+        error: "MiMo TTS synthesis failed",
+        provider: "mimotts",
+        model: effectiveSettings.mimoTTSModel,
+        details: error instanceof Error ? error.message : String(error),
+      }),
+      {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+}
+
 async function synthesizeCosyVoice35PlusTTS(
   text: string,
   settings: TTSSettings,
@@ -564,6 +716,20 @@ export async function POST(req: Request) {
       cosyvoiceInstruction: body.cosyvoiceInstruction ?? persistedSettings.cosyvoiceInstruction,
       cosyvoiceSeed: body.cosyvoiceSeed ?? persistedSettings.cosyvoiceSeed,
       cosyvoiceVoiceId: body.cosyvoiceVoiceId ?? persistedSettings.cosyvoiceVoiceId,
+      mimoTTSModel: body.mimoTTSModel ?? persistedSettings.mimoTTSModel,
+      mimoTTSVoice: body.mimoTTSVoice ?? persistedSettings.mimoTTSVoice,
+      mimoTTSInstruction:
+        typeof body.mimoTTSInstruction === "string"
+          ? body.mimoTTSInstruction
+          : persistedSettings.mimoTTSInstruction,
+      mimoTTSVoiceDesignPrompt:
+        typeof body.mimoTTSVoiceDesignPrompt === "string"
+          ? body.mimoTTSVoiceDesignPrompt
+          : persistedSettings.mimoTTSVoiceDesignPrompt,
+      mimoTTSCloneVoiceUrl:
+        typeof body.mimoTTSCloneVoiceUrl === "string"
+          ? body.mimoTTSCloneVoiceUrl
+          : persistedSettings.mimoTTSCloneVoiceUrl,
       qwenTTSModel: isQwenTTSModel(body.qwenTTSModel) ? body.qwenTTSModel : persistedSettings.qwenTTSModel,
       qwenTTSVoice: isQwenTTSVoice(body.qwenTTSVoice) ? body.qwenTTSVoice : persistedSettings.qwenTTSVoice,
       qwenTTSVoiceMode: isQwenTTSVoiceMode(body.qwenTTSVoiceMode)
@@ -608,11 +774,16 @@ export async function POST(req: Request) {
         : persistedSettings.cosyvoice35PlusLanguageHint,
     });
     const provider = settings.provider;
+    const voice = String(body.voice || DEFAULT_VOICE).trim() || DEFAULT_VOICE;
+    const rate = String(body.rate || DEFAULT_RATE).trim() || DEFAULT_RATE;
     if (provider === "cosyvoice") {
       return synthesizeCosyVoiceTTS(text, settings);
     }
     if (provider === "qwentts") {
       return synthesizeQwenTTSAudio(text, settings);
+    }
+    if (provider === "mimotts") {
+      return synthesizeMimoTTSAudio(text, settings, rate);
     }
     if (provider === "cosyvoice35plus") {
       return synthesizeCosyVoice35PlusTTS(text, settings, {
@@ -620,8 +791,6 @@ export async function POST(req: Request) {
       });
     }
 
-    const voice = String(body.voice || DEFAULT_VOICE).trim() || DEFAULT_VOICE;
-    const rate = String(body.rate || DEFAULT_RATE).trim() || DEFAULT_RATE;
     return synthesizeEdgeTTS(text, voice, rate);
   } catch (error) {
     return new Response(

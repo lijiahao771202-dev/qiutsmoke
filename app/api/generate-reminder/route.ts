@@ -2,6 +2,11 @@ import { cookies } from "next/headers";
 import { sql } from "@vercel/postgres";
 import { normalizeAISettings } from "../../../lib/ai-models";
 import { buildDeepSeekChatCompletionBody } from "../../../lib/deepseek-chat";
+import {
+    buildMimoChatCompletionBody,
+    getMimoChatCompletionsUrl,
+    resolveMimoAIKey,
+} from "../../../lib/mimo-ai";
 import { ensureTables, hasDb } from "@/lib/db";
 
 async function resolveStoredAISettings() {
@@ -53,17 +58,27 @@ function getUpstreamConfig(settings: ReturnType<typeof normalizeAISettings>, key
                     stream: tools ? false : true,
                     max_tokens: tools ? 150 : undefined,
                 }
-                : buildDeepSeekChatCompletionBody({
-                    model,
-                    messages,
-                    stream: tools ? false : true,
-                    thinkingEnabled: settings.deepseekThinkingEnabled,
-                    reasoningEffort: settings.deepseekReasoningEffort,
-                    maxTokens: tools ? 150 : undefined,
-                    temperature: 0.6,
-                    frequencyPenalty: 0.2,
-                    presencePenalty: 0.2,
-                });
+                : provider === "mimo"
+                    ? buildMimoChatCompletionBody({
+                        model,
+                        messages,
+                        stream: tools ? false : true,
+                        maxTokens: tools ? 150 : undefined,
+                        temperature: 0.6,
+                        frequencyPenalty: 0.2,
+                        presencePenalty: 0.2,
+                    })
+                    : buildDeepSeekChatCompletionBody({
+                        model,
+                        messages,
+                        stream: tools ? false : true,
+                        thinkingEnabled: settings.deepseekThinkingEnabled,
+                        reasoningEffort: settings.deepseekReasoningEffort,
+                        maxTokens: tools ? 150 : undefined,
+                        temperature: 0.6,
+                        frequencyPenalty: 0.2,
+                        presencePenalty: 0.2,
+                    });
         if (tools) {
             payload.tools = tools;
             payload.tool_choice = tool_choice;
@@ -74,6 +89,17 @@ function getUpstreamConfig(settings: ReturnType<typeof normalizeAISettings>, key
     if (provider === "nvidia") {
         return {
             url: "https://integrate.api.nvidia.com/v1/chat/completions",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${key}`,
+            },
+            body: configWrapper
+        };
+    }
+
+    if (provider === "mimo") {
+        return {
+            url: getMimoChatCompletionsUrl(),
             headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${key}`,
@@ -112,6 +138,8 @@ export async function POST(req: Request) {
         const key =
             effectiveSettings.provider === "nvidia"
                 ? process.env.NVIDIA_API_KEY
+                : effectiveSettings.provider === "mimo"
+                    ? resolveMimoAIKey()
                 : body?.apiKey || process.env.DEEPSEEK_API_KEY;
 
         console.log("[AI Request][generate-reminder][start]", JSON.stringify({
@@ -130,7 +158,13 @@ export async function POST(req: Request) {
         }));
 
         if (!key) {
-            return new Response(JSON.stringify({ error: "缺少 API Key" }), {
+            const label =
+                effectiveSettings.provider === "nvidia"
+                    ? "NVIDIA_API_KEY"
+                    : effectiveSettings.provider === "mimo"
+                        ? "MIMO_API_KEY"
+                        : "DeepSeek API Key";
+            return new Response(JSON.stringify({ error: `缺少 ${label}` }), {
                 status: 400,
                 headers: { "Content-Type": "application/json" },
             });

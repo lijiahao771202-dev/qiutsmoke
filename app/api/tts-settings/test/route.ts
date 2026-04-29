@@ -4,6 +4,14 @@ import {
   type TTSSettings,
 } from "@/lib/tts-settings";
 import {
+  buildMimoTTSPayload,
+  decodeMimoTTSAudioBase64,
+  extractMimoTTSAudioBase64,
+  getMimoTTSEndpoint,
+  postMimoTTSJsonWithCurl,
+  resolveMimoTTSCloneVoiceSource,
+} from "@/lib/mimo-tts";
+import {
   buildQwenTTSPayload,
   extractQwenTTSAudioUrl,
   fetchQwenTTS,
@@ -117,6 +125,75 @@ async function testQwenTTS(settings: TTSSettings) {
   });
 }
 
+async function testMimoTTS(settings: TTSSettings) {
+  const apiKey = process.env.MIMO_API_KEY || process.env.MIMO_TTS_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({ ok: false, provider: "mimotts", error: "缺少 MIMO_API_KEY" }, { status: 400 });
+  }
+
+  const endpoint = getMimoTTSEndpoint(process.env.MIMO_TTS_BASE_URL);
+  const effectiveSettings =
+    settings.mimoTTSModel === "mimo-v2.5-tts-voiceclone" &&
+    !settings.mimoTTSCloneVoiceUrl.trim() &&
+    process.env.DEFAULT_MIMO_TTS_CLONE_VOICE_URL
+      ? { ...settings, mimoTTSCloneVoiceUrl: process.env.DEFAULT_MIMO_TTS_CLONE_VOICE_URL }
+      : settings;
+
+  if (effectiveSettings.mimoTTSModel === "mimo-v2.5-tts-voiceclone" && !effectiveSettings.mimoTTSCloneVoiceUrl.trim()) {
+    return NextResponse.json(
+      {
+        ok: false,
+        provider: "mimotts",
+        model: effectiveSettings.mimoTTSModel,
+        error: "缺少 MiMo 克隆音色参考音频路径或 URL",
+      },
+      { status: 400 }
+    );
+  }
+
+  const timeoutMs = Number(process.env.MIMO_TTS_TIMEOUT_MS || 120000);
+  const testText = "慢慢吸气，慢慢呼气。";
+
+  try {
+    const resolvedCloneVoice = effectiveSettings.mimoTTSModel === "mimo-v2.5-tts-voiceclone"
+      ? await resolveMimoTTSCloneVoiceSource(effectiveSettings.mimoTTSCloneVoiceUrl)
+      : undefined;
+    const payload = buildMimoTTSPayload(testText, effectiveSettings, resolvedCloneVoice);
+    const data = await postMimoTTSJsonWithCurl(endpoint, apiKey, payload, timeoutMs);
+    const audioBase64 = extractMimoTTSAudioBase64(data);
+    if (!audioBase64) {
+      return NextResponse.json(
+        {
+          ok: false,
+          provider: "mimotts",
+          model: effectiveSettings.mimoTTSModel,
+          error: typeof data === "object" ? JSON.stringify(data).slice(0, 500) : "MiMo 返回中缺少音频数据",
+        },
+        { status: 502 }
+      );
+    }
+
+    const audioBuffer = decodeMimoTTSAudioBase64(audioBase64);
+    return NextResponse.json({
+      ok: true,
+      provider: "mimotts",
+      model: effectiveSettings.mimoTTSModel,
+      voice: effectiveSettings.mimoTTSModel === "mimo-v2.5-tts" ? effectiveSettings.mimoTTSVoice : "",
+      bytes: audioBuffer.byteLength,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        provider: "mimotts",
+        model: effectiveSettings.mimoTTSModel,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      { status: 502 }
+    );
+  }
+}
+
 async function testCosyVoice35Plus(settings: TTSSettings) {
   const apiKey = process.env.DASHSCOPE_API_KEY || process.env.COSYVOICE_CLOUD_API_KEY;
   if (!apiKey) {
@@ -174,6 +251,9 @@ async function handle(settings: TTSSettings) {
   }
   if (settings.provider === "qwentts") {
     return testQwenTTS(settings);
+  }
+  if (settings.provider === "mimotts") {
+    return testMimoTTS(settings);
   }
   if (settings.provider === "cosyvoice35plus") {
     return testCosyVoice35Plus(settings);

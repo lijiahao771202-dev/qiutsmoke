@@ -10,7 +10,7 @@
  */
 
 const DB_NAME = 'rain-local-data';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 // 所有需要本地缓存的数据表
 const STORES = [
@@ -20,10 +20,35 @@ const STORES = [
     'meditation_topics',
     'meditation_sessions',
     'user_danger_times',
+    'user_settings',
+    'user_profile',
+    'user_prompts',
+    'reminder_settings',
+    'push_subscriptions',
+    'sync_outbox',
     'sync_meta',         // 存储每张表的最后同步时间
 ] as const;
 
 export type StoreName = typeof STORES[number];
+export type SyncStatus = 'synced' | 'dirty' | 'pending_delete';
+
+export interface LocalRecordMeta {
+    syncStatus?: SyncStatus;
+    updatedAt?: string;
+    cloudId?: string;
+}
+
+export interface SyncOutboxItem {
+    id: string;
+    store: StoreName;
+    recordId?: string;
+    apiPath: string;
+    method: 'POST' | 'PATCH' | 'DELETE';
+    body?: unknown;
+    createdAt: string;
+    attempts?: number;
+    lastError?: string;
+}
 
 // ─── 数据库连接（单例） ───
 
@@ -212,4 +237,43 @@ export async function setLastSyncTime(storeName: StoreName): Promise<void> {
     } catch (e) {
         console.warn(`[LocalDB] setLastSyncTime(${storeName}) failed:`, e);
     }
+}
+
+// ─── 轻量同步队列 ───
+
+function createId(prefix = 'local'): string {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+        return crypto.randomUUID();
+    }
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** 将一次云端写入放入后台同步队列 */
+export async function enqueueSync(item: Omit<SyncOutboxItem, 'id' | 'createdAt'> & Partial<Pick<SyncOutboxItem, 'id' | 'createdAt'>>): Promise<SyncOutboxItem> {
+    const queued: SyncOutboxItem = {
+        id: item.id ?? createId('sync'),
+        createdAt: item.createdAt ?? new Date().toISOString(),
+        attempts: item.attempts ?? 0,
+        ...item,
+    };
+    await put('sync_outbox', queued);
+    return queued;
+}
+
+/** 读取待同步任务，按创建顺序执行 */
+export async function getSyncOutbox(): Promise<SyncOutboxItem[]> {
+    const items = await getAll<SyncOutboxItem>('sync_outbox');
+    return items.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
+
+export async function removeSyncOutboxItem(id: string): Promise<void> {
+    await remove('sync_outbox', id);
+}
+
+export async function markSyncOutboxFailed(item: SyncOutboxItem, error: unknown): Promise<void> {
+    await put('sync_outbox', {
+        ...item,
+        attempts: (item.attempts ?? 0) + 1,
+        lastError: error instanceof Error ? error.message : String(error),
+    });
 }

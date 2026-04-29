@@ -46,7 +46,16 @@ export async function POST(req: Request) {
     }
     await ensureTables();
     await sql`INSERT INTO users(id) VALUES (${uid}) ON CONFLICT (id) DO NOTHING`;
-    const text = await req.text();
+    const raw = await req.text();
+    let text = raw;
+    if ((req.headers.get("content-type") || "").includes("application/json")) {
+      try {
+        const parsed = JSON.parse(raw);
+        text = typeof parsed?.prompt === "string" ? parsed.prompt : raw;
+      } catch {
+        text = raw;
+      }
+    }
     await sql`INSERT INTO user_settings(user_id, system_prompt, updated_at) VALUES (${uid}, ${text || ""}, now())
       ON CONFLICT (user_id) DO UPDATE SET system_prompt = EXCLUDED.system_prompt, updated_at = now()`;
     const res = new NextResponse("ok", { status: 200 });

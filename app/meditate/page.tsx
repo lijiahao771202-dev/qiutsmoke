@@ -2,6 +2,7 @@
 
 
 import { useState, useRef, useEffect, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { useHapticBreathing } from "@/lib/hooks/useHapticBreathing";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,11 +11,10 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import AuthGuard from "@/components/AuthGuard";
 import { GlassCard } from "@/components/ui/GlassCard";
-import { useMeditationTopics } from "@/lib/hooks/useData";
+import { createMeditationSession, useMeditationTopics } from "@/lib/hooks/useData";
 import { useBackgroundAudio } from "@/hooks/useBackgroundAudio";
 import { useWhiteNoise } from "@/hooks/useWhiteNoise";
 import { getApiUrl } from "@/lib/config";
-import ProMeditationPlayer from "@/components/meditation/ProMeditationPlayer";
 import {
     COSYVOICE_PROFILE,
     DEFAULT_COSYVOICE_VOICE_ID,
@@ -23,6 +23,19 @@ import {
     type TTSProvider,
     type TTSSettings,
 } from "@/lib/tts-settings";
+import {
+    getLocalSingleton,
+    saveLocalSingleton,
+    LOCAL_AI_SETTINGS_ID,
+    LOCAL_PROMPTS_ID,
+    LOCAL_SYSTEM_PROMPT_ID,
+    LOCAL_TTS_SETTINGS_ID,
+} from "@/lib/local-settings";
+
+const ProMeditationPlayer = dynamic(() => import("@/components/meditation/ProMeditationPlayer"), {
+    ssr: false,
+    loading: () => null,
+});
 
 // 🚀 引导模式常量
 
@@ -236,13 +249,13 @@ export default function MeditatePage() {
 
         (async () => {
             try {
-                const res = await fetch(getApiUrl("/api/tts-settings"), {
-                    method: "GET",
-                    cache: "no-store",
+                const data = await getLocalSingleton("user_settings", LOCAL_TTS_SETTINGS_ID, {
+                    provider: ttsProvider,
+                    cosyvoiceSpeed,
+                    cosyvoiceInstruction,
+                    cosyvoiceSeed,
+                    cosyvoiceVoiceId,
                 });
-                if (!res.ok) return;
-
-                const data = await res.json();
                 if (data?.provider === "edge" || data?.provider === "cosyvoice") {
                     setTTSProvider(data.provider);
                 }
@@ -263,22 +276,17 @@ export default function MeditatePage() {
 
         (async () => {
             try {
-                const res = await fetch(getApiUrl('/api/prompts'));
-                if (res.ok) {
-                    const serverObj = await res.json();
-                    if (serverObj && typeof serverObj === 'object' && Object.keys(serverObj).length > 0) {
-                        setEditedPrompts(serverObj);
-                    }
+                const localPrompts = await getLocalSingleton<Record<string, string>>("user_prompts", LOCAL_PROMPTS_ID, {});
+                if (localPrompts && typeof localPrompts === 'object' && Object.keys(localPrompts).length > 0) {
+                    setEditedPrompts(localPrompts);
                 }
             } catch { }
             try {
-                const res = await fetch(getApiUrl('/api/system-prompt'));
-                if (res.ok) {
-                    const text = await res.text();
-                    if (text && text.trim().length > 0) {
-                        setGlobalSystemPrompt(text);
-                        try { localStorage.setItem("global_system_prompt", text); } catch { }
-                    } else {
+                const text = await getLocalSingleton("user_settings", LOCAL_SYSTEM_PROMPT_ID, "");
+                if (text && text.trim().length > 0) {
+                    setGlobalSystemPrompt(text);
+                    try { localStorage.setItem("global_system_prompt", text); } catch { }
+                } else {
                         // Default system prompt
                         const DEFAULT_SYSTEM = `你是一位专业的冥想引导师与资深“节奏导演”。你的唯一任务是生成具有强烈的画面感和真实节奏感的中文冥想脚本。
 
@@ -300,7 +308,6 @@ export default function MeditatePage() {
 - 使用指令：[pause Xs] 和 [rate +/-N%]。
 - 严格只输出纯脚本文本，不要标题、不要前言、不要后缀解释。`;
                         setGlobalSystemPrompt(DEFAULT_SYSTEM);
-                    }
                 }
             } catch { }
         })();
@@ -1090,15 +1097,9 @@ export default function MeditatePage() {
                     setIsGenerating(false);
                 });
 
-                let aiSettings = { provider: "deepseek", model: "deepseek-chat" };
+                let aiSettings: any = { provider: "deepseek", model: "deepseek-chat" };
                 try {
-                    const settingsRes = await fetch(getApiUrl("/api/ai-settings"), {
-                        method: "GET",
-                        cache: "no-store"
-                    });
-                    if (settingsRes.ok) {
-                        aiSettings = await settingsRes.json();
-                    }
+                    aiSettings = await getLocalSingleton("user_settings", LOCAL_AI_SETTINGS_ID, aiSettings);
                 } catch (error) {
                     console.warn("[Meditate] Failed to load AI settings for Electron:", error);
                 }
@@ -1467,18 +1468,11 @@ export default function MeditatePage() {
 
         // Record Session Start
         try {
-            fetch(getApiUrl('/api/meditation/sessions'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    topicId: id,
-                    topicName: topic?.title || "未知冥想"
-                })
-            }).then(async res => {
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data?.id) setCurrentSessionId(data.id);
-                }
+            createMeditationSession({
+                topicId: id,
+                topicName: topic?.title || "未知冥想",
+            }).then((data) => {
+                if (data?.id) setCurrentSessionId(data.id);
             });
         } catch (e) {
             console.error("Failed to start session recording", e);
@@ -1524,13 +1518,12 @@ export default function MeditatePage() {
         if (!editingTopicId) return;
 
         // Optimistically update
-        setEditedPrompts(prev => ({ ...prev, [editingTopicId]: draftPrompt }));
+        const nextPrompts = { ...editedPrompts, [editingTopicId]: draftPrompt };
+        setEditedPrompts(nextPrompts);
 
         try {
-            await fetch(getApiUrl('/api/prompts'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [editingTopicId]: draftPrompt })
+            await saveLocalSingleton("user_prompts", LOCAL_PROMPTS_ID, nextPrompts, {
+                apiPath: "/api/prompts",
             });
             setShowPromptEdit(false);
         } catch (err) {
@@ -1861,12 +1854,11 @@ export default function MeditatePage() {
                                             <button
                                                 onClick={async () => {
                                                     try {
-                                                        const res = await fetch(getApiUrl('/api/system-prompt'), {
-                                                            method: 'POST',
-                                                            headers: { 'Content-Type': 'application/json' },
-                                                            body: JSON.stringify({ prompt: globalSystemPrompt })
+                                                        await saveLocalSingleton("user_settings", LOCAL_SYSTEM_PROMPT_ID, globalSystemPrompt, {
+                                                            apiPath: "/api/system-prompt",
+                                                            body: { prompt: globalSystemPrompt },
                                                         });
-                                                        if (res.ok) alert("已保存到服务器");
+                                                        alert("已保存到本地，会在后台同步");
                                                     } catch (e) { alert("保存失败"); }
                                                 }}
                                                 className="text-xs text-rose-400 hover:text-rose-300"

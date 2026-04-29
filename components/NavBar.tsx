@@ -1,27 +1,66 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Wind, Droplets, Sparkles, BarChart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { motion } from "framer-motion";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export default function NavBar() {
     const pathname = usePathname();
+    const router = useRouter();
     const { triggerLight } = useHaptics();
+    const [optimisticHref, setOptimisticHref] = useState<string | null>(null);
+    const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const tabs = [
+    const tabs = useMemo(() => [
         { href: "/", icon: Wind, label: "Home" },
         { href: "/meditate", icon: Droplets, label: "Meditate" },
         { href: "/tts-studio", icon: Sparkles, label: "TTS Studio" },
         { href: "/stats", icon: BarChart, label: "Statistics" },
-    ];
+    ], []);
+
+    useEffect(() => {
+        for (const tab of tabs) {
+            router.prefetch(tab.href);
+        }
+    }, [router, tabs]);
+
+    useEffect(() => {
+        setOptimisticHref(null);
+        if (resetTimerRef.current) {
+            clearTimeout(resetTimerRef.current);
+            resetTimerRef.current = null;
+        }
+    }, [pathname]);
+
+    useEffect(() => {
+        return () => {
+            if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+        };
+    }, []);
+
+    const committedHref = tabs.find((tab) => {
+        if (tab.href === "/") return pathname === "/";
+        return pathname === tab.href || pathname?.startsWith(`${tab.href}/`);
+    })?.href ?? "/";
+    const activeHref = optimisticHref ?? committedHref;
+
+    const showImmediateFeedback = (href: string) => {
+        setOptimisticHref(href);
+        triggerLight();
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+        resetTimerRef.current = setTimeout(() => {
+            setOptimisticHref(null);
+        }, 2500);
+    };
 
     return (
         <nav className="fixed md:top-8 md:bottom-auto bottom-[env(safe-area-inset-bottom)] left-1/2 -translate-x-1/2 z-50 rounded-[2.5rem] p-1.5 flex justify-center items-center gap-1 backdrop-blur-[60px] backdrop-saturate-[1.8] bg-white/[0.08] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.3)]">
             {tabs.map((tab) => {
-                const isActive = pathname === tab.href;
+                const isActive = activeHref === tab.href;
                 const Icon = tab.icon;
 
                 return (
@@ -29,9 +68,10 @@ export default function NavBar() {
                         key={tab.href}
                         href={tab.href}
                         prefetch={true}
-                        onClick={() => triggerLight()}
+                        onPointerDown={() => showImmediateFeedback(tab.href)}
+                        onFocus={() => router.prefetch(tab.href)}
                         className={cn(
-                            "relative px-7 py-4 md:px-8 md:py-4 rounded-full flex flex-col items-center justify-center transition-colors duration-300",
+                            "relative px-7 py-4 md:px-8 md:py-4 rounded-full flex flex-col items-center justify-center transition-colors duration-150",
                             isActive ? "text-white z-10" : "text-white/50 hover:text-white/80"
                         )}
                         style={{ WebkitTapHighlightColor: 'transparent' }}

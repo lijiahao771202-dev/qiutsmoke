@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { normalizeAISettings } from "@/lib/ai-models";
 import { buildDeepSeekChatCompletionBody } from "@/lib/deepseek-chat";
+import {
+  buildMimoChatCompletionBody,
+  getMimoChatCompletionsUrl,
+  resolveMimoAIKey,
+} from "@/lib/mimo-ai";
 
 function getUpstreamConfig(settings: ReturnType<typeof normalizeAISettings>, key: string) {
   const { provider, model } = settings;
@@ -18,6 +23,25 @@ function getUpstreamConfig(settings: ReturnType<typeof normalizeAISettings>, key
         stream: false,
         temperature: 0,
       }),
+    };
+  }
+
+  if (provider === "mimo") {
+    return {
+      url: getMimoChatCompletionsUrl(),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify(
+        buildMimoChatCompletionBody({
+          model,
+          messages: [{ role: "user", content: "Reply with OK only." }],
+          maxTokens: 16,
+          stream: false,
+          temperature: 0,
+        })
+      ),
     };
   }
 
@@ -39,6 +63,28 @@ function getUpstreamConfig(settings: ReturnType<typeof normalizeAISettings>, key
       })
     ),
   };
+}
+
+async function fetchWithProviderRetry(
+  provider: ReturnType<typeof normalizeAISettings>["provider"],
+  url: string,
+  init: RequestInit
+) {
+  const maxAttempts = provider === "mimo" ? 3 : 1;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 650 * attempt));
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 export async function POST(req: Request) {
@@ -67,17 +113,25 @@ export async function POST(req: Request) {
     const key =
       settings.provider === "nvidia"
         ? process.env.NVIDIA_API_KEY
+        : settings.provider === "mimo"
+          ? resolveMimoAIKey()
         : body?.apiKey || process.env.DEEPSEEK_API_KEY;
 
     if (!key) {
+      const label =
+        settings.provider === "nvidia"
+          ? "NVIDIA_API_KEY"
+          : settings.provider === "mimo"
+            ? "MIMO_API_KEY"
+            : "DeepSeek API Key";
       return NextResponse.json(
-        { ok: false, error: settings.provider === "nvidia" ? "缺少 NVIDIA_API_KEY" : "缺少 DeepSeek API Key" },
+        { ok: false, error: `缺少 ${label}` },
         { status: 400 }
       );
     }
 
     const upstream = getUpstreamConfig(settings, key);
-    const res = await fetch(upstream.url, {
+    const res = await fetchWithProviderRetry(settings.provider, upstream.url, {
       method: "POST",
       headers: upstream.headers,
       body: upstream.body,

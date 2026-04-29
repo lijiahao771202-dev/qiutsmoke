@@ -52,15 +52,22 @@ export async function POST(req: Request) {
     }
 
     try {
-        const { topicId, topicName } = await req.json();
+        const body = await req.json();
+        const topicId = body.topicId ?? body.topic_id;
+        const topicName = body.topicName ?? body.topic_name;
+        const startedAt = body.startedAt ?? body.started_at ?? new Date().toISOString();
+        const durationSeconds = body.durationSeconds ?? body.duration_seconds;
 
         const { data, error } = await supabase
             .from('meditation_sessions')
             .insert({
+                ...(body.id ? { id: body.id } : {}),
                 user_id: user.id,
                 topic_id: topicId,
                 topic_name: topicName,
-                started_at: new Date().toISOString(),
+                started_at: startedAt,
+                ...(body.endedAt || body.ended_at ? { ended_at: body.endedAt ?? body.ended_at } : {}),
+                ...(durationSeconds !== undefined ? { duration_seconds: durationSeconds } : {}),
             })
             .select()
             .single();
@@ -83,14 +90,16 @@ export async function PATCH(req: Request) {
     }
 
     try {
-        const { id, durationSeconds } = await req.json(); // duration override (optional) or calc from ended_at - started_at
+        const body = await req.json();
+        const { id } = body;
+        const durationSeconds = body.durationSeconds ?? body.duration_seconds; // duration override (optional)
 
         // We will update ended_at and calculate duration if not provided
         // But for simplicity, let's trust client's duration or calculate it here?
         // Let's just set ended_at = now, and let client pass duration if they tracked it precisely (e.g. paused time excluded).
         // Since we don't have pause tracking in DB, trusting client duration is better for "effective" duration.
 
-        const endedAt = new Date().toISOString();
+        const endedAt = body.endedAt ?? body.ended_at ?? new Date().toISOString();
 
         const updates: any = {
             ended_at: endedAt,

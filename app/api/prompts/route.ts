@@ -47,7 +47,21 @@ export async function POST(req: Request) {
       return res;
     }
     await ensureTables();
-    const { id, prompt } = await req.json();
+    const body = await req.json();
+    const { id, prompt } = body;
+    if (!id && body && typeof body === "object") {
+      await sql`INSERT INTO users(id) VALUES (${uid}) ON CONFLICT (id) DO NOTHING`;
+      for (const [topicId, promptValue] of Object.entries(body)) {
+        if (typeof promptValue !== "string") continue;
+        await sql`INSERT INTO user_prompts(user_id, topic_id, prompt, updated_at) VALUES (${uid}, ${String(topicId)}, ${promptValue}, now())
+          ON CONFLICT (user_id, topic_id) DO UPDATE SET prompt = EXCLUDED.prompt, updated_at = now()`;
+      }
+      const res = NextResponse.json({ ok: true }, { status: 200 });
+      if (!jar.get("uid")?.value) {
+        res.cookies.set("uid", uid, { path: "/", maxAge: 60 * 60 * 24 * 365 * 5 });
+      }
+      return res;
+    }
     if (!id || typeof prompt !== "string") {
       return NextResponse.json({ error: "参数错误" }, { status: 400 });
     }
