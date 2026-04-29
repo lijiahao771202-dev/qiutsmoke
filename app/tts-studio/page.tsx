@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Play, Trash2, Clock, Volume2, Sparkles, ChevronRight, ChevronDown, Settings, Info, Save, X, Edit2, Check, ArrowRight, Music, RotateCcw, Download, Pencil, RotateCw, Pause, Eye, MessageSquareText } from "lucide-react";
+import { Plus, Play, Trash2, Clock, Volume2, Sparkles, ChevronRight, ChevronDown, Settings, Info, Save, X, Edit2, Check, ArrowRight, Music, RotateCcw, Download, Pencil, RotateCw, Pause, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { shouldBypassWebAudioForBackgroundPlayback } from "@/lib/audio-platform";
 import AuthGuard from "@/components/AuthGuard";
@@ -22,14 +22,6 @@ import {
     appendGenerateStreamChunk,
     createGenerateStreamState,
 } from "@/lib/generate-stream-protocol";
-import {
-    appendRevisionAssistantHistory,
-    applyRewriteStreamText,
-    createRewriteStreamState,
-    restorePreviousDraftAfterRewriteFailure,
-    type GenerateRevisionMessage,
-    type RewriteStreamState,
-} from "@/lib/ai-revision-flow";
 import { estimateTTSCardPrice, type TTSPriceBadgeTone } from "@/lib/tts-pricing";
 import {
     applySynthSnapshotToSettings,
@@ -135,7 +127,6 @@ const PRICE_BADGE_STYLES: Record<TTSPriceBadgeTone, string> = {
 
 const COSYVOICE_SSML_CHUNK_CONCURRENCY = 4;
 const AI_DURATION_OPTIONS = [3, 5, 10, 15, 20, 25, 30, 35, 40] as const;
-const ENABLE_AI_REVISION_DIALOG = false;
 const TTS_STUDIO_CATEGORY_TONE_CLASSES: Record<TTSStudioCategory["tone"], { active: string; idle: string; subActive: string; subIdle: string }> = {
     neutral: {
         active: "bg-white text-black shadow-lg",
@@ -577,19 +568,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
     const [guidanceLevel, setGuidanceLevel] = useState<'light' | 'medium' | 'heavy'>('medium');
     const [ragDebug, setRagDebug] = useState<RetrievalDebugPayload | null>(null);
     const [showRag, setShowRag] = useState(false);
-    const [lastGenerationContext, setLastGenerationContext] = useState<AIGenerationContext | null>(null);
-    const [revisionHistory, setRevisionHistory] = useState<GenerateRevisionMessage[]>([]);
-    const [revisionFeedback, setRevisionFeedback] = useState("");
-    const [isRevisionDialogOpen, setIsRevisionDialogOpen] = useState(false);
-    const [isRewriting, setIsRewriting] = useState(false);
-    const isGenerationBusy = aiGenerating || isRewriting;
-
-    const resetRevisionState = () => {
-        setRevisionHistory([]);
-        setRevisionFeedback("");
-        setIsRevisionDialogOpen(false);
-        setLastGenerationContext(null);
-    };
+    const isGenerationBusy = aiGenerating;
 
     const handleSubmit = async () => {
         if (!text.trim()) return;
@@ -606,7 +585,6 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
             setText("");
             setTitle("");
             setAiPrompt("");
-            resetRevisionState();
             setIsCollapsed(true);
             triggerSuccess();
         } catch (e) {
@@ -672,7 +650,6 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
 
         setAiGenerating(true);
         setText("");
-        resetRevisionState();
         setRagDebug(null);
         setShowRag(false);
         const { totalSeconds } = buildAIGenerationTargets(aiDuration, guidanceLevel);
@@ -728,7 +705,6 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
             if (shortGenerationMessage) {
                 window.alert(shortGenerationMessage);
             }
-            setLastGenerationContext(generationContext);
             triggerSuccess(); 
         } catch (e) {
             console.error("AI 生成失败:", e);
@@ -738,100 +714,6 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
             setAiGenerating(false);
         }
     };
-
-    const handleAIRewrite = async () => {
-        const feedback = revisionFeedback.trim();
-        const previousText = text.trim();
-        if (isGenerationBusy) return;
-        if (!previousText) {
-            window.alert("请先生成或填写正文，再进行评价重写");
-            return;
-        }
-        if (!feedback) {
-            window.alert("请先写下你希望 AI 怎么改");
-            return;
-        }
-
-        const fallbackTopic = title.trim() || aiPrompt.trim();
-        const generationContext: AIGenerationContext = lastGenerationContext ?? {
-            topic: fallbackTopic,
-            details: title.trim() ? aiPrompt.trim() : "",
-            duration: aiDuration,
-            guidanceLevel,
-        };
-        if (!generationContext.topic.trim()) {
-            window.alert("缺少原始主题，无法带上下文重写");
-            return;
-        }
-
-        let rewriteState: RewriteStreamState = createRewriteStreamState(text);
-        const { totalSeconds } = buildAIGenerationTargets(generationContext.duration, generationContext.guidanceLevel);
-        setIsRewriting(true);
-        setIsRevisionDialogOpen(false);
-        setRagDebug(null);
-        setShowRag(false);
-
-        try {
-            const response = await fetch("/api/generate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    topic: generationContext.topic,
-                    details: generationContext.details,
-                    duration: generationContext.duration,
-                    guidanceLevel: generationContext.guidanceLevel,
-                    revision: {
-                        currentDraft: text,
-                        feedback,
-                        history: revisionHistory,
-                    },
-                }),
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text().catch(() => "");
-                throw new Error(errorText.trim() || `重写失败：HTTP ${response.status}`);
-            }
-
-            await readGenerateResponseStream(response, {
-                onText: (nextText) => {
-                    rewriteState = applyRewriteStreamText(rewriteState, nextText);
-                    setText(rewriteState.displayText);
-                },
-                onRagDebug: (debug) => {
-                    if (Array.isArray(debug?.references) && debug.references.length > 0) {
-                        setRagDebug(debug);
-                    }
-                },
-            });
-
-            const finalText = rewriteState.displayText;
-            const shortGenerationMessage = getShortGenerationMessage(finalText, totalSeconds);
-            if (shortGenerationMessage) {
-                window.alert(shortGenerationMessage);
-            }
-            setRevisionHistory((history) => appendRevisionAssistantHistory(history, feedback, finalText));
-            setRevisionFeedback("");
-            setLastGenerationContext(generationContext);
-            triggerSuccess();
-        } catch (e) {
-            console.error("AI 评价重写失败:", e);
-            setText(restorePreviousDraftAfterRewriteFailure(rewriteState));
-            setIsRevisionDialogOpen(true);
-            triggerHeavy();
-            window.alert(e instanceof Error ? e.message : "重写失败，请再试一次");
-        } finally {
-            setIsRewriting(false);
-        }
-    };
-
-    const revisionContext = lastGenerationContext ?? {
-        topic: title.trim() || aiPrompt.trim() || "当前新稿",
-        details: title.trim() ? aiPrompt.trim() : "",
-        duration: aiDuration,
-        guidanceLevel,
-    };
-    const revisionGuidanceLabel = GUIDANCE_BADGES[revisionContext.guidanceLevel]?.label ?? "引导模式";
 
     return (
         // 移除 layout 动画，避免展开/折叠时的弹跳效果
@@ -972,7 +854,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                                 ) : (
                                                     <Sparkles className="w-3.5 h-3.5 text-rose-300" />
                                                 )}
-                                                <span className={isGenerationBusy ? "text-white/80" : "text-rose-100"}>{isRewriting ? "重写中..." : aiGenerating ? "创作中..." : "✨ AI 创作正文"}</span>
+                                                <span className={isGenerationBusy ? "text-white/80" : "text-rose-100"}>{aiGenerating ? "创作中..." : "✨ AI 创作正文"}</span>
                                             </motion.button>
                                         </div>
 
@@ -1054,16 +936,6 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                         <div className="pt-1">
                                             <div className="flex items-center justify-between gap-3 mb-1 pl-1">
                                                 <div className="text-xs text-rose-200/50 font-medium">正文内容 (AI 创作后可在此检查与修改)</div>
-                                                {ENABLE_AI_REVISION_DIALOG && text.trim() && !isGenerationBusy && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setIsRevisionDialogOpen(true)}
-                                                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs font-medium text-amber-100 hover:bg-amber-300/20 transition-colors"
-                                                    >
-                                                        <MessageSquareText className="w-3.5 h-3.5" />
-                                                        评价重写
-                                                    </button>
-                                                )}
                                             </div>
                                             <textarea
                                                 value={text}
@@ -1105,116 +977,6 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                 </div>
             </GlassCard>
 
-            <AnimatePresence>
-                {ENABLE_AI_REVISION_DIALOG && isRevisionDialogOpen && (
-                    <motion.div
-                        className="fixed inset-0 z-[90] flex items-center justify-center px-4 py-6"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                    >
-                        <motion.div
-                            className="absolute inset-0 bg-slate-950/55 backdrop-blur-xl"
-                            onClick={() => {
-                                if (!isGenerationBusy) setIsRevisionDialogOpen(false);
-                            }}
-                        />
-                        <motion.div
-                            role="dialog"
-                            aria-modal="true"
-                            aria-labelledby="revision-dialog-title"
-                            initial={{ opacity: 0, y: 24, scale: 0.96 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 16, scale: 0.98 }}
-                            transition={SPRING_SNAPPY}
-                            className="relative w-full max-w-lg overflow-hidden rounded-[1.75rem] border border-white/15 bg-slate-950/80 shadow-2xl shadow-black/50 backdrop-blur-2xl"
-                        >
-                            <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_15%_0%,rgba(251,113,133,0.22),transparent_34%),radial-gradient(circle_at_90%_20%,rgba(56,189,248,0.18),transparent_32%),linear-gradient(145deg,rgba(255,255,255,0.10),transparent_42%)]" />
-                            <div className="relative p-5 space-y-4">
-                                <div className="flex items-start justify-between gap-4">
-                                    <div>
-                                        <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-[11px] font-medium text-amber-100">
-                                            <MessageSquareText className="w-3.5 h-3.5" />
-                                            带上下文重写
-                                        </div>
-                                        <h3 id="revision-dialog-title" className="mt-3 text-xl font-semibold text-white">
-                                            评价这版生成
-                                        </h3>
-                                        <p className="mt-1 text-sm leading-relaxed text-white/55">
-                                            写下你不满意的地方，AI 会基于当前完整稿重新生成一版，不做局部补丁。
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsRevisionDialogOpen(false)}
-                                        disabled={isGenerationBusy}
-                                        className="rounded-full border border-white/10 bg-white/5 p-2 text-white/55 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
-                                        aria-label="关闭评价重写弹窗"
-                                    >
-                                        <X className="w-4 h-4" />
-                                    </button>
-                                </div>
-
-                                <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-xs text-white/60">
-                                    <div className="font-medium text-white/85 line-clamp-1">{revisionContext.topic}</div>
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                        <span className="rounded-full bg-white/10 px-2 py-1">{revisionContext.duration} 分钟</span>
-                                        <span className="rounded-full bg-white/10 px-2 py-1">{revisionGuidanceLabel}</span>
-                                        <span className="rounded-full bg-white/10 px-2 py-1">当前 {text.trim().length} 字</span>
-                                        {revisionHistory.length > 0 && (
-                                            <span className="rounded-full bg-amber-300/10 px-2 py-1 text-amber-100">
-                                                已有 {Math.floor(revisionHistory.length / 2)} 轮评价
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <textarea
-                                    value={revisionFeedback}
-                                    onChange={(e) => setRevisionFeedback(e.target.value)}
-                                    placeholder="比如：开头太快，身体线索太少；pause 太密；语气还不够像正念引导；请增加段落间沉浸感..."
-                                    autoFocus
-                                    disabled={isGenerationBusy}
-                                    className="min-h-36 w-full resize-none rounded-2xl border border-white/10 bg-black/25 p-4 text-sm leading-relaxed text-white/85 outline-none transition placeholder:text-white/25 focus:border-amber-200/30 focus:ring-2 focus:ring-amber-200/10 disabled:opacity-60"
-                                />
-
-                                <div className="rounded-2xl border border-emerald-300/15 bg-emerald-300/10 px-3 py-2 text-xs leading-relaxed text-emerald-50/70">
-                                    重写时会先保留旧稿；只有新稿第一个内容片段到达后，才会开始替换。失败会自动恢复旧稿。
-                                </div>
-
-                                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsRevisionDialogOpen(false)}
-                                        disabled={isGenerationBusy}
-                                        className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
-                                    >
-                                        取消
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleAIRewrite}
-                                        disabled={!revisionFeedback.trim() || isGenerationBusy}
-                                        className={cn(
-                                            "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-lg transition",
-                                            !revisionFeedback.trim() || isGenerationBusy
-                                                ? "border border-white/5 bg-white/5 text-white/25"
-                                                : "border border-amber-200/20 bg-gradient-to-r from-amber-300/80 to-rose-400/85 text-slate-950 shadow-rose-500/20 hover:from-amber-200 hover:to-rose-300"
-                                        )}
-                                    >
-                                        {isRewriting ? (
-                                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950/20 border-t-slate-950" />
-                                        ) : (
-                                            <Sparkles className="h-4 w-4" />
-                                        )}
-                                        按评价重写
-                                    </button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </div>
     );
 }
