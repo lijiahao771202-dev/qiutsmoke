@@ -13,6 +13,7 @@ import {
   getMimoTTSEndpoint,
   resolveMimoTTSCloneVoiceSource,
   shouldRetryMimoTTSResponse,
+  stripMimoInlineSpeechTags,
 } from "./mimo-tts.ts";
 import { normalizeTTSSettings } from "./tts-settings.ts";
 
@@ -24,18 +25,19 @@ test("builds a MiMo built-in voice payload with style instruction and assistant 
     mimoTTSInstruction: "请用轻柔、缓慢、安定的冥想语气朗读。",
   });
 
-  assert.deepEqual(buildMimoTTSPayload("慢慢呼气。", settings), {
-    model: "mimo-v2.5-tts",
-    messages: [
-      { role: "user", content: "请用轻柔、缓慢、安定的冥想语气朗读。" },
-      { role: "assistant", content: "慢慢呼气。" },
-    ],
-    audio: {
-      format: "wav",
-      voice: "Chloe",
-    },
-    stream: false,
+  const payload = buildMimoTTSPayload("慢慢呼气。", settings);
+
+  assert.equal(payload.model, "mimo-v2.5-tts");
+  assert.equal(payload.messages[0]?.role, "user");
+  assert.match(payload.messages[0]?.content || "", /请用轻柔、缓慢、安定的冥想语气朗读/);
+  assert.match(payload.messages[0]?.content || "", /不要朗读.*括号或方括号里的风格标签/);
+  assert.match(payload.messages[0]?.content || "", /不要自我补写/);
+  assert.equal(payload.messages[1]?.content, "慢慢呼气。");
+  assert.deepEqual(payload.audio, {
+    format: "wav",
+    voice: "Chloe",
   });
+  assert.equal(payload.stream, false);
 });
 
 test("builds a MiMo voice design payload without a fixed voice id", () => {
@@ -46,21 +48,19 @@ test("builds a MiMo voice design payload without a fixed voice id", () => {
     mimoTTSInstruction: "角色：中文正念冥想指导者。\n\n指导：句尾轻轻落下，句间留白充分。",
   });
 
-  assert.deepEqual(buildMimoTTSPayload("肩膀慢慢沉下来。", settings), {
-    model: "mimo-v2.5-tts-voicedesign",
-    messages: [
-      {
-        role: "user",
-        content:
-          "声音设计：成年女性，声线温柔偏低，气息松弛，语速慢。\n\n朗读导演：\n角色：中文正念冥想指导者。\n\n指导：句尾轻轻落下，句间留白充分。",
-      },
-      { role: "assistant", content: "肩膀慢慢沉下来。" },
-    ],
-    audio: {
-      format: "wav",
-    },
-    stream: false,
+  const payload = buildMimoTTSPayload("肩膀慢慢沉下来。", settings);
+
+  assert.equal(payload.model, "mimo-v2.5-tts-voicedesign");
+  assert.equal(payload.messages[0]?.role, "user");
+  assert.match(payload.messages[0]?.content || "", /声音设计：成年女性，声线温柔偏低/);
+  assert.match(payload.messages[0]?.content || "", /朗读导演：/);
+  assert.match(payload.messages[0]?.content || "", /不要重复朗读/);
+  assert.match(payload.messages[0]?.content || "", /不要把 user 消息里的声音设计、导演说明或规则读出来/);
+  assert.equal(payload.messages[1]?.content, "肩膀慢慢沉下来。");
+  assert.deepEqual(payload.audio, {
+    format: "wav",
   });
+  assert.equal(payload.stream, false);
 });
 
 test("builds a MiMo voice clone payload with resolved clone voice data", () => {
@@ -70,25 +70,55 @@ test("builds a MiMo voice clone payload with resolved clone voice data", () => {
     mimoTTSInstruction: "请保持平稳、中性、低刺激。",
   });
 
-  assert.deepEqual(
-    buildMimoTTSPayload(
-      "现在把注意力带回呼吸。",
-      settings,
-      "data:audio/wav;base64,QUJDRA=="
-    ),
-    {
-      model: "mimo-v2.5-tts-voiceclone",
-      messages: [
-        { role: "user", content: "请保持平稳、中性、低刺激。" },
-        { role: "assistant", content: "现在把注意力带回呼吸。" },
-      ],
-      audio: {
-        format: "wav",
-        voice: "data:audio/wav;base64,QUJDRA==",
-      },
-      stream: false,
-    }
+  const payload = buildMimoTTSPayload(
+    "现在把注意力带回呼吸。",
+    settings,
+    "data:audio/wav;base64,QUJDRA=="
   );
+
+  assert.equal(payload.model, "mimo-v2.5-tts-voiceclone");
+  assert.equal(payload.messages[0]?.role, "user");
+  assert.match(payload.messages[0]?.content || "", /请保持平稳、中性、低刺激/);
+  assert.match(payload.messages[0]?.content || "", /每一句只读一次/);
+  assert.match(payload.messages[0]?.content || "", /assistant 正文第一个字读到最后一个字一次/);
+  assert.equal(payload.messages[1]?.content, "现在把注意力带回呼吸。");
+  assert.deepEqual(payload.audio, {
+    format: "wav",
+    voice: "data:audio/wav;base64,QUJDRA==",
+  });
+  assert.equal(payload.stream, false);
+});
+
+test("strips inline director and speech tags from MiMo text before synthesis", () => {
+  assert.equal(
+    stripMimoInlineSpeechTags(
+      "（极度缓慢舒缓冥想指导）先让自己坐下来。[轻声]把注意力带回呼吸。"
+    ),
+    "先让自己坐下来。把注意力带回呼吸。"
+  );
+
+  assert.equal(
+    stripMimoInlineSpeechTags("1分钟紧急重置（冰水浇头法）"),
+    "1分钟紧急重置（冰水浇头法）"
+  );
+});
+
+test("keeps MiMo payload assistant content free of readable director tags", () => {
+  const settings = normalizeTTSSettings({
+    provider: "mimotts",
+    mimoTTSModel: "mimo-v2.5-tts-voiceclone",
+    mimoTTSInstruction: "角色：中文正念冥想指导者。",
+  });
+
+  const payload = buildMimoTTSPayload(
+    "（极度缓慢舒缓冥想指导）慢慢呼气。[长停顿]再回来。",
+    settings,
+    "data:audio/wav;base64,QUJDRA=="
+  );
+
+  assert.equal(payload.messages[1]?.content, "慢慢呼气。再回来。");
+  assert.match(payload.messages[0]?.content || "", /不要朗读.*括号或方括号里的风格标签/);
+  assert.match(payload.messages[0]?.content || "", /不要重复朗读/);
 });
 
 test("appends per-segment rate control to MiMo natural language instruction", () => {

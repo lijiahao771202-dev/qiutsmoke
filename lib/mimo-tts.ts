@@ -34,15 +34,41 @@ function requiresCloneVoice(model: MimoTTSModel) {
 
 function buildMimoTTSUserInstruction(settings: TTSSettings) {
   const instruction = settings.mimoTTSInstruction.trim();
+  const guardrail =
+    "硬性朗读规则：assistant 消息是唯一需要合成的正文。只从 assistant 正文第一个字读到最后一个字一次，不要自我补写，不要复述，不要把 user 消息里的声音设计、导演说明或规则读出来。不要朗读正文中括号或方括号里的风格标签、导演标签、语气标签；这些只能作为表演提示。不要重复朗读任何句子或段落，每一句只读一次。";
   if (settings.mimoTTSModel !== "mimo-v2.5-tts-voicedesign") {
-    return instruction;
+    return [instruction, guardrail].filter(Boolean).join("\n\n");
   }
 
   const voiceDesign = settings.mimoTTSVoiceDesignPrompt.trim();
   return [
     voiceDesign ? `声音设计：${voiceDesign}` : "",
     instruction ? `朗读导演：\n${instruction}` : "",
+    guardrail,
   ].filter(Boolean).join("\n\n");
+}
+
+const MIMO_INLINE_SPEECH_TAG_RE = /[\[（(]([^[\]()（）]{1,48})[\]）)]/g;
+const MIMO_INLINE_SPEECH_TAG_KEYWORDS =
+  /冥想|指导|导演|语气|语速|语调|音色|声音|口吻|节奏|情绪|情感|气息|吐字|共鸣|轻声|低语|耳语|温柔|舒缓|缓慢|慢速|极慢|极其|安定|平静|低刺激|停顿|长停顿|拖音|强调|叹气|吸气|呼气|哽咽|笑|哭|whisper|slow|soft|gentle|calm|pause|sigh|breath|tone|voice|emotion|director/i;
+
+function looksLikeMimoInlineSpeechTag(value: string) {
+  const text = value.trim();
+  if (!text) return false;
+  if (/^(?:pause|rate)\b/i.test(text)) return false;
+  if (text.length > 48) return false;
+  return MIMO_INLINE_SPEECH_TAG_KEYWORDS.test(text);
+}
+
+export function stripMimoInlineSpeechTags(text: string) {
+  return text
+    .replace(MIMO_INLINE_SPEECH_TAG_RE, (match, inner) =>
+      looksLikeMimoInlineSpeechTag(inner) ? "" : match
+    )
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .trim();
 }
 
 function sleep(ms: number) {
@@ -300,7 +326,7 @@ export function buildMimoTTSPayload(
 
   messages.push({
     role: "assistant",
-    content: text,
+    content: stripMimoInlineSpeechTags(text),
   });
 
   const audio: MimoTTSPayload["audio"] = {
