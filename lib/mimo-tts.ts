@@ -225,8 +225,27 @@ export function getMimoTTSCurlProxyArgs(env: NodeJS.ProcessEnv = process.env) {
   return proxy ? ["--proxy", proxy] : [];
 }
 
+export function buildMimoTTSCurlArgs(url: string, apiKey: string, timeoutSeconds: number) {
+  return [
+    "--http1.1",
+    ...getMimoTTSCurlProxyArgs(),
+    "-sS",
+    "--max-time",
+    String(timeoutSeconds),
+    "-X",
+    "POST",
+    url,
+    "-H",
+    `Authorization: Bearer ${apiKey}`,
+    "-H",
+    "Content-Type: application/json",
+    "--data-binary",
+    "@-",
+  ];
+}
+
 function shouldRetryMimoCurlError(message: string) {
-  return /curl: \((52|56|28)\)|Empty reply from server|Connection reset|timed out/i.test(message);
+  return /curl: \((52|56|28)\)|Empty reply from server|Connection reset|timed out|timeout|Bad gateway|502|503|504|Gateway/i.test(message);
 }
 
 export async function postMimoTTSJsonWithCurl(
@@ -242,41 +261,63 @@ export async function postMimoTTSJsonWithCurl(
     : defaultGapMs;
 
   const executeRequest = async () => {
-    const { execFile } = await import("node:child_process");
+    const { spawn } = await import("node:child_process");
     const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
     const body = JSON.stringify(payload);
     const maxAttempts = Math.max(1, Number.parseInt(process.env.MIMO_TTS_CURL_RETRIES || "5", 10));
+    const maxBuffer = 80 * 1024 * 1024;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const currentStdout = await new Promise<string>((resolve, reject) => {
-          execFile(
+          const child = spawn(
             "curl",
-            [
-              "--http1.1",
-              ...getMimoTTSCurlProxyArgs(),
-              "-sS",
-              "--max-time",
-              String(timeoutSeconds),
-              "-X",
-              "POST",
-              url,
-              "-H",
-              `Authorization: Bearer ${apiKey}`,
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              body,
-            ],
-            { encoding: "utf8", maxBuffer: 80 * 1024 * 1024 },
-            (error, out, err) => {
-              if (error && !out.trim()) {
-                reject(new Error(String(err || error.message)));
+            buildMimoTTSCurlArgs(url, apiKey, timeoutSeconds),
+            { stdio: ["pipe", "pipe", "pipe"] }
+          );
+          let stdout = "";
+          let stderr = "";
+          let settled = false;
+
+          const finish = (fn: () => void) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            fn();
+          };
+
+          const timer = setTimeout(() => {
+            child.kill("SIGKILL");
+            finish(() => reject(new Error(`curl timed out after ${timeoutSeconds}s`)));
+          }, timeoutMs + 5000);
+
+          child.stdout.setEncoding("utf8");
+          child.stderr.setEncoding("utf8");
+
+          child.stdout.on("data", (chunk) => {
+            stdout += chunk;
+            if (stdout.length > maxBuffer) {
+              child.kill("SIGKILL");
+              finish(() => reject(new Error("curl stdout exceeded maxBuffer")));
+            }
+          });
+          child.stderr.on("data", (chunk) => {
+            stderr += chunk;
+          });
+          child.on("error", (error) => {
+            finish(() => reject(error));
+          });
+          child.on("close", (code, signal) => {
+            finish(() => {
+              if (code !== 0 && !stdout.trim()) {
+                reject(new Error(stderr.trim() || `curl exited with code ${code ?? "unknown"}${signal ? ` signal ${signal}` : ""}`));
                 return;
               }
-              resolve(out);
-            }
-          );
+              resolve(stdout);
+            });
+          });
+
+          child.stdin.end(body);
         });
 
         try {
@@ -441,7 +482,7 @@ export function getMimoTTSResponseErrorMessage(data: unknown): string {
 
 export function shouldRetryMimoTTSResponse(data: unknown): boolean {
   const message = getMimoTTSResponseErrorMessage(data);
-  return /code 5\d\d|Internal server error|loading multimodal data|temporarily|timeout|timed out|empty reply|connection reset/i.test(
+  return /code 5\d\d|HTTP 5\d\d|Internal server error|loading multimodal data|temporarily|timeout|timed out|empty reply|connection reset|Bad gateway|Gateway|upstream|rate limit|overloaded/i.test(
     message
   );
 }

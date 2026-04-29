@@ -135,6 +135,7 @@ const PRICE_BADGE_STYLES: Record<TTSPriceBadgeTone, string> = {
 
 const COSYVOICE_SSML_CHUNK_CONCURRENCY = 4;
 const AI_DURATION_OPTIONS = [3, 5, 10, 15, 20, 25, 30, 35, 40] as const;
+const ENABLE_AI_REVISION_DIALOG = false;
 const TTS_STUDIO_CATEGORY_TONE_CLASSES: Record<TTSStudioCategory["tone"], { active: string; idle: string; subActive: string; subIdle: string }> = {
     neutral: {
         active: "bg-white text-black shadow-lg",
@@ -365,7 +366,7 @@ function isRetryableTTSFailure(error: unknown) {
     if (typeof status === "number" && status >= 500) return true;
 
     const details = getErrorDetails(error);
-    return /Empty reply from server|curl: \((52|56|28)\)|Connection reset|ECONNRESET|timed out|timeout|aborted|JSON parse failed|中途断开|云端波动/i.test(details);
+    return /Empty reply from server|curl: \((52|56|28)\)|Connection reset|ECONNRESET|timed out|timeout|aborted|JSON parse failed|Bad gateway|Gateway|HTTP 5\d\d|upstream|overloaded|rate limit|中途断开|云端波动/i.test(details);
 }
 
 function shouldSurfaceSSMLFailure(error: unknown) {
@@ -1053,7 +1054,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
                                         <div className="pt-1">
                                             <div className="flex items-center justify-between gap-3 mb-1 pl-1">
                                                 <div className="text-xs text-rose-200/50 font-medium">正文内容 (AI 创作后可在此检查与修改)</div>
-                                                {text.trim() && !isGenerationBusy && (
+                                                {ENABLE_AI_REVISION_DIALOG && text.trim() && !isGenerationBusy && (
                                                     <button
                                                         type="button"
                                                         onClick={() => setIsRevisionDialogOpen(true)}
@@ -1105,7 +1106,7 @@ function GlassInput({ onAddCard }: { onAddCard: (card: Partial<TTSCard>) => Prom
             </GlassCard>
 
             <AnimatePresence>
-                {isRevisionDialogOpen && (
+                {ENABLE_AI_REVISION_DIALOG && isRevisionDialogOpen && (
                     <motion.div
                         className="fixed inset-0 z-[90] flex items-center justify-center px-4 py-6"
                         initial={{ opacity: 0 }}
@@ -2259,12 +2260,6 @@ function TTSCardItem({
         if (ttsSettings.provider === "edge") return;
 
         if (ttsSettings.provider === "mimotts") {
-            if (ttsSettings.mimoTTSModel === "mimo-v2.5-tts-voiceclone") {
-                const cloneSource = ttsSettings.mimoTTSCloneVoiceUrl.trim();
-                if (!cloneSource) {
-                    throw new Error("合成前检查失败：请先填写 MiMo 克隆音色的参考音频路径或 URL。");
-                }
-            }
             return;
         }
 

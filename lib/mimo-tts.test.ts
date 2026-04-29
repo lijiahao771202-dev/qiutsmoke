@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  buildMimoTTSCurlArgs,
   buildMimoTTSPayload,
   buildMimoTTSInstructionWithRate,
   extractMimoTTSAudioBase64,
@@ -121,6 +122,13 @@ test("keeps MiMo payload assistant content free of readable director tags", () =
   assert.match(payload.messages[0]?.content || "", /不要重复朗读/);
 });
 
+test("passes MiMo curl payload through stdin to avoid clone payload argument limits", () => {
+  const args = buildMimoTTSCurlArgs("https://example.test/v1/chat/completions", "secret", 120);
+  assert.equal(args.at(-1), "@-");
+  assert.equal(args.includes("--data-binary"), true);
+  assert.equal(args.includes("data:audio/wav;base64"), false);
+});
+
 test("appends per-segment rate control to MiMo natural language instruction", () => {
   assert.equal(
     buildMimoTTSInstructionWithRate("女声，温柔，慢速。", "-10%"),
@@ -222,6 +230,7 @@ test("classifies transient MiMo upstream multimodal loading failures as retryabl
     "code 500: Internal server error: An exception occurred while loading multimodal data: Error while loading audio."
   );
   assert.equal(shouldRetryMimoTTSResponse(data), true);
+  assert.equal(shouldRetryMimoTTSResponse("HTTP 502 Bad gateway"), true);
   assert.equal(shouldRetryMimoTTSResponse({ error: { code: "400", message: "invalid model" } }), false);
 });
 
