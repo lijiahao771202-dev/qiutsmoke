@@ -245,7 +245,7 @@ export function buildMimoTTSCurlArgs(url: string, apiKey: string, timeoutSeconds
 }
 
 function shouldRetryMimoCurlError(message: string) {
-  return /curl: \((52|56|28)\)|Empty reply from server|Connection reset|timed out|timeout|Bad gateway|502|503|504|Gateway/i.test(message);
+  return /curl: \((52|56|28)\)|Empty reply from server|Connection reset|ECONNRESET|EPIPE|timed out|timeout|Bad gateway|502|503|504|Gateway/i.test(message);
 }
 
 export async function postMimoTTSJsonWithCurl(
@@ -303,6 +303,9 @@ export async function postMimoTTSJsonWithCurl(
           });
           child.stderr.on("data", (chunk) => {
             stderr += chunk;
+          });
+          child.stdin.on("error", (error) => {
+            finish(() => reject(error));
           });
           child.on("error", (error) => {
             finish(() => reject(error));
