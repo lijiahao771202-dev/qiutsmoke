@@ -78,7 +78,7 @@ import {
 // Re-export for backwards compatibility
 export type { TTSCard } from "@/lib/hooks/useData";
 import { useHaptics } from "@/lib/hooks/useHaptics";
-import { useWhiteNoise, AMBIENT_SOUNDS, type AmbientSoundType } from "@/hooks/useWhiteNoise";
+import { useGlobalWhiteNoise } from "@/contexts/WhiteNoiseContext";
 import { getDefaultTTSStudioAmbientPreset } from "@/lib/tts-studio-ambient";
 import {
     getLocalSingleton,
@@ -3766,13 +3766,10 @@ export default function TTSStudioPage() {
     // 🌿 白噪音/环境音（复用冥想页面的 hook）
     const {
         activeTracks,
-        trackVolumes,
-        masterVolume,
-        setMasterVolume,
         toggleTrack,
         setTrackVolume,
-        stopAll: stopAllAmbient,
-    } = useWhiteNoise();
+    } = useGlobalWhiteNoise();
+    const activeTrackIds = useMemo(() => new Set(activeTracks.keys()), [activeTracks]);
 
     // 🎵 沉浸式播放器：音频引擎
     const playerAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -3894,7 +3891,7 @@ export default function TTSStudioPage() {
 
     // 播放卡片逻辑
     const handlePlayCard = async (card: TTSCard, preferredCacheKey?: string) => {
-        const ambientPreset = getDefaultTTSStudioAmbientPreset(activeTracks);
+        const ambientPreset = getDefaultTTSStudioAmbientPreset(activeTrackIds);
         for (const track of ambientPreset) {
             toggleTrack(track.id);
             setTrackVolume(track.id, track.volume);
@@ -4694,15 +4691,7 @@ export default function TTSStudioPage() {
                         playerAudioRef.current?.pause();
                     }}
                     analyserNode={analyser}
-                    // 白噪音 Props
-                    ambientSounds={AMBIENT_SOUNDS}
-                    activeTracks={activeTracks}
-                    trackVolumes={trackVolumes}
-                    masterVolume={masterVolume}
-                    onToggleTrack={toggleTrack}
-                    onSetTrackVolume={setTrackVolume}
-                    onSetMasterVolume={setMasterVolume}
-                    onStopAllAmbient={stopAllAmbient}
+                    activeTracks={activeTrackIds}
                 />
             </div>
         </AuthGuard>

@@ -2985,14 +2985,7 @@ export default function TTSStudioPage() {
                         playerAudioRef.current?.pause();
                     }}
                     analyserNode={analyser}
-                    // 白噪音 Props
-                    ambientSounds={AMBIENT_SOUNDS}
                     activeTracks={activeTracks}
-                    trackVolumes={trackVolumes}
-                    masterVolume={masterVolume}
-                    onToggleTrack={toggleTrack}
-                    onSetTrackVolume={setTrackVolume}
-                    onSetMasterVolume={setMasterVolume}
                 />
             </div>
         </AuthGuard>

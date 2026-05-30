@@ -7,7 +7,7 @@ import {
   getDefaultTTSStudioAmbientPreset,
 } from "./tts-studio-ambient.ts";
 
-test("auto-starts fire and waves when no ambient track is active", () => {
+test("auto-starts campfire and waves when no ambient track is active", () => {
   const preset = getDefaultTTSStudioAmbientPreset(new Set());
 
   assert.deepEqual(preset, DEFAULT_TTS_STUDIO_AMBIENT_PRESET);

@@ -17,7 +17,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, X, SkipBack, SkipForward, FileText, ChevronDown, Shuffle, Repeat, Sparkles, Volume2 } from "lucide-react";
 import { useHaptics } from "@/lib/hooks/useHaptics";
 import { cn } from "@/lib/utils";
-import { type AmbientSound, type AmbientSoundType } from "@/hooks/useWhiteNoise";
+import { type AmbientSound } from "@/hooks/useWhiteNoise";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { SoundscapesContent } from "@/components/soundscapes/SoundscapesContent";
 
@@ -43,11 +43,11 @@ interface TTSStudioPlayerProps {
 
     // 白噪音 Props
     ambientSounds?: AmbientSound[];
-    activeTracks?: Set<AmbientSoundType>;
-    trackVolumes?: Record<AmbientSoundType, number>;
+    activeTracks?: ReadonlySet<string>;
+    trackVolumes?: Record<string, number>;
     masterVolume?: number;
-    onToggleTrack?: (id: AmbientSoundType) => void;
-    onSetTrackVolume?: (id: AmbientSoundType, volume: number) => void;
+    onToggleTrack?: (id: string) => void;
+    onSetTrackVolume?: (id: string, volume: number) => void;
     onSetMasterVolume?: (volume: number) => void;
     onStopAllAmbient?: () => void;
 }
@@ -630,8 +630,8 @@ export default function TTSStudioPlayer({
                                     controlledActiveTrackIds={activeTracks}
                                     controlledTrackVolumes={trackVolumes as Record<string, number> | undefined}
                                     controlledMasterVolume={masterVolume}
-                                    controlledToggleTrack={onToggleTrack ? (trackId) => onToggleTrack(trackId as AmbientSoundType) : undefined}
-                                    controlledSetTrackVolume={onSetTrackVolume ? (trackId, volume) => onSetTrackVolume(trackId as AmbientSoundType, volume) : undefined}
+                                    controlledToggleTrack={onToggleTrack}
+                                    controlledSetTrackVolume={onSetTrackVolume}
                                     controlledSetMasterVolume={onSetMasterVolume}
                                     controlledStopAll={onStopAllAmbient}
                                 />

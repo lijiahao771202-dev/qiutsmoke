@@ -1,17 +1,15 @@
-import type { AmbientSoundType } from "@/hooks/useWhiteNoise";
-
 export type TTSStudioAmbientPresetItem = {
-  id: AmbientSoundType;
+  id: string;
   volume: number;
 };
 
 export const DEFAULT_TTS_STUDIO_AMBIENT_PRESET: readonly TTSStudioAmbientPresetItem[] = [
-  { id: "fire", volume: 0.42 },
+  { id: "campfire", volume: 0.42 },
   { id: "waves", volume: 0.36 },
 ];
 
 export function getDefaultTTSStudioAmbientPreset(
-  activeTracks: ReadonlySet<AmbientSoundType>
+  activeTracks: ReadonlySet<string>
 ): readonly TTSStudioAmbientPresetItem[] {
   if (activeTracks.size > 0) {
     return [];
